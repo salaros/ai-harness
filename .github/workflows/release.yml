@@ -79,24 +79,33 @@ jobs:
       - name: The tag is annotated, agrees with package.json, and is on master
         if: startsWith(github.ref, 'refs/tags/')
         run: |
+          # actions/checkout chooses which refs reach this clone, and a guard that assumes an answer
+          # fails for reasons the tag has nothing to do with: 0.2.5 stopped here with a correct
+          # annotated tag on master, and all the run recorded was which check refused. So both refs
+          # are fetched by name rather than hoped for -- the tag as a tag, so an annotated one keeps
+          # its object, and master under its remote-tracking name -- and each check prints what it
+          # read before it decides. A fetch that fails ends the step with git's own message, which
+          # says more than "no origin/master" ever did.
+          git fetch --force origin \
+            "+refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME" \
+            "+refs/heads/master:refs/remotes/origin/master"
+
           kind="$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")"
-          if [ "$kind" != "tag" ]; then
-            echo "$GITHUB_REF_NAME is a $kind, not an annotated tag: cut it with git tag -a"
-            exit 1
-          fi
           pkg="$(node -p "require('./package.json').version")"
-          if [ "$GITHUB_REF_NAME" != "$pkg" ]; then
-            echo "tag $GITHUB_REF_NAME disagrees with package.json, which says $pkg"
+          echo "tag $GITHUB_REF_NAME is a $kind naming $(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")"
+          echo "HEAD is $(git rev-parse HEAD), origin/master is $(git rev-parse origin/master)"
+          echo "package.json says $pkg"
+
+          if [ "$kind" != "tag" ]; then
+            echo "::error::$GITHUB_REF_NAME is a $kind, not an annotated tag: cut it with git tag -a"
             exit 1
           fi
-          # Without the ref there is nothing to compare against, and --is-ancestor would report a
-          # missing object as "not an ancestor" -- the right answer for the wrong reason.
-          if ! git rev-parse --verify --quiet origin/master >/dev/null; then
-            echo "this checkout has no origin/master, so the released line cannot be checked"
+          if [ "$GITHUB_REF_NAME" != "$pkg" ]; then
+            echo "::error::tag $GITHUB_REF_NAME disagrees with package.json, which says $pkg"
             exit 1
           fi
           if ! git merge-base --is-ancestor HEAD origin/master; then
-            echo "$GITHUB_REF_NAME names a commit that is not on master, and master is the released line"
+            echo "::error::$GITHUB_REF_NAME names a commit that is not on master, the released line"
             exit 1
           fi
           echo "publishing $pkg"
