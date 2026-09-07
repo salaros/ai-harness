@@ -221,7 +221,7 @@ function docsCheckCitationEdgeCases(t) {
     write("brd/9003-support.md", "# BRD-9003: Support");
     write("ears/9003-late.md", "# EARS-9003: Late");
     write("prd/9003-early.md", "# PRD-9003: Early", "", "**Derived from:** BRD-9003", "", "See EARS-9003 for details.");
-    const { problems } = docsCheck.check(tmp, "AGENTS.md");
+    const { problems } = docsCheck.check(lib.checkout, tmp, "AGENTS.md");
     fs.rmSync(tmp, { recursive: true, force: true });
     const has = needle => problems.some(p => p.includes(needle));
     const detail = problems.join("\n") || "(none)";
@@ -243,7 +243,7 @@ function docTree() {
             fs.writeFileSync(file, lines.join("\n") + "\n");
         },
         run(memoryFile) {
-            const { problems } = docsCheck.check(dir, "AGENTS.md", memoryFile || path.join(dir, "no-memory-here.md"));
+            const { problems } = docsCheck.check(lib.checkout, dir, "AGENTS.md", memoryFile || path.join(dir, "no-memory-here.md"));
             return {
                 all: problems.join("\n") || "(none)",
                 for: rel => problems.filter(p => p.startsWith(path.join(dir, rel).split(path.sep).join("/"))),
@@ -299,7 +299,7 @@ function docsCheckMemoryRequirements(t) {
     const memory = (name, ...lines) => {
         const file = path.join(tree.dir, name);
         fs.writeFileSync(file, lines.join("\n") + "\n");
-        const { problems } = docsCheck.check(tree.dir, "AGENTS.md", file);
+        const { problems } = docsCheck.check(lib.checkout, tree.dir, "AGENTS.md", file);
         return problems.filter(p => p.startsWith(file.split(path.sep).join("/")) || p.startsWith(file));
     };
     const cases = [
@@ -340,12 +340,34 @@ function sessionStartFollowsProjectDir(t, env) {
         "session-start.js follows CLAUDE_PROJECT_DIR", r.output);
 }
 
+// The chain rule in check-edit.js must check the repo the harness is editing, the same one root()
+// answers for, and not whichever checkout the hook file sits in. The two were allowed to disagree
+// while docs-check chdir'd to its own location: a repo whose CLAUDE_PROJECT_DIR pointed elsewhere
+// had the template's documents validated in place of its own, so a broken document passed. No TSV
+// fixture reaches this, since test.js clears the project-dir variables before each one. Points
+// CLAUDE_PROJECT_DIR at a directory holding this chain table and one document with the wrong
+// heading, and requires the hook to object to THAT document.
+function checkEditFollowsProjectDir(t, env) {
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), "harness-edit-root-"));
+    const doc = path.join(other, "docs", "brd", "0001-elsewhere.md");
+    fs.mkdirSync(path.dirname(doc), { recursive: true });
+    fs.copyFileSync(path.join(lib.checkout, "AGENTS.md"), path.join(other, "AGENTS.md"));
+    fs.writeFileSync(doc, "# Wrong: not the ID its file name gives it\n\n**Derived from:** https://example.com/x\n");
+    const r = lib.node([".agents/hooks/check-edit.js"], {
+        input: JSON.stringify({ tool_input: { file_path: doc } }),
+        env: { ...env, CLAUDE_PROJECT_DIR: other },
+    });
+    fs.rmSync(other, { recursive: true, force: true });
+    t.ok(r.status === 2 && r.output.includes(`# BRD-0001:`),
+        "check-edit.js checks the chain in CLAUDE_PROJECT_DIR, not in its own checkout", r.output);
+}
+
 // The stage table in AGENTS.md has one parser, readChain(), and anything that needs the pipeline
 // builds on it rather than reading the table again. Pin what it promises those callers: every row
 // in table order, document stages carrying the folder their name implies.
 const PIPELINE = ["BRD", "PRD", "EARS", "BDD", "ADR", "SPEC"];
 function chainIsParsedInPipelineOrder(t) {
-    const { stages, problems } = docsCheck.readChain();
+    const { stages, problems } = docsCheck.readChain(lib.checkout);
     const named = stages.map(s => s.stage);
     const detail = named.join(",");
     t.ok(problems.length === 0, "readChain finds no problem in this repo's table", problems.join("\n"));
@@ -387,4 +409,5 @@ module.exports = [
     chainIsParsedInPipelineOrder,
     docsSiteRendersTheChain,
     sessionStartFollowsProjectDir,
+    checkEditFollowsProjectDir,
 ];

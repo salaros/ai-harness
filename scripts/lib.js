@@ -4,7 +4,8 @@
 // which requires this file rather than the other way around, so scripts/ never reaches into the
 // harness-specific folder.
 //   const lib = require("./lib");
-//   const root = lib.chdirRoot();            // cd to the repo root (this file is one level under it), return it
+//   const root = lib.root();                 // the repo root (this file is one level under it)
+//   const root = lib.chdirRoot();            // the same, and cd there
 //   lib.stdin()                              // everything on stdin, or "" if there is none
 //   lib.node(["scripts/skills.js", "missing"]) // run a script with this node; { status, output }
 //   lib.shell("npm install")                 // run a command through the OS shell
@@ -14,12 +15,16 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 // Every script under scripts/ resolves the repo root from its own location (scripts/README.md,
-// "Conventions") and chdirs there so its relative paths (SKILL.md files, README.md, stacks.tsv)
-// work no matter where it was invoked from.
+// "Conventions"), and a script run as a command chdirs there so its relative paths (SKILL.md files,
+// README.md, stacks.tsv) work no matter where it was invoked from. A script another script requires
+// takes the root as an argument and resolves against it: chdir is a process-wide effect, so a
+// library that moves the working directory moves it for its caller too.
+const root = () => path.resolve(__dirname, "..");
+
 function chdirRoot() {
-    const root = path.resolve(__dirname, "..");
-    process.chdir(root);
-    return root;
+    const dir = root();
+    process.chdir(dir);
+    return dir;
 }
 
 function stdin() { try { return fs.readFileSync(0, "utf8"); } catch { return ""; } }
@@ -39,4 +44,4 @@ function readTsv(file) {
         .map(l => l.split("\t"));
 }
 
-module.exports = { chdirRoot, stdin, run, node, shell, readTsv };
+module.exports = { root, chdirRoot, stdin, run, node, shell, readTsv };

@@ -3,7 +3,8 @@
 // loader in src/content.config.mjs hands what this returns to Starlight in memory, and
 // astro.config.mjs builds the sidebar from the same call.
 // The stage table in AGENTS.md is parsed by readChain() in scripts/docs-check.js, the one parser of
-// that table, so stage order and folders are never restated here.
+// that table, so stage order and folders are never restated here. It is given REPO and leaves the
+// working directory alone, so Astro's own root stays where Astro put it.
 // Run it directly for a summary of what the portal will render:
 //   node tools/docs-site/chain.mjs
 import fs from "node:fs";
@@ -17,13 +18,6 @@ const { readChain } = require("../../scripts/docs-check.js");
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const DOCS = path.join(REPO, "docs");
 
-// readChain() chdirs to the repo root, which would move Astro's own root out from under it, so the
-// working directory is put back before anything else runs.
-function stagesFromAgentsFile() {
-    const cwd = process.cwd();
-    try { return readChain(); } finally { process.chdir(cwd); }
-}
-
 // One fact out of MEMORY.md ("- **Name:** Acme Billing"), or "" while the template is unconfigured.
 function memoryFact(name) {
     const file = path.join(REPO, "MEMORY.md");
@@ -35,7 +29,7 @@ function memoryFact(name) {
 
 // Every document in the chain: docs/<stage>/NNNN-<slug>.md, in stage order and then file order.
 export function collect() {
-    const { stages, problems } = stagesFromAgentsFile();
+    const { stages, problems } = readChain(REPO);
     const notes = [...problems];
     const docStages = stages.filter(s => s.folder);
     const docs = [];

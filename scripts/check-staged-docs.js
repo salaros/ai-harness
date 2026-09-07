@@ -48,7 +48,10 @@ try {
     // Anything the commit does not carry is read from the checkout, so a repo that keeps AGENTS.md
     // or MEMORY.md untracked still gets a meaningful check rather than a confusing one.
     const staged_ = rel => fs.existsSync(path.join(tmp, rel)) ? path.join(tmp, rel) : path.join(root, rel);
-    const { problems } = docsCheck.check(staged_("docs"), staged_("AGENTS.md"), staged_("MEMORY.md"));
+    // The root stays the checkout even though the three paths point into the temp tree: a
+    // "Derived from:" naming a repo-relative path means a path in the working tree, which the
+    // staged blobs of docs/, AGENTS.md and MEMORY.md say nothing about.
+    const { problems } = docsCheck.check(root, staged_("docs"), staged_("AGENTS.md"), staged_("MEMORY.md"));
     if (problems.length) {
         console.error(`The staged documentation chain has ${problems.length} problem(s):\n`);
         console.error(problems.map(p => `  ${p.split(tmp.split(path.sep).join("/") + "/").join("")}`).join("\n"));

@@ -98,4 +98,7 @@ function commandText(j) {
     return found.join("\n");
 }
 
-module.exports = { checkout, warn, fix, root, ROOT_ENV_VARS, payload, filePaths, commandText, ...scripts };
+// scripts/lib.js first, so what this file defines wins where the two names meet: scripts/lib.js
+// resolves the root from its own location, and a hook must honour the harness's project-dir
+// variable instead.
+module.exports = { ...scripts, checkout, warn, fix, root, ROOT_ENV_VARS, payload, filePaths, commandText };

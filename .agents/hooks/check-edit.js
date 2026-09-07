@@ -12,6 +12,11 @@ const fs = require("fs");
 const lib = require("./lib");
 const docsCheck = require("../../scripts/docs-check");
 
+// Resolved before the rules, because one of them hands it to docs-check: the chain to validate is
+// the one in the repo the harness is editing, which is what root() answers, and not whichever
+// checkout this file happens to sit in.
+const root = lib.root();
+
 const rules = [
     {   // Vendored skills (recorded in skills-lock.json) must not be edited in place; local skills may be.
         when: /^(?:\.agents|\.claude)\/skills\/([^/]+)\/./,
@@ -28,7 +33,7 @@ const rules = [
     },
     {   // The chain: any Markdown under docs/, and the AGENTS.md table the validator reads the stages from.
         when: /^(?:AGENTS\.md|docs\/.*\.md)$/,
-        check: () => { const r = docsCheck.check(); return r.problems.length > 0 && `documentation chain check failed (see AGENTS.md, Documentation; fix with the docs-check skill):\n${r.problems.join("\n")}`; },
+        check: () => { const r = docsCheck.check(root); return r.problems.length > 0 && `documentation chain check failed (see AGENTS.md, Documentation; fix with the docs-check skill):\n${r.problems.join("\n")}`; },
     },
     {   // The harness itself changed: the suite must still pass (HOOK_TEST stops recursion).
         // The suite is the template's own, and a repo that installed the harness has the hooks
@@ -43,7 +48,6 @@ const rules = [
     },
 ];
 
-const root = lib.root();
 process.chdir(root);
 let status = 0;
 for (const file of lib.filePaths(lib.payload(), root)) {

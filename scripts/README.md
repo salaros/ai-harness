@@ -19,6 +19,12 @@ part of the product.
   `build.js`, `release.js`); Node, so they run the same on every OS.
 - Scripts are safe to run from any working directory — each resolves the
   repository root from its own location.
+- A script run as a command may `chdir` there (`lib.chdirRoot()`). A script
+  another script requires takes the root as its first argument and resolves
+  against it (`lib.root()` at the entry point, `path.resolve(root, …)`
+  inside), because `chdir` moves the working directory for the caller too.
+  `docs-check.js` does both: it chdirs nothing, and its command line resolves
+  the root itself.
 - Every script starts with a short comment describing what it does and how
   to call it; scripts that take arguments print usage when run with `-h`.
 - Node, so scripts run the same on Linux, macOS and Windows without a shell

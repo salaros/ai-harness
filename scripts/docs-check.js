@@ -15,8 +15,14 @@
 // Prints one line per problem and exits 1 when there are any. The edit hook requires check();
 // readChain() is exported for anything else that needs the pipeline (the optional tools/docs-site
 // does), so the stage table is parsed in one place, not two.
+// Both take the repo root as their first argument and resolve everything relative against it; an
+// absolute argument is used as it stands, which is how check-staged-docs.js points the docs, table
+// and memory file at a temp tree of staged blobs while sources still resolve in the checkout.
+// Neither changes the working directory: chdir is process-wide, so a library that moves it moves it
+// for its caller. The caller decides where the root is -- a hook honours the harness's project-dir
+// variable, a command uses its own location -- and says so here.
 // Usage: node scripts/docs-check.js [docs-dir] [agents-file] [memory-file]
-//        (defaults: docs, AGENTS.md, MEMORY.md)
+//        (defaults: docs, AGENTS.md, MEMORY.md, each relative to the repo root)
 const fs = require("fs");
 const path = require("path");
 const lib = require("./lib");
@@ -24,11 +30,12 @@ const lib = require("./lib");
 const SOURCE_HELP = "a URL, a repo-relative path that exists, or jira:KEY-123";
 const looksLikePath = token => /^[\w.][\w./-]*$/.test(token) && token.includes("/");
 // A source is the non-chain thing a document derives from. Only a path can be verified here;
-// a URL and a Jira key are checked for shape, since neither can be followed.
-const isSource = token =>
+// a URL and a Jira key are checked for shape, since neither can be followed. `at` resolves a
+// repo-relative path against the root the caller gave.
+const isSource = (token, at) =>
     /^https?:\/\/\S+$/i.test(token)
     || /^jira:[A-Za-z][A-Za-z0-9]*-\d+$/.test(token)
-    || (looksLikePath(token) && fs.existsSync(token));
+    || (looksLikePath(token) && fs.existsSync(at(token)));
 // "x, y (z)" -> ["x", "y", "z"], with surrounding punctuation stripped.
 const tokensOf = text => text.split(/[\s,;]+/).filter(Boolean)
     .map(t => t.replace(/^[("'<[]+|[)"'>\].]+$/g, ""))
@@ -41,12 +48,12 @@ const referenceTokens = line => tokensOf(line.replace(/^\**Derived from:?\**:?/i
 // is set only on the rows that are document stages (tests/, .scratch/ and src/ have none). This is
 // the only parser of that table: check() below goes through it, as does the optional
 // tools/docs-site portal.
-function readChain(agentsFile = "AGENTS.md") {
-    lib.chdirRoot();
+function readChain(root, agentsFile = "AGENTS.md") {
+    const at = p => path.resolve(root, p);
     const problems = [];
     const say = msg => problems.push(`${agentsFile}: ${msg}`);
     const stages = [];
-    const text = fs.existsSync(agentsFile) ? fs.readFileSync(agentsFile, "utf8") : "";
+    const text = fs.existsSync(at(agentsFile)) ? fs.readFileSync(at(agentsFile), "utf8") : "";
     const lines = text.split(/\r?\n/);
     const cells = l => l.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
     const header = lines.findIndex(l => /^\|/.test(l) && cells(l).includes("Stage") && cells(l).includes("Lives in"));
@@ -55,30 +62,30 @@ function readChain(agentsFile = "AGENTS.md") {
         return { stages, problems };
     }
     const cols = cells(lines[header]);
-    const at = (row, name) => row[cols.indexOf(name)] || "";
+    const col = (row, name) => row[cols.indexOf(name)] || "";
     for (let i = header + 2; i < lines.length && /^\|/.test(lines[i]); i++) {
         const row = cells(lines[i]);
-        const stage = at(row, "Stage");
-        const lives = (at(row, "Lives in").match(/`([^`]+)`/) || [])[1] || "";
-        const skills = [...at(row, "Skill").matchAll(/`([^`]+)`/g)].map(m => m[1]);
+        const stage = col(row, "Stage");
+        const lives = (col(row, "Lives in").match(/`([^`]+)`/) || [])[1] || "";
+        const skills = [...col(row, "Skill").matchAll(/`([^`]+)`/g)].map(m => m[1]);
         for (const skill of skills)
-            if (!fs.existsSync(path.join(".agents/skills", skill, "SKILL.md")))
+            if (!fs.existsSync(at(path.join(".agents/skills", skill, "SKILL.md"))))
                 say(`stage ${stage} names skill \`${skill}\`, which is not under .agents/skills/`);
         const m = lives.match(/^docs\/([a-z0-9-]+)\/$/);   // tests/, .scratch/, src/: not a document stage
         if (m && m[1].toUpperCase() !== stage) say(`stage ${stage} lives in ${lives}; the folder must be docs/${stage.toLowerCase()}/`);
-        stages.push({ stage, answers: at(row, "Answers"), lives, folder: m ? m[1] : null, skills });
+        stages.push({ stage, answers: col(row, "Answers"), lives, folder: m ? m[1] : null, skills });
     }
     if (!stages.some(s => s.folder)) say("chain table has no row living in docs/<stage>/");
     return { stages, problems };
 }
 
-function check(root = "docs", agentsFile = "AGENTS.md", memoryFile = "MEMORY.md") {
-    lib.chdirRoot();
+function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "MEMORY.md") {
+    const at = p => path.resolve(root, p);
     const problems = [];
     const say = (file, msg) => problems.push(`${file}: ${msg}`);
 
     // 1. The chain, from the AGENTS.md table
-    const fromTable = readChain(agentsFile);
+    const fromTable = readChain(root, agentsFile);
     problems.push(...fromTable.problems);
     const chain = fromTable.stages.filter(s => s.folder).map(s => s.folder);   // folder names in stage order
     const rank = Object.fromEntries(chain.map((s, i) => [s, i]));
@@ -88,17 +95,19 @@ function check(root = "docs", agentsFile = "AGENTS.md", memoryFile = "MEMORY.md"
 
     // 2. Collect documents: docs/<stage>/NNNN-<slug>.md -> <STAGE>-NNNN
     for (const stage of chain) {
-        const dir = path.join(root, stage);
-        if (!fs.existsSync(dir)) continue;
+        // The path as the caller wrote it, so a problem names the file the way the caller knows it;
+        // at() turns it into something to read.
+        const dir = path.join(docsDir, stage);
+        if (!fs.existsSync(at(dir))) continue;
         const seen = new Map();
-        for (const name of fs.readdirSync(dir).filter(n => n.endsWith(".md") && n !== "README.md")) {
+        for (const name of fs.readdirSync(at(dir)).filter(n => n.endsWith(".md") && n !== "README.md")) {
             const file = path.join(dir, name).split(path.sep).join("/");
             const m = name.match(/^(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/);
             if (!m) { say(file, "file name must be NNNN-<kebab-slug>.md"); continue; }
             const id = `${stage.toUpperCase()}-${m[1]}`;
             if (seen.has(m[1])) say(file, `number ${m[1]} already used by ${seen.get(m[1])}`);
             seen.set(m[1], name);
-            const text = fs.readFileSync(file, "utf8");
+            const text = fs.readFileSync(at(file), "utf8");
             const items = new Set();
             for (const line of text.split(/\r?\n/)) {
                 const im = line.match(/^(?:[-*]\s+|#{1,6}\s+|\*\*|\|\s*)?([A-Z]{1,5}-\d+)\b/);
@@ -121,8 +130,8 @@ function check(root = "docs", agentsFile = "AGENTS.md", memoryFile = "MEMORY.md"
         else {
             const tokens = referenceTokens(derived);
             const cites = [...derived.matchAll(refRe)].map(m => `${m[1]}-${m[2]}`).filter(c => c !== id);
-            const sources = tokens.filter(isSource);
-            const brokenPath = tokens.find(t => looksLikePath(t) && !fs.existsSync(t));
+            const sources = tokens.filter(t => isSource(t, at));
+            const brokenPath = tokens.find(t => looksLikePath(t) && !fs.existsSync(at(t)));
             if (!cites.length && !sources.length) {
                 const why = brokenPath ? `; ${brokenPath} does not exist` : "";
                 say(d.file, `"Derived from:" names no reference: cite an upstream document, or a source (${SOURCE_HELP})${why}`);
@@ -149,8 +158,8 @@ function check(root = "docs", agentsFile = "AGENTS.md", memoryFile = "MEMORY.md"
 
     // 4. MEMORY.md's Requirements takes part in traceability once a BRD exists, so it follows the
     // same reference rule: sources, document IDs, or "none yet".
-    if (fs.existsSync(memoryFile)) {
-        const line = fs.readFileSync(memoryFile, "utf8").split(/\r?\n/).find(l => /^\s*[-*]?\s*\**Requirements:?\**:?/i.test(l));
+    if (fs.existsSync(at(memoryFile))) {
+        const line = fs.readFileSync(at(memoryFile), "utf8").split(/\r?\n/).find(l => /^\s*[-*]?\s*\**Requirements:?\**:?/i.test(l));
         if (!line) say(memoryFile, "no Requirements line (the project-init skill writes one)");
         else {
             const value = line.replace(/^\s*[-*]?\s*\**Requirements:?\**:?/i, "").trim();
@@ -168,8 +177,8 @@ function check(root = "docs", agentsFile = "AGENTS.md", memoryFile = "MEMORY.md"
                 for (const token of named) {
                     if (!docs.has(token)) say(memoryFile, `Requirements names ${token}, which does not exist`);
                 }
-                if (!named.length && !tokens.some(isSource)) {
-                    const broken = tokens.find(t => looksLikePath(t) && !fs.existsSync(t));
+                if (!named.length && !tokens.some(t => isSource(t, at))) {
+                    const broken = tokens.find(t => looksLikePath(t) && !fs.existsSync(at(t)));
                     say(memoryFile, `Requirements names no reference: cite a document ID, a source (${SOURCE_HELP}), or "none yet"`
                         + (broken ? `; ${broken} does not exist` : ""));
                 }
@@ -177,13 +186,13 @@ function check(root = "docs", agentsFile = "AGENTS.md", memoryFile = "MEMORY.md"
         }
     }
 
-    return { problems, summary: `docs-check: ${chain.length} stage(s) in ${agentsFile}, ${docs.size} document(s) under ${root}/, no problems` };
+    return { problems, summary: `docs-check: ${chain.length} stage(s) in ${agentsFile}, ${docs.size} document(s) under ${docsDir}/, no problems` };
 }
 
 module.exports = { check, readChain };
 
 if (require.main === module) {
-    const { problems, summary } = check(...process.argv.slice(2));
+    const { problems, summary } = check(lib.root(), ...process.argv.slice(2));
     console.log(problems.length ? problems.join("\n") : summary);
     process.exit(problems.length ? 1 : 0);
 }
