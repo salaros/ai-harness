@@ -9,8 +9,10 @@ name: skills-update
 # absolute link, or a skill directory in place of a link, breaks every other clone. The notice is
 # regenerated after that, because an update can bring in a skill from an upstream nobody has vendored
 # before. When it does, `notices` exits 1 and this job stops: the licence of a new upstream is a
-# judgement no script should make, so a human adds the row to scripts/skill-licences.tsv. The suite
-# and the chain check run last, over the updated tree, and a failure there means nothing is committed.
+# judgement no script should make, so a human adds the row to scripts/skill-licences.tsv. What the CLI
+# wrote is checked next against the paths this job owns, because a release once changed where it
+# writes. The suite and the chain check run last, over the updated tree, and a failure there means
+# nothing is committed.
 #
 # The push uses GITHUB_TOKEN, so it does not retrigger harness.yml. That is why the suite runs here.
 
@@ -40,8 +42,10 @@ jobs:
         with:
           node-version: "22"
 
+      # Pinned, not @latest: a release that changes where the CLI writes lands in this repo unread.
+      # Bump this deliberately, and read the diff of that run rather than the next Monday's.
       - name: Update vendored skills
-        run: npx --yes skills@latest update
+        run: npx --yes skills@1.5.24 update
 
       - name: Relink (npx skills recreates links absolute)
         run: node scripts/skills.js relink
@@ -49,21 +53,37 @@ jobs:
       - name: Regenerate third-party notices
         run: node scripts/skills.js notices
 
+      # The CLI decides where it writes, and a release has changed that: 288 files under a top-level
+      # agent/ no harness reads. Anything outside what this job exists to update stops the run, so a
+      # human decides rather than meeting it in a merged pull request.
+      - name: Nothing landed outside the harness
+        run: |
+          stray="$(git status --porcelain | cut -c4- \
+            | grep -vE '^(\.agents/|\.claude/|skills-lock\.json|THIRD-PARTY-NOTICES\.md)' || true)"
+          if [ -n "$stray" ]; then
+            echo "::error::skills wrote outside the harness, so nothing is committed"
+            echo "$stray"
+            exit 1
+          fi
+
       - name: Hook suite
         run: node .agents/hooks/test.js
 
       - name: Documentation chain
         run: node scripts/docs-check.js
 
+      # git diff sees tracked files only, while the commit below stages untracked ones too, so a run
+      # that added a directory reported nothing and committed it anyway. git status sees both.
       - name: What changed
         id: diff
         run: |
-          if git diff --quiet; then
+          if [ -z "$(git status --porcelain)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No upstream changes." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            git diff --stat | tee -a "$GITHUB_STEP_SUMMARY"
+            git status --porcelain | tee -a "$GITHUB_STEP_SUMMARY"
+            git diff --stat >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Commit to ${{ env.WORKING }}

@@ -77,6 +77,29 @@ function skillsFolderHoldsSkillsNotLinks(t) {
         links.slice(0, 10).join(", "));
 }
 
+// scripts/harness-files.tsv decides what an install does with each path, and a path no row matches
+// becomes `merge` (scripts/update-harness.js). That default is right -- a file the upstream ships
+// and nobody classified is harness until someone says otherwise -- but arriving at it silently is
+// not: a vendoring run once added 2.2 MB under a top-level agent/ that no harness reads, and it
+// would have merged into every repo unread. The fallback stays; the gap is caught here. There is
+// deliberately no check the other way, that every row matches a file: MEMORY.md and TODO.md are
+// skip rows matching nothing in a clone that has neither, which is what skip means.
+function everyTrackedPathIsClassified(t) {
+    const manifest = "scripts/harness-files.tsv";
+    if (!fs.existsSync(manifest)) { console.log("skip manifest check: no harness-files.tsv"); return; }
+    const r = lib.run("git", ["ls-files"]);
+    if (r.status !== 0) { console.log("skip manifest check: not a git checkout"); return; }
+    const rows = fs.readFileSync(manifest, "utf8").split(/\r?\n/)
+        .filter(l => l.trim() && !l.startsWith("#"))
+        .map(l => l.split("\t")[0]);
+    t.ok(rows.length > 0, "scripts/harness-files.tsv holds rows");
+    const tracked = r.output.split(/\r?\n/).filter(Boolean);
+    const loose = tracked.filter(f => !rows.some(p => p.endsWith("/") ? f.startsWith(p) : f === p));
+    t.ok(!loose.length,
+        "every tracked path matches a row in scripts/harness-files.tsv",
+        loose.slice(0, 10).join(", "));
+}
+
 // Vendoring a skill copies someone else's work into this repo, and MIT and Apache-2.0 both ask that
 // the copyright and permission notice travel with the copy. `npx skills` carries only what sits
 // inside the skill folder, so an upstream keeping its licence at the repo root sends nothing, and
@@ -353,6 +376,7 @@ module.exports = [
     claudeSkillLinksAreSymlinks,
     everyInstalledSkillIsLinked,
     skillsFolderHoldsSkillsNotLinks,
+    everyTrackedPathIsClassified,
     agentRoutingSectionsAgreeOnTheirAudience,
     noSkillIsMissingFromDisk,
     vendoredSkillsAreAttributed,
