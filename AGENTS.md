@@ -48,7 +48,7 @@ Rules of the chain:
 
 Skills live in `.agents/skills/<name>/SKILL.md`, vendored by `npx skills` and recorded in `skills-lock.json`. If your harness has not surfaced them, read the `description` line of each `SKILL.md` and load the ones that match the task. The agents in `.agents/agents/` route a task through them: `engineer`, `devops`, `business-analyst`, `assistant`. A row two or three of them read lives in `.agents/routing.md`, in a section per audience, with the rule for what earns a row at the top of that file; what every agent needs is in "Working here" below instead.
 
-Skills are vendored: add or update them with `npx skills` instead of editing them in place. Run `node scripts/skills.js relink` afterwards, and after writing a local skill by hand, since it is what creates the `.claude/skills` link a harness needs to see the skill at all. A skill from an upstream nothing here has used before also needs a row in `scripts/skill-licences.tsv`, then `node scripts/skills.js notices`: vendoring copies the work, and the licence notice does not come with it.
+Skills are vendored: add or update them with `npx skills` instead of editing them in place. `.claude/skills` is one link to `.agents/skills`, so a skill written by hand is visible the moment it is saved. Run `node scripts/skills.js relink` after vendoring anyway: it repairs the links in any other harness folder this clone wires up, which `npx skills` recreates absolute where Git needs them relative. A skill from an upstream nothing here has used before also needs a row in `scripts/skill-licences.tsv`, then `node scripts/skills.js notices`: vendoring copies the work, and the licence notice does not come with it.
 
 ## Agent skills
 

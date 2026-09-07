@@ -160,11 +160,17 @@ const commands = {
         const inside = p => same(p.slice(0, canonical.length), canonical);
         const present = p => { try { fs.lstatSync(p); return true; } catch { return false; } };
         let fixed = 0, kept = 0, added = 0;
-        const dangling = [];
+        const dangling = [], whole = [];
         for (const top of fs.readdirSync(root, { withFileTypes: true })) {
             if (!top.isDirectory() || top.name === ".agents" || top.name === ".git") continue;
             const dir = path.join(root, top.name, "skills");
             if (!fs.existsSync(dir)) continue;
+            // A harness whose skills/ is itself a link to .agents/skills already sees every skill,
+            // including one written by hand, and needs no per-skill link at all. Reading through it
+            // would list the skills themselves, which are directories rather than links: the loop
+            // below would call all of them copies and then try to link them into their own folder.
+            // .claude is this form; the per-skill path stays for a harness that wants one link each.
+            if (fs.lstatSync(dir).isSymbolicLink()) { whole.push(`${top.name}/skills`); continue; }
             for (const name of fs.readdirSync(dir)) {
                 const link = path.join(dir, name);
                 const st = fs.lstatSync(link);
@@ -193,6 +199,7 @@ const commands = {
                 added++;
             }
         }
+        for (const d of whole) console.log(`${d} is one link to the skills folder: every skill is visible, nothing to link`);
         console.log(`skill links: ${added} created, ${fixed} rewritten as relative, ${kept} already relative`);
         for (const d of dangling) console.log(`${d} points at a skill that is not installed: remove the link, or restore the skill`);
     },

@@ -72,7 +72,7 @@ The run reports each path as it works on it: the policy, the mode Git records, w
 
 ## Skills
 
-Skills follow the Agent Skills format: a folder with a `SKILL.md` whose frontmatter carries a `name` and a `description`, plus optional reference files. They are managed with the [`skills` CLI](https://skills.sh); `skills-lock.json` records what is installed and `.agents/skills` holds the files. Commit both, plus the `.claude/skills` links.
+Skills follow the Agent Skills format: a folder with a `SKILL.md` whose frontmatter carries a `name` and a `description`, plus optional reference files. They are managed with the [`skills` CLI](https://skills.sh); `skills-lock.json` records what is installed and `.agents/skills` holds the files. Commit both, plus the `.claude/skills` link.
 
 ```bash
 npx skills add mattpocock/skills -s wait-what -a claude-code codex -y   # add a skill
@@ -81,7 +81,7 @@ npx skills update                                                  # newer versi
 node scripts/skills.js relink                                      # after any of the above, and after writing a local skill
 ```
 
-- Relink does two things. It creates a `.claude/skills` link for every skill under `.agents/skills` that has none, which is how a local skill written by hand becomes visible to the harness at all: `npx skills` links only what it vendored. And on Windows it rewrites the links the CLI recreates as absolute junctions, which Git cannot store, into relative symlinks. It is idempotent, it reports a link pointing at a skill that is no longer installed, and the test suite fails if any installed skill is unlinked.
+- Relink maintains the harness folders. `.claude/skills` is one link to `.agents/skills`, so every skill there is already visible, a local one written by hand included; relink says so and leaves it alone. Any other harness folder holding a `skills/` directory gets a link per skill instead, which is what makes a hand-written skill visible where `npx skills` links only what it vendored, and on Windows relink rewrites the absolute junctions the CLI creates, which Git cannot store, into relative symlinks. It is idempotent, it reports a link pointing at a skill that is no longer installed, and the test suite fails if a per-skill link is missing or the folder link points anywhere but `.agents/skills`.
 - `node scripts/skills.js install` restores `.agents/skills` from the lock file. A normal clone never needs it; the post-merge Git hook runs it when the lock changes.
 - Do not edit a vendored skill in place; the next update overwrites it. Fork it under another name outside `.agents/skills`, or change it upstream.
 - Two kinds of skill: **model-invoked** ones carry a description the agent matches on its own; **user-invoked** ones (`disable-model-invocation: true`) only fire when you type `/name`.
@@ -125,7 +125,7 @@ What each tool reads, what is already in the repo, and what you must create for 
 | Need | File | In repo |
 | --- | --- | --- |
 | Instructions | `CLAUDE.md` containing `@AGENTS.md` (Claude Code does not read `AGENTS.md` itself) | yes |
-| Skills | `.claude/skills/<name>` → symlink to `../../.agents/skills/<name>` | yes |
+| Skills | `.claude/skills` → symlink to `../.agents/skills` | yes |
 | Hooks | `.claude/settings.json` → `hooks.SessionStart`, `PreToolUse` (matcher `Bash`), `PostToolUse` (matcher `Edit\|Write\|MultiEdit`), each `{"type":"command","command":"node \"$CLAUDE_PROJECT_DIR/.agents/hooks/<hook>.js\""}` | yes |
 | Agents | `.claude/agents` → symlink to `../.agents/agents`; frontmatter `name`, `description` (+ optional `tools`, `model`, `skills`) | yes |
 | Per-developer overrides | `.claude/settings.local.json` (git-ignored) | no |

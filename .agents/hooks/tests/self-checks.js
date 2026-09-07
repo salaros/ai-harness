@@ -20,12 +20,13 @@ function untracked(dir) { return fs.existsSync(dir); }
 // normally false, so chmod is a no-op and a hook added there is recorded 100644: it runs for its
 // author and silently never runs on Linux or macOS. Only `git update-index --chmod=+x <file>` fixes
 // the mode Git records, so the mode in the index is what this asserts.
-// .claude/skills/<name> is a symlink into .agents/skills/<name>, so a skill has one copy on disk.
-// `npx skills add` recreates those links absolute, and `node scripts/skills.js relink` rewrites them
-// relative -- but a skill staged before the relink goes into the index as the directory it was at
-// the time, one 100644 blob per file. That commits a second copy of the skill that no longer tracks
-// the first, and leaves the worktree permanently dirty against it. Mode 120000 is the symlink, so
-// the mode in the index is what this asserts.
+// .claude/skills is one symlink to .agents/skills, so a skill has one copy on disk. A harness that
+// wants a link per skill gets .claude/skills/<name> instead, and both shapes are mode 120000.
+// `npx skills add` recreates per-skill links absolute, and `node scripts/skills.js relink` rewrites
+// them relative -- but a skill staged before the relink goes into the index as the directory it was
+// at the time, one 100644 blob per file. That commits a second copy of the skill that no longer
+// tracks the first, and leaves the worktree permanently dirty against it. Mode 120000 is the
+// symlink, so the mode in the index is what this asserts.
 function claudeSkillLinksAreSymlinks(t) {
     const r = lib.run("git", ["ls-files", "-s", "--", ".claude/skills"]);
     if (r.status !== 0) { console.log("skip .claude/skills mode check: not a git checkout"); return; }
@@ -39,17 +40,41 @@ function claudeSkillLinksAreSymlinks(t) {
 }
 
 // A harness surfaces the skills it can see, so a skill with no link is a skill that does not exist
-// as far as the agent is concerned. `npx skills` links what it vendored and nothing else, which is
-// how a local skill written by hand goes missing; `node scripts/skills.js relink` creates the rest.
+// as far as the agent is concerned. One link to the whole folder shows every skill, a local one
+// written by hand included, and the only thing left to check is where it points. A folder of
+// per-skill links shows what someone linked and nothing else -- `npx skills` links what it
+// vendored -- so there the count is the check. Reading a name through the whole-folder link would
+// compare .agents/skills with itself and pass whatever the state.
 function everyInstalledSkillIsLinked(t) {
     const skills = ".agents/skills", links = ".claude/skills";
     if (!fs.existsSync(skills) || !fs.existsSync(links)) { console.log("skip skill link check: no skills directories"); return; }
     const installed = fs.readdirSync(skills).filter(n => fs.existsSync(path.join(skills, n, "SKILL.md")));
     t.ok(installed.length > 0, "skills are installed under .agents/skills/");
+    if (fs.lstatSync(links).isSymbolicLink()) {
+        const target = fs.readlinkSync(links);
+        t.ok(path.resolve(path.dirname(links), target) === path.resolve(skills),
+            "the .claude/skills link points at .agents/skills", target);
+        return;
+    }
     const unlinked = installed.filter(n => { try { fs.lstatSync(path.join(links, n)); return false; } catch { return true; } });
     t.ok(!unlinked.length,
         "every installed skill has a .claude/skills/ link (node scripts/skills.js relink)",
         unlinked.slice(0, 10).join(", "));
+}
+
+// .claude/skills resolves to .agents/skills, so anything a tool writes into the first lands in the
+// second. `npx skills` links what it vendors into every harness folder it finds, and a link it puts
+// there would appear beside the skills as a sibling pointing at one of them. Nothing else in the
+// harness ever creates one, so an entry here that is not a directory is that, and it is worth
+// catching: the roster reads this folder, and a skill that is really a link to another skill counts
+// twice and vendors as neither.
+function skillsFolderHoldsSkillsNotLinks(t) {
+    const skills = ".agents/skills";
+    if (!fs.existsSync(skills)) { console.log("skip skills folder check: no skills directory"); return; }
+    const links = fs.readdirSync(skills).filter(n => fs.lstatSync(path.join(skills, n)).isSymbolicLink());
+    t.ok(!links.length,
+        "every entry under .agents/skills/ is a skill, not a link to one",
+        links.slice(0, 10).join(", "));
 }
 
 // Vendoring a skill copies someone else's work into this repo, and MIT and Apache-2.0 both ask that
@@ -327,6 +352,7 @@ module.exports = [
     initialisationGateAnswersEveryState,
     claudeSkillLinksAreSymlinks,
     everyInstalledSkillIsLinked,
+    skillsFolderHoldsSkillsNotLinks,
     agentRoutingSectionsAgreeOnTheirAudience,
     noSkillIsMissingFromDisk,
     vendoredSkillsAreAttributed,

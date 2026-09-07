@@ -35,7 +35,8 @@ scripts/harness-files.tsv	template	This table. Read from the upstream checkout d
 .github/	template	CI that runs the suite, which does not travel either. A project brings its own.
 skills-lock.json	skills	Merged as a union, so a skill the project vendored itself survives.
 .agents/skills/	skills	Added and updated, never removed: the project may install its own.
-.claude/skills/	skills	Symlinks, rebuilt by skills.js relink rather than copied.
+.claude/skills	merge	One link to .agents/skills, not a link per skill, so every skill a repo has is visible through it -- including one written by hand that nothing vendored.
+.claude/agents	merge	One link to .agents/agents, the same shape. Declared rather than left to the fallback, because the fallback is what a reader has to know to predict it.
 docs/agents/	merge	Harness config the skills read. issue-tracker.md carries the project key, so it merges rather than being overwritten.
 docs/README.md	reconcile	Says what the chain puts where. The artifacts under it are the project's; this file is the harness explaining the folder.
 docs/	seed	The documentation chain. Every artifact in it is the project's.
@@ -48,7 +49,7 @@ AGENTS.md	reconcile	The map every agent reads, and the table docs-check parses. 
 CLAUDE.md	merge	One line pointing at AGENTS.md, but a project may add to it.
 CODING_STANDARDS.md	merge	Read by code-review. The upstream's is a starting set.
 .gitignore	merge	Crafted at the root and added to by whatever stack lands.
-.editorconfig	seed	Copied once so a new repo has one. A project that has tuned it keeps its own.
+.editorconfig	merge	As above: whitespace and encoding are enforced here rather than in CODING_STANDARDS.md, so a harness change to them has to be able to reach a repo that already has one.
 .gitattributes	merge	As above.
 .mcp.json	merge	MCP servers: the upstream's, plus whatever the project adds.
 .claude/settings.json	merge	Harness wiring for Claude Code, plus the project's own permissions.
