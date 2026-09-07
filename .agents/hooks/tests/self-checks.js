@@ -9,6 +9,8 @@ const os = require("os");
 const path = require("path");
 const lib = require("../lib");
 const docsCheck = require("../../../scripts/docs-check");
+const commitMsg = require("../../../scripts/check-commit-msg");
+const todo = require("../../../scripts/check-todo");
 
 // A harness installed by scripts/update-harness.js has its files on disk and nothing in the index
 // until the project makes its first commit. Both mode checks below assert what the index records, so
@@ -362,6 +364,67 @@ function checkEditFollowsProjectDir(t, env) {
         "check-edit.js checks the chain in CLAUDE_PROJECT_DIR, not in its own checkout", r.output);
 }
 
+// What an issue reference looks like is the host project's decision, read from its own
+// docs/agents/issue-tracker.md and MEMORY.md. cases.tsv drives the script as a command, which can
+// only ever see this repo's files, so every fixture gets the same default and the three branches
+// below have no fixture at all -- the reason check() takes a root rather than reading the cwd.
+// Each case is a valid message, so the only thing that varies is the warning.
+function commitMsgReadsTheProjectsTracker(t) {
+    const MSG = "feat(billing): add a monthly invoice run\n\nInvoices were cut by hand every month.\n";
+    const project = (files, raw = MSG) => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "harness-tracker-"));
+        for (const [rel, text] of Object.entries(files)) {
+            fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+            fs.writeFileSync(path.join(dir, rel), text);
+        }
+        const r = commitMsg.check(raw, dir);
+        fs.rmSync(dir, { recursive: true, force: true });
+        return r;
+    };
+    const TRACKER = "docs/agents/issue-tracker.md";
+
+    const dflt = project({});
+    t.ok(!dflt.problems.length && dflt.warnings.length === 1 && dflt.warnings[0].includes("PROJ-123"),
+        "check-commit-msg: an unconfigured project is warned with the Jira-shaped example", JSON.stringify(dflt));
+
+    const keyed = project({ [TRACKER]: "**Project key:** `AB`\n" });
+    t.ok(keyed.warnings.length === 1 && keyed.warnings[0].includes("AB-123"),
+        "check-commit-msg: the project's own key becomes the example in the warning", JSON.stringify(keyed));
+
+    const cited = project({ [TRACKER]: "**Project key:** `AB`\n" }, `${MSG}\nRefs: AB-42\n`);
+    t.ok(!cited.warnings.length, "check-commit-msg: a key matching the project's own is a reference", JSON.stringify(cited));
+
+    // GitHub Issues cite #42, which is nothing like AB-42, so a project says so with a regular
+    // expression and is warned about the right thing.
+    const github = project({ [TRACKER]: "**Key format:** `#\\d+`\n" });
+    t.ok(github.warnings.length === 1 && github.warnings[0].includes("#\\d+") && !github.warnings[0].includes("PROJ-123"),
+        "check-commit-msg: a configured key format replaces the example", JSON.stringify(github));
+    const hashed = project({ [TRACKER]: "**Key format:** `#\\d+`\n" }, MSG.replace("run", "run (#42)"));
+    t.ok(!hashed.warnings.length, "check-commit-msg: a reference matching the configured format counts", JSON.stringify(hashed));
+
+    // A project that plans in docs/ has already answered the question, so asking again on every
+    // commit is asking for something it said it does not have.
+    const none = project({ "MEMORY.md": "- **Issue tracker:** none\n" });
+    t.ok(!none.warnings.length, "check-commit-msg: a project recording no tracker is never warned", JSON.stringify(none));
+}
+
+// A TODO source that looks like a path means a path in the repo the ledger belongs to. As a command
+// that is always this checkout, so a fixture can only cite a file the template happens to ship;
+// check(text, root) is what lets the suite prove the resolution rather than assume it.
+function todoSourcesResolveAgainstTheGivenRoot(t) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "harness-todo-"));
+    fs.mkdirSync(path.join(dir, "src"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "src", "billing.cs"), "// there\n");
+    const ledger = src => todo.check(`# TODO\n\n- [ ] Confirm the rounding rule #question (${src})\n`, dir);
+
+    const here = ledger("src/billing.cs:12");
+    t.ok(!here.problems.length && here.entries === 1,
+        "check-todo: a path:line source resolves in the root it was given", here.problems.join("\n"));
+    const elsewhere = ledger("scripts/lib.js");
+    t.ok(elsewhere.problems.some(p => p.includes("is not a source")),
+        "check-todo: a path outside that root is not a source, however real it is here", elsewhere.problems.join("\n"));
+}
+
 // The stage table in AGENTS.md has one parser, readChain(), and anything that needs the pipeline
 // builds on it rather than reading the table again. Pin what it promises those callers: every row
 // in table order, document stages carrying the folder their name implies.
@@ -410,4 +473,6 @@ module.exports = [
     docsSiteRendersTheChain,
     sessionStartFollowsProjectDir,
     checkEditFollowsProjectDir,
+    commitMsgReadsTheProjectsTracker,
+    todoSourcesResolveAgainstTheGivenRoot,
 ];
