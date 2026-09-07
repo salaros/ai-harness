@@ -1,6 +1,6 @@
 {
   "name": "@salaros/ai-harness",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Installs and updates the agent harness from its upstream repository: hooks, skills, agents and the documentation chain, merged into an existing repository without touching its own work.",
   "bin": {
     "ai-harness": "scripts/update-harness.js"
