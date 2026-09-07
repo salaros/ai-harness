@@ -8,30 +8,54 @@ name: release
 #
 # One-time setup on npmjs.com, under the package's Settings -> Trusted Publisher -> GitHub Actions:
 # organization or user `salaros`, repository `ai-harness`, workflow `release.yml`, no environment.
-# Until that exists the publish step fails asking to authenticate, and nothing half-published is
-# left behind.
 #
-# To cut a release: bump the version in package.json, commit it, then tag that commit and push the
-# tag. The job refuses to publish if the two disagree.
-#   git tag v0.2.2 && git push origin v0.2.2
+# What a release is here
+# ----------------------
+#
+# The version names the installer and nothing else. npm carries the four paths in package.json's
+# `files` list; the skills, hooks, agents and the documentation chain travel by the clone the
+# installer makes of `master`. So a bump is due when one of those four paths changes, and a weekly
+# skills update reaches every user the moment it lands on `master`, with no release at all.
+#
+# The tag is bare and annotated -- `0.2.4`, not `v0.2.4` -- and sits on `master`, which is the
+# released line. `v0.2.3` is the one exception, left as it is: the provenance attestation npm holds
+# for that version names `refs/tags/v0.2.3`, and deleting the tag would leave it pointing at
+# nothing. A ruleset on GitHub freezes tags matching the trigger below, so a published version's tag
+# cannot be moved or deleted afterwards.
+#
+# Cutting one is by hand. Bump the version in package.json, commit it, land it on `master`, then:
+#
+#   git tag -a 0.2.4 -m "0.2.4" && git push origin 0.2.4
+#
+# The guards refuse the three ways a hand-cut tag goes wrong: lightweight instead of annotated,
+# disagreeing with package.json, or naming a commit that never reached `master`.
 
 on:
   push:
-    tags: ["v*"]
-  # Everything except the publish, so a broken release job can be found without cutting a release.
+    # Bare version tags only. A v-prefixed tag matches nothing here and publishes nothing.
+    tags: ["[0-9]*.[0-9]*.[0-9]*"]
+  # Everything except the publish and the release notes, so a broken release job can be found
+  # without cutting a release.
   workflow_dispatch:
 
-permissions:
-  contents: read
-  # What npm exchanges for its short-lived credentials, and what signs the provenance attestation.
-  # Trusted publishing does nothing without it, and the failure reads as an authentication problem.
-  id-token: write
+# Each job asks for what it needs and nothing else, rather than one grant covering both.
+permissions: {}
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # What npm exchanges for its short-lived credentials, and what signs the provenance
+      # attestation. Trusted publishing does nothing without it, and the failure reads as an
+      # authentication problem.
+      id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The tag object and origin/master, which the guards below read. A shallow checkout has
+          # the history of neither, and the ancestor check would fail on every tag.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -52,15 +76,27 @@ jobs:
       - name: Documentation chain
         run: node scripts/docs-check.js
 
-      # The tag names the release; package.json is what npm actually publishes under. A mismatch
-      # means the bump commit and the tag disagree, and what lands on npm is not what was tagged.
-      - name: Tag matches the version in package.json
+      - name: The tag is annotated, agrees with package.json, and is on master
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          tag="${GITHUB_REF_NAME#v}"
+          kind="$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")"
+          if [ "$kind" != "tag" ]; then
+            echo "$GITHUB_REF_NAME is a $kind, not an annotated tag: cut it with git tag -a"
+            exit 1
+          fi
           pkg="$(node -p "require('./package.json').version")"
-          if [ "$tag" != "$pkg" ]; then
-            echo "tag $GITHUB_REF_NAME says $tag, package.json says $pkg"
+          if [ "$GITHUB_REF_NAME" != "$pkg" ]; then
+            echo "tag $GITHUB_REF_NAME disagrees with package.json, which says $pkg"
+            exit 1
+          fi
+          # Without the ref there is nothing to compare against, and --is-ancestor would report a
+          # missing object as "not an ancestor" -- the right answer for the wrong reason.
+          if ! git rev-parse --verify --quiet origin/master >/dev/null; then
+            echo "this checkout has no origin/master, so the released line cannot be checked"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor HEAD origin/master; then
+            echo "$GITHUB_REF_NAME names a commit that is not on master, and master is the released line"
             exit 1
           fi
           echo "publishing $pkg"
@@ -86,3 +122,28 @@ jobs:
       - name: Publish
         if: startsWith(github.ref, 'refs/tags/')
         run: npm publish --access public
+
+  # Cutting the Release is the only thing here that writes to the repository, so it is the only job
+  # holding a token that can, and it holds nothing else. It runs after the publish rather than
+  # before: a Release for a version npm rejected states something untrue, where a publish without a
+  # Release is a note somebody can add by hand.
+  notes:
+    needs: publish
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # No checkout. gh reaches the repository over the API, so the job that can write to the code
+      # never has the code in front of it.
+      - name: GitHub Release, with notes generated from the commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # The first Release has no earlier Release to start from, so its notes span the whole
+        # history. Every one after it starts from the previous Release.
+        run: >
+          gh release create "$GITHUB_REF_NAME"
+          --repo "$GITHUB_REPOSITORY"
+          --title "$GITHUB_REF_NAME"
+          --verify-tag
+          --generate-notes
