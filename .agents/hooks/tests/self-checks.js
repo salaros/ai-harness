@@ -12,6 +12,12 @@ const docsCheck = require("../../../scripts/docs-check");
 const commitMsg = require("../../../scripts/check-commit-msg");
 const todo = require("../../../scripts/check-todo");
 
+// scripts/update-harness.js is the upstream's own and is never installed, so a project that borrowed
+// this suite has no installer to test. Required lazily for that reason: at the top it would throw
+// before the first check ran, and take the whole suite with it.
+const INSTALLER = path.join(__dirname, "..", "..", "..", "scripts", "update-harness.js");
+const installer = () => fs.existsSync(INSTALLER) ? require(INSTALLER) : null;
+
 // A harness installed by scripts/update-harness.js has its files on disk and nothing in the index
 // until the project makes its first commit. Both mode checks below assert what the index records, so
 // that state is nothing to assert rather than a failure: saying the hooks are not executable when
@@ -425,6 +431,111 @@ function todoSourcesResolveAgainstTheGivenRoot(t) {
         "check-todo: a path outside that root is not a source, however real it is here", elsewhere.problems.join("\n"));
 }
 
+// scripts/harness-files.tsv decides what an install does to each path, and policyFor reads it.
+// First match wins, a row ending in / covers everything under it, and an `optional:<flag>` row is
+// seeded only when the run asked for that flag. The real table is checked elsewhere; what is pinned
+// here is how a table is read, against one written for the purpose.
+function manifestPoliciesAreReadInOrder(t) {
+    const harness = installer();
+    if (!harness) { console.log("skip policyFor: the installer is the upstream's own, not installed here"); return; }
+    const rows = [
+        { path: "scripts/harness-files.tsv", policy: "skip" },
+        { path: "scripts/", policy: "merge" },
+        { path: "tools/docs-site/", policy: "optional:astro-docs" },
+        { path: "src/", policy: "seed" },
+    ];
+    const all = () => true;
+    const none = () => false;
+    const cases = [
+        ["scripts/harness-files.tsv", all, "skip", "the earlier row wins over the prefix below it"],
+        ["scripts/lib.js", all, "merge", "a row ending in / covers everything under it"],
+        ["src/app.ts", all, "seed", "an exact prefix match takes its own policy"],
+        ["README.md", all, "merge", "a path nobody classified is harness"],
+        ["tools/docs-site/astro.config.mjs", all, "seed", "an optional part the run asked for is seeded"],
+        ["tools/docs-site/astro.config.mjs", none, "template", "an optional part nobody asked for is not installed"],
+    ];
+    for (const [file, wants, want, why] of cases) {
+        const got = harness.policyFor(rows, file, wants);
+        t.ok(got === want, `policyFor: ${why}`, `${file} -> ${got}, expected ${want}`);
+    }
+}
+
+// What an install does to a file the target already has. Every branch used to need a git checkout,
+// an upstream history and a temp tree to reach even once, so none of them had a test; the decision
+// takes the base, the base recovery and the merge as arguments now, and the fakes below stand in for
+// all three. `raw` is what is on disk, `theirs` the upstream's, always LF.
+function installDecisionCoversEveryOutcome(t) {
+    const harness = installer();
+    if (!harness) { console.log("skip the install decision: the installer is the upstream's own, not installed here"); return; }
+    const OURS = "one\ntwo edited\n";
+    const THEIRS = "one\ntwo upstream\n";
+    const clean = text => () => ({ text, conflicts: false, failed: false });
+    const conflicted = text => () => ({ text, conflicts: true, failed: false });
+    const broke = () => ({ text: "", conflicts: false, failed: true });
+    const never = () => { throw new Error("should not have been consulted"); };
+
+    const decide = (input, deps) => harness.decideText(
+        { policy: "merge", raw: OURS, theirs: THEIRS, hasBase: true, adopt: false, ...input },
+        { baseText: () => null, recoverBase: () => null, merge: never, ...deps });
+
+    const cases = [
+        // input, deps, expected outcome, expected text, why
+        [{ raw: THEIRS }, {}, "unchanged", null, "a copy already matching the upstream is left alone"],
+        [{ adopt: true }, {}, "adopted", THEIRS, "--adopt takes the upstream's version whatever the base says"],
+        [{ raw: "<<<<<<< yours\nmine\n" }, {}, "STILL OPEN", null, "markers an earlier run left are named, not merged over"],
+        [{ hasBase: false }, {}, "yours, no base", null, "an install with no base keeps what is there"],
+        [{}, {}, "yours, new here", null, "a file the base did not have is the project's own"],
+        [{}, { baseText: () => OURS }, "written", THEIRS, "a file nobody edited takes the upstream's version"],
+        [{}, { baseText: () => "one\n", merge: clean("one\ntwo edited\nthree\n") },
+            "merged", "one\ntwo edited\nthree\n", "an edited file keeps its edits and gains the changes around them"],
+        [{}, { baseText: () => "one\n", merge: clean(OURS) }, "unchanged", null,
+            "a merge that comes out as what is already there is not churn to report"],
+        [{}, { baseText: () => "one\n", merge: conflicted("<<<<<<< yours\n") }, "CONFLICT", "<<<<<<< yours\n",
+            "a real collision is written with markers and named"],
+        [{}, { baseText: () => "one\n", merge: broke }, "yours, merge failed", null,
+            "a merge git could not run leaves the file alone"],
+        // reconcile is the policy for a file the harness cannot work around, so it merges even with
+        // no receipt: the nearest upstream version stands in, and failing that an empty base makes
+        // the whole file one honest conflict.
+        [{ policy: "reconcile", hasBase: false }, { recoverBase: () => "one\n", merge: clean("merged\n") },
+            "merged", "merged\n", "reconcile recovers a base when the receipt has none"],
+        [{ policy: "reconcile", hasBase: false }, { merge: (from) => ({ text: `base=${JSON.stringify(from)}`, conflicts: true, failed: false }) },
+            "CONFLICT", 'base=""', "reconcile with nothing to recover merges against an empty base"],
+    ];
+    for (const [input, deps, outcome, text, why] of cases) {
+        const got = decide(input, deps);
+        t.ok(got.outcome === outcome && got.text === text, `decideText: ${why}`,
+            `got ${JSON.stringify(got)}, expected outcome ${outcome} and text ${JSON.stringify(text)}`);
+    }
+
+    // Git checks a repo out with the platform's line endings, so a Windows copy holds CRLF where the
+    // upstream stores LF. The comparison happens in LF and the result goes back in what the file had.
+    const windows = harness.decideText(
+        { policy: "merge", raw: "one\r\ntwo edited\r\n", theirs: THEIRS, hasBase: true, adopt: false },
+        { baseText: () => OURS, recoverBase: () => null, merge: never });
+    t.ok(windows.outcome === "written" && windows.text === "one\r\ntwo upstream\r\n",
+        "decideText: a CRLF working copy is written back in CRLF", JSON.stringify(windows));
+    const unchanged = harness.decideText(
+        { policy: "merge", raw: "one\r\ntwo upstream\r\n", theirs: THEIRS, hasBase: true, adopt: false },
+        { baseText: never, recoverBase: never, merge: never });
+    t.ok(unchanged.outcome === "unchanged",
+        "decideText: a CRLF copy matching the upstream does not read as edited", JSON.stringify(unchanged));
+
+    // A file with no lines to merge is the upstream's copy or the project's, and the base decides.
+    const bin = (held, theirs, was, adopt = false) => harness.decideBinary(
+        { held: Buffer.from(held), theirs: Buffer.from(theirs), hasBase: was !== null, adopt },
+        { baseBytes: () => (was === null ? null : Buffer.from(was)) });
+    const binCases = [
+        [bin("a", "a", "a"), "unchanged", "a copy already matching the upstream is left alone"],
+        [bin("a", "b", "a"), "written", "a copy nobody replaced takes the upstream's"],
+        [bin("mine", "b", "a"), "yours, binary", "a copy the project replaced stays replaced"],
+        [bin("mine", "b", null), "yours, no base", "with no base a differing copy is the project's"],
+        [bin("mine", "b", "a", true), "adopted", "--adopt takes the upstream's binary too"],
+    ];
+    for (const [got, outcome, why] of binCases)
+        t.ok(got.outcome === outcome, `decideBinary: ${why}`, `got ${got.outcome}, expected ${outcome}`);
+}
+
 // The stage table in AGENTS.md has one parser, readChain(), and anything that needs the pipeline
 // builds on it rather than reading the table again. Pin what it promises those callers: every row
 // in table order, document stages carrying the folder their name implies.
@@ -475,4 +586,6 @@ module.exports = [
     checkEditFollowsProjectDir,
     commitMsgReadsTheProjectsTracker,
     todoSourcesResolveAgainstTheGivenRoot,
+    manifestPoliciesAreReadInOrder,
+    installDecisionCoversEveryOutcome,
 ];

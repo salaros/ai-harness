@@ -188,11 +188,13 @@ function policies(templateDir) {
 // First match wins, so the table's order is its precedence. A row ending in / covers everything under it.
 // `optional:<flag>` is seeded only when the run asked for it, and is otherwise not installed at all:
 // the docs site is the case, useful to some projects and dead weight in the rest.
-function policyFor(rows, file) {
+// `wants` answers whether the run asked for an optional part, so the table's meaning does not depend
+// on the process's own argv and a test can ask what a repo would get either way.
+function policyFor(rows, file, wants) {
     const row = rows.find(r => r.path.endsWith("/") ? file.startsWith(r.path) : file === r.path);
     if (!row) return "merge";               // anything the upstream ships and nobody classified is harness
     if (!row.policy.startsWith("optional:")) return row.policy;
-    return flag(`--${row.policy.slice("optional:".length)}`) ? "seed" : "template";
+    return wants(row.policy.slice("optional:".length)) ? "seed" : "template";
 }
 
 // Every path the upstream tracks, with the mode Git recorded. Mode 120000 is a symlink, and the
@@ -349,6 +351,69 @@ const isCrlf = text => (text.match(CRLF) || []).length * 2 > (text.match(LF) || 
 const toLf = text => text.replace(CRLF, "\n");
 const asFound = (text, crlf) => crlf ? text.replace(LF, "\r\n") : text;
 
+// ---------------------------------------------------------------- the decision
+//
+// What happens to one file the target already has, decided apart from doing it. Everything these two
+// read is an argument, including the three things they cannot compute -- the base's text, the search
+// for a base when the receipt has none, and the three-way merge itself -- so the caller passes them
+// in and the loop below is left reading, writing and reporting.
+//
+// Both answer the same shape: `outcome` is the word the run prints, `bucket` the summary list it
+// belongs in (null for a file nothing happened to), and `text` what to write, or null to write
+// nothing. Splitting them this way is what makes the table of cases testable: an install rewrites
+// someone else's repository, and every branch below used to need a git checkout and a temp tree to
+// reach even once.
+
+// A file with no lines to merge: it is the upstream's copy or it is the project's, and the base
+// decides which. A logo the project replaced stays replaced.
+function decideBinary({ held, theirs, hasBase, adopt }, { baseBytes }) {
+    if (same(held, theirs)) return { outcome: "unchanged", bucket: null, text: null };
+    const was = hasBase ? baseBytes() : null;
+    if (adopt || same(held, was)) return { outcome: adopt ? "adopted" : "written", bucket: "written", text: theirs };
+    return { outcome: hasBase ? "yours, binary" : "yours, no base", bucket: "kept", text: null };
+}
+
+// A text file. `raw` is what is on disk, in whatever line endings it has; `theirs` is the upstream's,
+// always LF. The comparison and the merge happen in LF and the result is written back in the endings
+// the file already had, so a Windows checkout does not read as edited from top to bottom.
+function decideText({ policy, raw, theirs, hasBase, adopt }, { baseText, recoverBase, merge }) {
+    const crlf = isCrlf(raw);
+    const ours = toLf(raw);
+    const keep = { outcome: hasBase ? "yours, new here" : "yours, no base", bucket: "kept", text: null };
+
+    if (ours === theirs) return { outcome: "unchanged", bucket: null, text: null };
+    // Before the base logic, not inside it: a repo that needs adopting usually has a receipt
+    // already, written by the install that kept the stale files in the first place.
+    if (adopt) return { outcome: "adopted", bucket: "written", text: asFound(theirs, crlf) };
+    // Markers an earlier run wrote and nobody resolved. Left to the merge, the marked-up file is now
+    // its own nearest base, so the merge takes it whole, the run says "unchanged" and a half-merged
+    // harness passes as settled. Named instead, and the run exits 1 until someone resolves it or
+    // --adopt above throws it away.
+    if (MARKED.test(ours)) return { outcome: "STILL OPEN", bucket: "conflicted", text: null };
+
+    // A reconcile file is one the harness cannot work around: AGENTS.md is the map every agent reads
+    // and holds the table docs-check parses, and docs/README.md says what the chain puts where.
+    // Keeping a stale one leaves a repo that looks installed and behaves like the version it came
+    // from, so these are merged even when the receipt is missing. Nothing in the upstream's history
+    // matching means this copy was written by hand, and an empty base makes the whole file one
+    // conflict -- the honest answer: both versions are there to read, and the run exits 1.
+    let from = hasBase ? baseText() : null;
+    if (from === null && policy === "reconcile") from = recoverBase(ours);
+    if (from === null && policy === "reconcile") from = "";
+    if (from === null) return keep;
+
+    if (ours === from) return { outcome: "written", bucket: "written", text: asFound(theirs, crlf) };
+    const merged = merge(from, ours, theirs);
+    if (merged.failed) return { outcome: "yours, merge failed", bucket: "kept", text: null };
+    const result = asFound(merged.text, crlf);
+    if (merged.conflicts) return { outcome: "CONFLICT", bucket: "conflicted", text: result };
+    // A file that keeps a local edit merges cleanly on every later run and comes out the same every
+    // time. Reported as merged each run it reads as churn, and the reader goes looking for a change
+    // nobody made, so what the run did is decided by the result, not the route.
+    if (result === raw) return { outcome: "unchanged", bucket: null, text: null };
+    return { outcome: "merged", bucket: "merged", text: result };
+}
+
 function write(target, file, text, exec) {
     const full = path.join(target, file);
     if (dryRun) return;
@@ -440,13 +505,14 @@ function main() {
         }
 
         const rows = policies(templateDir);
+        const wants = name => flag(`--${name}`);
         const files = templateFiles(templateDir);
         const skills = [];
 
         phase(`${files.length} path(s) in ${ref} at ${head.slice(0, 8)}`);
         for (const entry of files) {
             const { file, link: isLink, exec } = entry;
-            const policy = policyFor(rows, file);
+            const policy = policyFor(rows, file, wants);
             const m = mode(entry);
             const theirs = blob(templateDir, head, file);
             // Git listed the path a moment ago, so failing to read it is the checkout being unhappy
@@ -491,54 +557,20 @@ function main() {
             }
             // merge
             if (!exists) { write(target, file, theirs, exec); step(policy, m, "written", file, "written"); continue; }
-            // Binary: there are no lines to merge, so it is the upstream's copy or it is the
-            // project's, and the base decides which. A logo the project replaced stays replaced.
-            if (Buffer.isBuffer(theirs)) {
-                const held = fs.readFileSync(full);
-                if (same(held, theirs)) { step(policy, m, "unchanged", file); continue; }
-                const was = base === null ? null : blob(templateDir, base, file);
-                if (adopt || same(held, was)) {
-                    write(target, file, theirs, exec);
-                    step(policy, m, adopt ? "adopted" : "written", file, "written");
-                } else step(policy, m, base === null ? "yours, no base" : "yours, binary", file, "kept");
-                continue;
-            }
-            const raw = fs.readFileSync(full, "utf8");
-            const crlf = isCrlf(raw);
-            const ours = toLf(raw);
-            if (ours === theirs) { step(policy, m, "unchanged", file); continue; }
-            // Before the base logic, not inside it: a repo that needs adopting usually has a
-            // receipt already, written by the install that kept the stale files in the first place.
-            if (adopt) { write(target, file, asFound(theirs, crlf), exec); step(policy, m, "adopted", file, "written"); continue; }
-            // Markers an earlier run wrote and nobody resolved. Left to the merge, the marked-up file
-            // is now its own nearest base, so the merge takes it whole, the run says "unchanged" and
-            // a half-merged harness passes as settled. Named instead, and the run exits 1 until
-            // someone resolves it or --adopt above throws it away.
-            if (MARKED.test(ours)) { step(policy, m, "STILL OPEN", file, "conflicted"); continue; }
-            // A reconcile file is one the harness cannot work around: AGENTS.md is the map every
-            // agent reads and holds the table docs-check parses, and docs/README.md says what the
-            // chain puts where. Keeping a stale one leaves a repo that looks installed and behaves
-            // like the version it came from, so these are merged even when the receipt is missing.
-            let from = base === null ? null : blob(templateDir, base, file);
-            if (from === null && policy === "reconcile") from = recoverBase(templateDir, file, ours);
-            if (from === null && policy === "reconcile") {
-                // Nothing in the upstream's history matches, so this copy was written by hand. An
-                // empty base makes the whole file one conflict, which is the honest answer: both
-                // versions are there to read, and the run exits 1 rather than pretending.
-                from = "";
-            }
-            if (from === null) { step(policy, m, base === null ? "yours, no base" : "yours, new here", file, "kept"); continue; }
-            if (ours === from) { write(target, file, asFound(theirs, crlf), exec); step(policy, m, "written", file, "written"); continue; }
-            const merged = threeWay(from, ours, theirs);
-            if (merged.failed) { step(policy, m, "yours, merge failed", file, "kept"); continue; }
-            const result = asFound(merged.text, crlf);
-            if (merged.conflicts) { write(target, file, result, exec); step(policy, m, "CONFLICT", file, "conflicted"); continue; }
-            // A file that keeps a local edit merges cleanly on every later run and comes out the same
-            // every time. Reported as merged each run it reads as churn, and the reader goes looking
-            // for a change nobody made, so what the run did is decided by the result, not the route.
-            if (result === raw) { step(policy, m, "unchanged", file); continue; }
-            write(target, file, result, exec);
-            step(policy, m, "merged", file, "merged");
+
+            // Everything the decision needs, read here; what to do with its answer, done here. The
+            // decision itself is decideBinary/decideText, which touch neither git nor the disk.
+            const hasBase = base !== null;
+            const held = Buffer.isBuffer(theirs) ? fs.readFileSync(full) : fs.readFileSync(full, "utf8");
+            const { outcome, bucket, text } = Buffer.isBuffer(theirs)
+                ? decideBinary({ held, theirs, hasBase, adopt }, { baseBytes: () => blob(templateDir, base, file) })
+                : decideText({ policy, raw: held, theirs, hasBase, adopt }, {
+                    baseText: () => blob(templateDir, base, file),
+                    recoverBase: ours => recoverBase(templateDir, file, ours),
+                    merge: threeWay,
+                });
+            if (text !== null) write(target, file, text, exec);
+            step(policy, m, outcome, file, bucket);
         }
 
         phase("skeletons a project starts with");
@@ -668,4 +700,9 @@ function report(target, head, ref, base) {
     if (notes.conflicted.length || notes.unreadable.length || (check && check.failed)) process.exit(1);
 }
 
-main();
+// The decision, and the two pure helpers under it, so the suite can put a case in and read the
+// answer out rather than building a git checkout to reach one branch. Everything else here writes to
+// somebody's repository and stays behind main().
+module.exports = { policyFor, decideText, decideBinary, lineCounts, overlap, NEAREST };
+
+if (require.main === module) main();
