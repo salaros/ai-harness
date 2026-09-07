@@ -48,3 +48,11 @@ scripts/check-todo.js	todo-no-source.txt	1	-	no source	an entry that says nothin
 scripts/check-todo.js	todo-bad-source.txt	1	-	is not a source	prose in place of a source is rejected
 scripts/check-todo.js	todo-prose.txt	0	-	0 open item(s)	a file with the header and no entries passes
 scripts/check-todo.js	todo-empty.txt	0	-	nothing to check	an empty ledger is not a problem
+scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	-	nothing staged from the documentation chain	pre-commit says what it would check without touching the index
+scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	plant TODO.md # TODO	would check the unstaged TODO.md	a TODO.md nobody staged is still read, where the old shell pipe saw nothing
+scripts/githook.js pre-push --dry-run	paths-empty.txt	0	-	would format-check	pre-push says what it would check
+scripts/githook.js post-merge --dry-run	paths-empty.txt	0	-	-	post-merge works out the merge diff itself
+scripts/githook.js commit-msg .agents/hooks/tests/msg-conventional.txt	paths-empty.txt	0	-	conventional	commit-msg reads the file Git names
+scripts/githook.js commit-msg .agents/hooks/tests/msg-no-body.txt	paths-empty.txt	1	-	there is no description	commit-msg blocks a message with no body
+scripts/githook.js commit-msg	paths-empty.txt	1	-	Git passes the message file	commit-msg with no argument says so instead of throwing
+scripts/githook.js not-a-hook	paths-empty.txt	1	-	no hook named	an unknown hook name is refused

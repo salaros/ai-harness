@@ -611,6 +611,30 @@ function docsSiteRendersTheChain(t) {
     t.ok(!/readdirSync/.test(src), "the portal reads the model rather than walking docs/ itself", entry);
 }
 
+// A Git hook is a wrapper and nothing else: find the repo, hand over to scripts/githook.js. Every
+// decision it used to make -- reading the index, computing the merge diff, working out whether Git
+// had run it at all, chaining checks with `||` -- sat in a file the suite could not reach, and one
+// of those decisions was wrong for as long as nobody could test it. The shape is the invariant, so
+// it is asserted rather than trusted: strip the shebang and the comments, and two lines are left.
+function noGitHookDecidesAnything(t) {
+    if (!fs.existsSync(".githooks")) { t.skip("git hook shape: no .githooks folder"); return; }
+    const hooks = fs.readdirSync(".githooks");
+    t.ok(hooks.length > 0, "there are hooks in .githooks/");
+    for (const name of hooks) {
+        const body = fs.readFileSync(path.join(".githooks", name), "utf8")
+            .split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+        const want = [
+            "root=$(git rev-parse --show-toplevel) || exit 1",
+            `exec node "$root/scripts/githook.js" ${name} "$@"`,
+        ];
+        t.ok(body.length === want.length && body.every((l, i) => l === want[i]),
+            `.githooks/${name} decides nothing; it calls githook.js ${name}`, body.join("\n"));
+    }
+    const known = Object.keys(require("../../../scripts/githook.js").HOOKS);
+    const unhandled = hooks.filter(n => !known.includes(n));
+    t.ok(!unhandled.length, "githook.js handles every hook in .githooks/", unhandled.join(", "));
+}
+
 // A check runs because it is in the array below, and nothing but this notices when one is not: an
 // unregistered function raises the pass count of the suite by zero and the failure count by zero,
 // so the tally reads exactly as it did before it was written. Caught by reading this file rather
@@ -626,6 +650,7 @@ function everyCheckIsRegistered(t) {
 module.exports = [
     everyCheckIsRegistered,
     gitHooksAreExecutable,
+    noGitHookDecidesAnything,
     initialisationGateAnswersEveryState,
     claudeSkillLinksAreSymlinks,
     everyInstalledSkillIsLinked,

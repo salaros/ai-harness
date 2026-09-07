@@ -1,11 +1,10 @@
 #!/bin/sh
 # .githooks/commit-msg
 # Before a commit lands, check its message is a conventional commit, the shape the `git-commit`
-# skill writes. Git passes the path of the message file; it is read here because the working
-# directory below changes.
-# Git runs this through core.hooksPath, set once per clone by `node scripts/githooks-init.js`.
+# skill writes. Git passes the path of the message file, which is handed on unread.
+# The decision is scripts/githook.js; this file only finds the repo. Git runs it through
+# core.hooksPath, set once per clone by `node scripts/githooks-init.js`.
 # To try it by hand: printf 'feat: add a thing\n' | node scripts/check-commit-msg.js
 # To commit past a failure: git commit --no-verify
-msg=$(cat "$1") || exit 1
-cd "$(git rev-parse --show-toplevel)" || exit 1
-printf '%s\n' "$msg" | node scripts/check-commit-msg.js
+root=$(git rev-parse --show-toplevel) || exit 1
+exec node "$root/scripts/githook.js" commit-msg "$@"

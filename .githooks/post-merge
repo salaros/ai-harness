@@ -1,8 +1,9 @@
 #!/bin/sh
 # .githooks/post-merge
 # After a merge or pull, restore whatever the changed manifests call for (scripts/stacks.tsv).
-# Git runs this through core.hooksPath, set once per clone by `node scripts/githooks-init.js`.
-# To try the dispatch by hand: printf 'package-lock.json\n' | node scripts/on-manifest-change.js --dry-run
-[ -n "$GIT_DIR" ] || { echo "post-merge is run by Git after a merge, not by hand" >&2; exit 1; }
-cd "$(git rev-parse --show-toplevel)" || exit 1
-git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD | node scripts/on-manifest-change.js
+# The decision is scripts/githook.js, which reads ORIG_HEAD to work out what the merge brought in
+# and refuses when there is none; this file only finds the repo. Git runs it through core.hooksPath,
+# set once per clone by `node scripts/githooks-init.js`.
+# To see what it would restore: node scripts/githook.js post-merge --dry-run
+root=$(git rev-parse --show-toplevel) || exit 1
+exec node "$root/scripts/githook.js" post-merge "$@"

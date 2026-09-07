@@ -1,13 +1,12 @@
 #!/bin/sh
 # .githooks/pre-push
-# Before commits leave this machine, refuse an unconfigured clone, then check that what they
-# publish is formatted, using the stack's
-# own formatter from scripts/stacks.tsv. Git passes the ref updates on stdin; the Node script works
-# out which files the push carries. Formatting is checked here rather than on every commit because
-# some formatters load the whole project and cost seconds.
-# Git runs this through core.hooksPath, set once per clone by `node scripts/githooks-init.js`.
-# To try it by hand: printf 'src/a.ts\n' | node scripts/format-changed.js --dry-run
+# Before commits leave this machine, refuse an unconfigured clone, then check that what they publish
+# is formatted, using the stack's own formatter from scripts/stacks.tsv. Git passes the ref updates
+# on stdin. Formatting is checked here rather than on every commit because some formatters load the
+# whole project and cost seconds.
+# The decision is scripts/githook.js; this file only finds the repo. Git runs it through
+# core.hooksPath, set once per clone by `node scripts/githooks-init.js`.
+# To see what it would check: node scripts/githook.js pre-push --dry-run
 # To push past a failure: git push --no-verify
-cd "$(git rev-parse --show-toplevel)" || exit 1
-node scripts/check-initialised.js push || exit 1
-node scripts/format-changed.js --push
+root=$(git rev-parse --show-toplevel) || exit 1
+exec node "$root/scripts/githook.js" pre-push "$@"

@@ -44,11 +44,10 @@ function check(root = ".") {
     return { ok: true, reason: `${FACTS} records all ${REQUIRED.length} facts` };
 }
 
-if (require.main === module) {
-    lib.chdirRoot();
-    const action = process.argv[2] === "push" ? "push" : "commit";
-    const r = check();
-    if (r.ok) { console.log(`project: ${r.reason}`); process.exit(0); }
+// Why the work was refused, and what to do about it. Exported beside check() because the hooks now
+// decide in scripts/githook.js rather than in the shell, and the refusal a developer reads should
+// not depend on which of the two ran.
+function explain(action, r) {
     console.error(`
 This repository has not been initialised, so nothing should ${action} yet.
 
@@ -66,7 +65,15 @@ create an empty ${MARKER} at the root. Git ignores it, so it stays yours.
 
 To ${action} anyway: git ${action} --no-verify
 `);
-    process.exit(1);
 }
 
-module.exports = { check, MARKER, FACTS };
+module.exports = { check, explain, MARKER, FACTS };
+
+if (require.main === module) {
+    lib.chdirRoot();
+    const action = process.argv[2] === "push" ? "push" : "commit";
+    const r = check();
+    if (r.ok) { console.log(`project: ${r.reason}`); process.exit(0); }
+    explain(action, r);
+    process.exit(1);
+}

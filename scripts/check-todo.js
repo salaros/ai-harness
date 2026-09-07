@@ -90,7 +90,10 @@ module.exports = { check, TAGS };
 
 if (require.main === module) {
     const file = process.argv.slice(2).find(a => !a.startsWith("--"));
-    const text = file ? fs.readFileSync(file, "utf8") : lib.stdin();
+    // No ledger is the honest state of a repo with nothing outstanding, and the same answer as an
+    // empty one. Throwing ENOENT at a path that is simply not there says "broken" about "nothing to
+    // report".
+    const text = file ? (fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "") : lib.stdin();
     const root = lib.chdirRoot();
 
     const { problems, summary } = check(text, root);

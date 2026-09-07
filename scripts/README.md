@@ -28,8 +28,11 @@ part of the product.
 - Every script starts with a short comment describing what it does and how
   to call it; scripts that take arguments print usage when run with `-h`.
 - Node, so scripts run the same on Linux, macOS and Windows without a shell
-  adapter; `.githooks/post-merge` is the one exception, since Git always
-  runs it through its own bundled shell.
+  adapter. The files in `.githooks/` are the exception, since Git runs a hook
+  through its own bundled shell, so each is two lines that find the repo root
+  and hand over to `githook.js <hook>`. Nothing else belongs in them: a
+  decision made in the shell is one no test can reach, and the suite asserts
+  the shape.
 - Scripts must be idempotent where possible — running them twice should not
   break anything.
   

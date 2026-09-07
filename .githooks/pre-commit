@@ -1,12 +1,11 @@
 #!/bin/sh
 # .githooks/pre-commit
 # Before a commit lands, refuse an unconfigured clone, check the shape of the loose-ends ledger,
-# then check the documentation chain as the commit will record it. Each check reads the index, not
+# then check the documentation chain as the commit will record it. What it checks is the index, not
 # the working tree, so what passes is what the commit records.
-# Git runs this through core.hooksPath, set once per clone by `node scripts/githooks-init.js`.
-# To try the dispatch by hand: printf 'docs/brd/0001-x.md\n' | node scripts/check-staged-docs.js --dry-run
+# The decision is scripts/githook.js; this file only finds the repo. Git runs it through
+# core.hooksPath, set once per clone by `node scripts/githooks-init.js`.
+# To see what it would check: node scripts/githook.js pre-commit --dry-run
 # To commit past a failure: git commit --no-verify
-cd "$(git rev-parse --show-toplevel)" || exit 1
-node scripts/check-initialised.js commit || exit 1
-git show :TODO.md 2>/dev/null | node scripts/check-todo.js || exit 1
-git diff --cached --name-only --diff-filter=ACMRD | node scripts/check-staged-docs.js
+root=$(git rev-parse --show-toplevel) || exit 1
+exec node "$root/scripts/githook.js" pre-commit "$@"
