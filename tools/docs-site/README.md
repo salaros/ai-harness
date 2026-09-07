@@ -45,5 +45,5 @@ A citation that does not resolve is left as plain text rather than linked to a p
 
 - `docs/` sits outside the Astro project, so the loader adds it to the dev watcher explicitly. Editing a document and adding a new one were both picked up without a restart.
 - Every build logs `The collection "i18n" does not exist or is empty`. The portal is single-language, and declaring an empty `i18n` collection produces two warnings instead of one, so the warning stays.
-- The sitemap integration warns that `site` is unset. Set `site` in `astro.config.mjs` when you know the deployed URL.
+- The sitemap integration warns that `site` is unset, and it stays unset here: this portal is read locally, so there is no URL to give it and no sitemap worth building. A repo that deploys its documentation sets `site` in `astro.config.mjs` to the URL it deploys to, and the warning goes with it.
 - Links are root-absolute (`/prd/0001-x/`). Deploying under a path prefix needs `base` in `astro.config.mjs` and a matching prefix in `chain.mjs`.
