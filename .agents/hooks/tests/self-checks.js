@@ -1,9 +1,13 @@
 // .agents/hooks/tests/self-checks.js
 // Invariants that don't fit cases.tsv's "run a script against a fixture, check exit code and
-// output" shape: each function below gets a `t` (one method, t.ok(condition, title, detail)) and
-// the env test.js runs fixtures with (HOOK_TEST set, the harness project-dir variables cleared).
+// output" shape: each function below gets a `t` (t.ok(condition, title, detail) for a verdict,
+// t.skip(why) for a check this repo cannot run) and the env test.js runs fixtures with (HOOK_TEST
+// set, the harness project-dir variables cleared).
 // Run by test.js after the fixture table. Add a new invariant as a new function in the exported
-// array, not a fourth inline block in test.js.
+// array, not a fourth inline block in test.js. A function defined here and left out of that array
+// never runs and says nothing about it, so everyCheckIsRegistered below catches the omission.
+// Stand down with t.skip and a reason rather than a bare return: the tally counts skips, so a check
+// that could not run is visible instead of leaving "N passed, 0 failed" to say it all went well.
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -37,9 +41,9 @@ function untracked(dir) { return fs.existsSync(dir); }
 // symlink, so the mode in the index is what this asserts.
 function claudeSkillLinksAreSymlinks(t) {
     const r = lib.run("git", ["ls-files", "-s", "--", ".claude/skills"]);
-    if (r.status !== 0) { console.log("skip .claude/skills mode check: not a git checkout"); return; }
+    if (r.status !== 0) { t.skip(".claude/skills mode check: not a git checkout"); return; }
     const rows = r.output.split(/\r?\n/).filter(Boolean).map(l => l.split(/\s+/));
-    if (!rows.length && untracked(".claude/skills")) { console.log("skip .claude/skills mode check: present on disk, not committed yet"); return; }
+    if (!rows.length && untracked(".claude/skills")) { t.skip(".claude/skills mode check: present on disk, not committed yet"); return; }
     t.ok(rows.length > 0, "git tracks entries under .claude/skills/", r.output);
     const notLinks = rows.filter(([mode]) => mode !== "120000").map(row => row[row.length - 1]);
     t.ok(!notLinks.length,
@@ -55,7 +59,7 @@ function claudeSkillLinksAreSymlinks(t) {
 // compare .agents/skills with itself and pass whatever the state.
 function everyInstalledSkillIsLinked(t) {
     const skills = ".agents/skills", links = ".claude/skills";
-    if (!fs.existsSync(skills) || !fs.existsSync(links)) { console.log("skip skill link check: no skills directories"); return; }
+    if (!fs.existsSync(skills) || !fs.existsSync(links)) { t.skip("skill link check: no skills directories"); return; }
     const installed = fs.readdirSync(skills).filter(n => fs.existsSync(path.join(skills, n, "SKILL.md")));
     t.ok(installed.length > 0, "skills are installed under .agents/skills/");
     if (fs.lstatSync(links).isSymbolicLink()) {
@@ -78,7 +82,7 @@ function everyInstalledSkillIsLinked(t) {
 // twice and vendors as neither.
 function skillsFolderHoldsSkillsNotLinks(t) {
     const skills = ".agents/skills";
-    if (!fs.existsSync(skills)) { console.log("skip skills folder check: no skills directory"); return; }
+    if (!fs.existsSync(skills)) { t.skip("skills folder check: no skills directory"); return; }
     const links = fs.readdirSync(skills).filter(n => fs.lstatSync(path.join(skills, n)).isSymbolicLink());
     t.ok(!links.length,
         "every entry under .agents/skills/ is a skill, not a link to one",
@@ -94,9 +98,9 @@ function skillsFolderHoldsSkillsNotLinks(t) {
 // skip rows matching nothing in a clone that has neither, which is what skip means.
 function everyTrackedPathIsClassified(t) {
     const manifest = "scripts/harness-files.tsv";
-    if (!fs.existsSync(manifest)) { console.log("skip manifest check: no harness-files.tsv"); return; }
+    if (!fs.existsSync(manifest)) { t.skip("manifest check: no harness-files.tsv"); return; }
     const r = lib.run("git", ["ls-files"]);
-    if (r.status !== 0) { console.log("skip manifest check: not a git checkout"); return; }
+    if (r.status !== 0) { t.skip("manifest check: not a git checkout"); return; }
     const rows = fs.readFileSync(manifest, "utf8").split(/\r?\n/)
         .filter(l => l.trim() && !l.startsWith("#"))
         .map(l => l.split("\t")[0]);
@@ -132,7 +136,7 @@ function vendoredSkillsAreAttributed(t) {
 function agentRoutingSectionsAgreeOnTheirAudience(t) {
     const dir = ".agents/agents", shared = "routing.md";
     const file = path.join(".agents", shared);
-    if (!fs.existsSync(file)) { console.log("skip routing section check: no routing.md"); return; }
+    if (!fs.existsSync(file)) { t.skip("routing section check: no routing.md"); return; }
     const bodies = {};
     for (const f of fs.readdirSync(dir).filter(n => n.endsWith(".md"))) {
         const text = fs.readFileSync(path.join(dir, f), "utf8");
@@ -192,9 +196,9 @@ function initialisationGateAnswersEveryState(t) {
 
 function gitHooksAreExecutable(t) {
     const r = lib.run("git", ["ls-files", "-s", "--", ".githooks"]);
-    if (r.status !== 0) { console.log("skip .githooks mode check: not a git checkout"); return; }
+    if (r.status !== 0) { t.skip(".githooks mode check: not a git checkout"); return; }
     const rows = r.output.split(/\r?\n/).filter(Boolean).map(l => l.split(/\s+/));
-    if (!rows.length && untracked(".githooks")) { console.log("skip .githooks mode check: present on disk, not committed yet"); return; }
+    if (!rows.length && untracked(".githooks")) { t.skip(".githooks mode check: present on disk, not committed yet"); return; }
     t.ok(rows.length > 0, "git tracks files under .githooks/", r.output);
     const notExecutable = rows.filter(([mode]) => mode !== "100755").map(row => row[row.length - 1]);
     t.ok(!notExecutable.length,
@@ -437,7 +441,7 @@ function todoSourcesResolveAgainstTheGivenRoot(t) {
 // here is how a table is read, against one written for the purpose.
 function manifestPoliciesAreReadInOrder(t) {
     const harness = installer();
-    if (!harness) { console.log("skip policyFor: the installer is the upstream's own, not installed here"); return; }
+    if (!harness) { t.skip("policyFor: the installer is the upstream's own, not installed here"); return; }
     const rows = [
         { path: "scripts/harness-files.tsv", policy: "skip" },
         { path: "scripts/", policy: "merge" },
@@ -466,7 +470,7 @@ function manifestPoliciesAreReadInOrder(t) {
 // all three. `raw` is what is on disk, `theirs` the upstream's, always LF.
 function installDecisionCoversEveryOutcome(t) {
     const harness = installer();
-    if (!harness) { console.log("skip the install decision: the installer is the upstream's own, not installed here"); return; }
+    if (!harness) { t.skip("the install decision: the installer is the upstream's own, not installed here"); return; }
     const OURS = "one\ntwo edited\n";
     const THEIRS = "one\ntwo upstream\n";
     const clean = text => () => ({ text, conflicts: false, failed: false });
@@ -539,6 +543,10 @@ function installDecisionCoversEveryOutcome(t) {
 // The stage table in AGENTS.md has one parser, readChain(), and anything that needs the pipeline
 // builds on it rather than reading the table again. Pin what it promises those callers: every row
 // in table order, document stages carrying the folder their name implies.
+// Written out rather than read from AGENTS.md on purpose: a test that asks the parser what the
+// table says and then checks the answer against the table proves only that reading twice gives the
+// same answer. This is the expectation the parser is held to, so reordering the table without
+// meaning to fails here. Reordering it on purpose is an edit to this line as well.
 const PIPELINE = ["BRD", "PRD", "EARS", "BDD", "ADR", "SPEC"];
 function chainIsParsedInPipelineOrder(t) {
     const { stages, problems } = docsCheck.readChain(lib.checkout);
@@ -590,7 +598,7 @@ function oneModelForValidatorAndPortal(t) {
 // Astro install of its own, since chain.mjs only reads.
 function docsSiteRendersTheChain(t) {
     const entry = path.join("tools", "docs-site", "chain.mjs");
-    if (!fs.existsSync(entry)) { console.log("skip tools/docs-site smoke: the optional portal is not installed"); return; }
+    if (!fs.existsSync(entry)) { t.skip("tools/docs-site smoke: the optional portal is not installed"); return; }
     const r = lib.node([entry]);
     t.ok(r.status === 0, "tools/docs-site/chain.mjs runs", r.output);
     if (r.status !== 0) return;
@@ -603,7 +611,20 @@ function docsSiteRendersTheChain(t) {
     t.ok(!/readdirSync/.test(src), "the portal reads the model rather than walking docs/ itself", entry);
 }
 
+// A check runs because it is in the array below, and nothing but this notices when one is not: an
+// unregistered function raises the pass count of the suite by zero and the failure count by zero,
+// so the tally reads exactly as it did before it was written. Caught by reading this file rather
+// than by any cleverness at run time, because a function nobody calls leaves no trace to inspect.
+function everyCheckIsRegistered(t) {
+    const defined = [...fs.readFileSync(__filename, "utf8").matchAll(/^function (\w+)\(t\b/gm)].map(m => m[1]);
+    const registered = new Set(module.exports.map(f => f.name));
+    const missing = defined.filter(name => !registered.has(name));
+    t.ok(defined.length > 0, "this file defines checks", String(defined.length));
+    t.ok(!missing.length, "every check defined here is in the exported array", missing.join(", "));
+}
+
 module.exports = [
+    everyCheckIsRegistered,
     gitHooksAreExecutable,
     initialisationGateAnswersEveryState,
     claudeSkillLinksAreSymlinks,

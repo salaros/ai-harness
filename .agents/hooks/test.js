@@ -6,8 +6,11 @@
 // with __ROOT__ replaced by this checkout; setup is "-" or "plant <path> <first line>", a file
 // that exists only while that case runs; expected output is "-" or a substring that the combined
 // stdout and stderr must contain. Afterward runs tests/self-checks.js, for invariants that don't
-// fit that shape (add a new one there, not as a block below). Prints one FAIL line per mismatch
-// and exits 1 if any.
+// fit that shape (add a new one there, not as a block below).
+// A self check is handed `t`, which has two methods: t.ok(condition, title, detail) for a verdict,
+// and t.skip(why) for a check this repo cannot run -- an optional folder it did not install, a
+// tarball that is not a git checkout. Prints one FAIL line per mismatch and one SKIP line per
+// check that stood down, then the tally, and exits 1 if anything failed.
 // Usage: node .agents/hooks/test.js
 const fs = require("fs");
 const path = require("path");
@@ -35,8 +38,15 @@ const cleanup = () => {
 process.on("exit", cleanup);
 
 let pass = 0, fail = 0;
+const skipped = [];
 const failed = (title, out) => { fail++; console.log(`FAIL ${title}`); if (out) console.log(out.replace(/^/gm, "    ")); };
-const t = { ok: (condition, title, detail) => condition ? pass++ : failed(title, detail) };
+// Two methods, and a check that cannot run says so with the second. A skip counted as neither pass
+// nor fail leaves "N passed, 0 failed" reading exactly the same whether the check ran or quietly
+// gave up, which is how five of these went unnoticed in an installed repo.
+const t = {
+    ok: (condition, title, detail) => condition ? pass++ : failed(title, detail),
+    skip: why => skipped.push(why),
+};
 
 for (const [script, fixture, expect, setup, want, note] of lib.readTsv(".agents/hooks/tests/cases.tsv")) {
     if (setup.startsWith("plant ")) plant(...setup.split(" ").slice(1));
@@ -50,5 +60,6 @@ for (const [script, fixture, expect, setup, want, note] of lib.readTsv(".agents/
 
 for (const check of selfChecks) check(t, env);
 
-console.log(`harness tests: ${pass} passed, ${fail} failed`);
+for (const why of skipped) console.log(`SKIP ${why}`);
+console.log(`harness tests: ${pass} passed, ${fail} failed${skipped.length ? `, ${skipped.length} skipped` : ""}`);
 process.exit(fail ? 1 : 0);
