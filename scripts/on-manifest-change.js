@@ -6,26 +6,19 @@
 // it; the harness suite pipes fixtures with --dry-run.
 // Usage: node scripts/on-manifest-change.js [--dry-run] < changed-paths
 //   --dry-run  print "would run: <command>" per matching row instead of running it
-const fs = require("fs");
-const path = require("path");
 const lib = require("./lib");
+const stacks = require("./stacks");
 
-lib.chdirRoot();
+const root = lib.chdirRoot();
 const dry = process.argv.includes("--dry-run");
 const changed = lib.stdin().split(/\r?\n/).filter(Boolean);
 if (!changed.length) { if (dry) console.log("nothing to restore"); process.exit(0); }
 
-// A pattern matches a changed path by full path or basename; * matches anything within a name.
-const toRe = pat => new RegExp(`^${pat.split("*").map(s => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*")}$`);
-const matches = triggers => triggers.split(" ").some(pat => {
-    const re = toRe(pat);
-    return changed.some(p => re.test(p) || re.test(path.posix.basename(p)));
-});
-
 let status = 0, ran = false;
-for (const [stack, triggers, needs, restore] of lib.readTsv("scripts/stacks.tsv")) {
-    if (restore === "-" || !matches(triggers)) continue;
-    if (needs !== "-" && !fs.existsSync(needs)) continue;
+// active() drops the rows whose "needs" file is absent, so a stack that is not really here restores
+// nothing; the pattern matcher is the table's own, shared with the format check.
+for (const { stack, triggers, restore } of stacks.active(root)) {
+    if (!restore || !stacks.matches(triggers, changed)) continue;
     ran = true;
     if (dry) { console.log(`would run: ${restore} (${stack})`); continue; }
     console.log(`${stack} manifests changed: running ${restore}`);

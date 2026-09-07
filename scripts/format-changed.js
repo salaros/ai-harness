@@ -19,8 +19,8 @@
 // installed; that is this script's syntax, not the shell's. The dotnet row uses it to prefer a
 // project's Husky.NET task runner and fall back to dotnet format.
 const fs = require("fs");
-const path = require("path");
 const lib = require("./lib");
+const stacks = require("./stacks");
 
 const ZERO = /^0{40,}$/;
 // A formatter can fail for reasons that are not "this file is badly formatted", and blocking a push
@@ -35,7 +35,7 @@ const CANNOT_RUN = [
 ];
 const cannotRun = output => (CANNOT_RUN.find(([re]) => re.test(output)) || [])[1] || null;
 
-lib.chdirRoot();
+const root = lib.chdirRoot();
 const dry = process.argv.includes("--dry-run");
 const fromPush = process.argv.includes("--push");
 const input = lib.stdin().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -62,18 +62,12 @@ function pathsFromRefUpdates(lines) {
 const changed = (fromPush ? pathsFromRefUpdates(input) : input).filter(p => fs.existsSync(p));
 if (!changed.length) { console.log("nothing to format-check"); process.exit(0); }
 
-// Same matcher as on-manifest-change.js: a pattern matches by full path or basename, * within a name.
-const toRe = pat => new RegExp(`^${pat.split("*").map(s => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join("[^/]*")}$`);
-const select = patterns => changed.filter(p => patterns.split(" ").some(pat => {
-    const re = toRe(pat);
-    return re.test(p) || re.test(path.posix.basename(p));
-}));
-
 let status = 0, ran = false;
-for (const [stack, , needs, , , formats, format] of lib.readTsv("scripts/stacks.tsv")) {
-    if (!format || format === "-" || !formats || formats === "-") continue;
-    if (needs !== "-" && !fs.existsSync(needs)) continue;               // not this repo's stack
-    const files = select(formats);
+// active() drops the rows whose "needs" file is absent -- not this repo's stack -- and select()
+// is the table's own matcher, the same one that decides what a merge restores.
+for (const { stack, formats, format } of stacks.active(root)) {
+    if (!format || !formats) continue;
+    const files = stacks.select(formats, changed);
     if (!files.length) continue;
     const quoted = files.map(f => `"${f}"`).join(" ");
     // " ?? " separates fallbacks, tried in order: the first whose tool is actually installed runs,

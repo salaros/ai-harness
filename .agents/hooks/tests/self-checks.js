@@ -611,6 +611,39 @@ function docsSiteRendersTheChain(t) {
     t.ok(!/readdirSync/.test(src), "the portal reads the model rather than walking docs/ itself", entry);
 }
 
+// scripts/stacks.tsv has one reader, scripts/stacks.js, and every script that wants a stack asks it
+// by name. Two readers taking the row apart by position is how the second came to be written
+// `[stack, , needs, , , formats, format]`: correct, unreadable, and wrong the moment a column moved.
+// A row short of a cell is the same failure from the table's side, so the width is asserted too.
+function oneReaderForTheStacksTable(t) {
+    const table = "scripts/stacks.tsv", reader = "scripts/stacks.js";
+    if (!fs.existsSync(table) || !fs.existsSync(reader)) { t.skip("stacks table: no table or no reader here"); return; }
+    const stacks = require("../../../scripts/stacks.js");
+    const rows = stacks.rows(lib.checkout);
+    t.ok(rows.length > 0, `${table} holds rows`);
+    t.ok(rows.every(r => r.stack && r.triggers), "every row names a stack and what triggers it",
+        rows.filter(r => !r.stack || !r.triggers).map(r => JSON.stringify(r)).join("\n"));
+
+    const wide = fs.readFileSync(table, "utf8").split(/\r?\n/)
+        .filter(l => l.trim() && !l.startsWith("#"))
+        .filter(l => l.split("\t").length !== stacks.COLUMNS.length);
+    t.ok(!wide.length, `every row has ${stacks.COLUMNS.length} cells`, wide.map(l => l.split("\t")[0]).join(", "));
+
+    // A pattern matches by path or basename and never across a directory separator, which is what
+    // both callers rely on: *.cs must not claim a folder called "a.cs/b".
+    t.ok(stacks.matches("*.cs", ["src/App/Program.cs"]), "a pattern matches by basename");
+    t.ok(stacks.matches("package-lock.json", ["package-lock.json"]), "a pattern matches by path");
+    t.ok(!stacks.matches("*.cs", ["a.cs/b.txt"]), "a pattern does not match across a directory separator");
+
+    // Code only: lib.js names the table in the usage comment at its top, which is documentation of
+    // the helper rather than a second reader of the table.
+    const code = file => fs.readFileSync(file, "utf8").split(/\r?\n/).filter(l => !l.trim().startsWith("//")).join("\n");
+    const others = fs.readdirSync("scripts")
+        .filter(n => n.endsWith(".js") && n !== "stacks.js")
+        .filter(n => code(path.join("scripts", n)).includes("stacks.tsv"));
+    t.ok(!others.length, `only ${reader} reads ${table} itself`, others.join(", "));
+}
+
 // A Git hook is a wrapper and nothing else: find the repo, hand over to scripts/githook.js. Every
 // decision it used to make -- reading the index, computing the merge diff, working out whether Git
 // had run it at all, chaining checks with `||` -- sat in a file the suite could not reach, and one
@@ -651,6 +684,7 @@ module.exports = [
     everyCheckIsRegistered,
     gitHooksAreExecutable,
     noGitHookDecidesAnything,
+    oneReaderForTheStacksTable,
     initialisationGateAnswersEveryState,
     claudeSkillLinksAreSymlinks,
     everyInstalledSkillIsLinked,
