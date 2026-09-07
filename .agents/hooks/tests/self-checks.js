@@ -552,6 +552,39 @@ function chainIsParsedInPipelineOrder(t) {
     t.ok(!wrong.length, "every document stage's folder matches its name", wrong.map(s => `${s.stage} -> ${s.lives}`).join(","));
 }
 
+// readDocs() is the one model of the chain: what check() validates is what the portal renders. Pin
+// the part that made two readers a bug rather than a duplication -- the file-name rule. A name the
+// rule rejects is a problem and not a document, so a second reader cannot render a file nothing
+// checked, which is what happened while the portal carried its own looser rule.
+function oneModelForValidatorAndPortal(t) {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-docs-model-"));
+    const write = (rel, ...lines) => {
+        const file = path.join(tmp, rel);
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, lines.join("\n") + "\n");
+    };
+    write("brd/9401-billing.md", "# BRD-9401: Billing", "", "**Derived from:** jira:AB-42", "", "- BR-1: Bill monthly.");
+    write("prd/9401-биллинг.md", "# PRD-9401: Billing", "", "**Derived from:** BRD-9401");
+    const model = docsCheck.readDocs(lib.checkout, tmp, "AGENTS.md");
+    const { problems } = docsCheck.check(lib.checkout, tmp, "AGENTS.md");
+    fs.rmSync(tmp, { recursive: true, force: true });
+
+    const ids = [...model.docs.keys()].join(",");
+    const rejected = model.problems.filter(p => p.includes("9401-биллинг"));
+    t.ok(model.docs.has("BRD-9401"), "readDocs collects a document the file-name rule accepts", ids);
+    t.ok(!model.docs.has("PRD-9401"), "readDocs makes a rejected file name a problem, not a document", ids);
+    t.ok(rejected.length === 1, "readDocs reports the rejected file name once", model.problems.join("\n") || "(none)");
+    // The same file, refused in the same words by the reader every consumer goes through.
+    t.ok(problems.some(p => rejected.includes(p)), "check() reports what the model rejected", problems.join("\n") || "(none)");
+
+    const doc = model.docs.get("BRD-9401");
+    t.ok(doc && doc.title === "BRD-9401: Billing" && doc.link === "/brd/9401-billing/" && doc.items.has("BR-1"),
+        "readDocs carries what a renderer needs: title, link, items",
+        doc && `${doc.title} | ${doc.link} | ${[...doc.items]}`);
+    t.ok([...("Refines BRD-9401/BR-1.".matchAll(model.refRe))].length === 1, "the model's refRe matches a citation");
+    t.ok(model.itemRe.test("- BR-1: Bill monthly."), "the model's itemRe matches an item");
+}
+
 // tools/docs-site is optional: a repo that publishes straight to Jira can delete the folder and owes
 // this suite nothing, so the portal's end-to-end smoke runs only when it is installed. It needs no
 // Astro install of its own, since chain.mjs only reads.
@@ -564,6 +597,10 @@ function docsSiteRendersTheChain(t) {
     const order = PIPELINE.map(s => r.output.indexOf(`${s}\t`));
     t.ok(order.every((at, i) => at >= 0 && (i === 0 || at > order[i - 1])),
         "docs-site reads the stages in pipeline order", r.output);
+    // The portal presents the model; it does not go looking for documents of its own. A directory
+    // read here is a second walk of docs/, and a second walk grew a second file-name rule last time.
+    const src = fs.readFileSync(entry, "utf8");
+    t.ok(!/readdirSync/.test(src), "the portal reads the model rather than walking docs/ itself", entry);
 }
 
 module.exports = [
@@ -581,6 +618,7 @@ module.exports = [
     docsCheckSourceAndAdrExemption,
     docsCheckMemoryRequirements,
     chainIsParsedInPipelineOrder,
+    oneModelForValidatorAndPortal,
     docsSiteRendersTheChain,
     sessionStartFollowsProjectDir,
     checkEditFollowsProjectDir,

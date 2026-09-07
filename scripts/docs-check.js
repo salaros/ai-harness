@@ -12,9 +12,13 @@
 // stands in for an upstream document only while the chain holds nothing earlier; an ADR may
 // always cite one, and is exempt from the backwards-only rule in both directions. MEMORY.md's
 // Requirements line follows the same reference rule, or says "none yet".
-// Prints one line per problem and exits 1 when there are any. The edit hook requires check();
-// readChain() is exported for anything else that needs the pipeline (the optional tools/docs-site
-// does), so the stage table is parsed in one place, not two.
+// Prints one line per problem and exits 1 when there are any. The edit hook requires check().
+// readDocs() is the model both this file and anything else that renders the chain read: the stages,
+// the documents, and the two expressions that recognise a citation and an item. It is exported
+// because the optional tools/docs-site portal renders what this validates, and a second walk of
+// docs/ there means two file-name rules, two citation expressions, and a document the validator
+// rejects while the portal happily renders it. readChain() is the table alone, for a caller that
+// wants the pipeline without reading a single document.
 // Both take the repo root as their first argument and resolve everything relative against it; an
 // absolute argument is used as it stands, which is how check-staged-docs.js points the docs, table
 // and memory file at a temp tree of staged blobs while sources still resolve in the checkout.
@@ -42,6 +46,19 @@ const tokensOf = text => text.split(/[\s,;]+/).filter(Boolean)
     .filter(Boolean);
 // "**Derived from:** x, y" -> ["x", "y"].
 const referenceTokens = line => tokensOf(line.replace(/^\**Derived from:?\**:?/i, ""));
+
+// The three expressions that say what the chain's markers look like. They are ASCII whatever
+// language the prose is (AGENTS.md, "Working here"), and they live here rather than at each reader
+// because a renderer that recognises one more file name than the validator renders a document
+// nothing checked.
+// A document's file name, which is what gives it its ID: docs/ears/0003-alerts.md is EARS-0003.
+const FILE_RE = /^(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
+// An item a later stage can refine, at the start of its line: `- BR-2: …`, `### D-1 …`, `| FR-3 |`.
+const ITEM_RE = /^(?:[-*]\s+|#{1,6}\s+|\*\*|\|\s*)?([A-Z]{1,5}-\d+)\b/;
+// A citation, anywhere: PRD-0002, or PRD-0002/FR-3 pointing at one item of it. Built from the
+// folders the table gives, so a stage nobody wrote is not a prefix.
+const citationRe = folders =>
+    new RegExp(`\\b(${folders.map(f => f.toUpperCase()).join("|") || "NONE"})-(\\d{4})(?:\\/([A-Z]{1,5}-\\d+))?\\b`, "g");
 
 // The chain itself, read from the AGENTS.md table: | Stage | Answers | Lives in | Skill |. Every
 // row in table order, so the caller sees the pipeline the way a reader of AGENTS.md does; `folder`
@@ -79,48 +96,64 @@ function readChain(root, agentsFile = "AGENTS.md") {
     return { stages, problems };
 }
 
-function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "MEMORY.md") {
+// Every document of the chain, keyed by ID, in stage order and then file order, with the stage
+// table it was read against and the expressions that recognise a citation and an item in it. What
+// check() validates and what the portal renders is this one model, so a document either takes part
+// in the chain in both or in neither.
+// `file` is the path as the caller wrote it, for a message a reader can act on; `path` is the same
+// file resolved against the root, for reading it. A file name the rule rejects is a problem here
+// rather than a document, so no reader has to decide what to do with one.
+function readDocs(root, docsDir = "docs", agentsFile = "AGENTS.md") {
     const at = p => path.resolve(root, p);
-    const problems = [];
-    const say = (file, msg) => problems.push(`${file}: ${msg}`);
+    const { stages, problems } = readChain(root, agentsFile);
+    const docStages = stages.filter(s => s.folder);
+    const docs = new Map();
 
-    // 1. The chain, from the AGENTS.md table
-    const fromTable = readChain(root, agentsFile);
-    problems.push(...fromTable.problems);
-    const chain = fromTable.stages.filter(s => s.folder).map(s => s.folder);   // folder names in stage order
-    const rank = Object.fromEntries(chain.map((s, i) => [s, i]));
-    const prefixes = chain.map(s => s.toUpperCase());
-    const refRe = new RegExp(`\\b(${prefixes.join("|") || "NONE"})-(\\d{4})(?:\\/([A-Z]{1,5}-\\d+))?\\b`, "g");
-    const docs = new Map();      // "EARS-0003" -> { file, stage, items:Set, text }
-
-    // 2. Collect documents: docs/<stage>/NNNN-<slug>.md -> <STAGE>-NNNN
-    for (const stage of chain) {
-        // The path as the caller wrote it, so a problem names the file the way the caller knows it;
-        // at() turns it into something to read.
-        const dir = path.join(docsDir, stage);
+    for (const s of docStages) {
+        const dir = path.join(docsDir, s.folder);
         if (!fs.existsSync(at(dir))) continue;
         const seen = new Map();
-        for (const name of fs.readdirSync(at(dir)).filter(n => n.endsWith(".md") && n !== "README.md")) {
+        for (const name of fs.readdirSync(at(dir)).filter(n => n.endsWith(".md") && n !== "README.md").sort()) {
             const file = path.join(dir, name).split(path.sep).join("/");
-            const m = name.match(/^(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/);
-            if (!m) { say(file, "file name must be NNNN-<kebab-slug>.md"); continue; }
-            const id = `${stage.toUpperCase()}-${m[1]}`;
-            if (seen.has(m[1])) say(file, `number ${m[1]} already used by ${seen.get(m[1])}`);
+            const m = name.match(FILE_RE);
+            if (!m) { problems.push(`${file}: file name must be NNNN-<kebab-slug>.md`); continue; }
+            const id = `${s.folder.toUpperCase()}-${m[1]}`;
+            if (seen.has(m[1])) problems.push(`${file}: number ${m[1]} already used by ${seen.get(m[1])}`);
             seen.set(m[1], name);
             const text = fs.readFileSync(at(file), "utf8");
+            const lines = text.split(/\r?\n/);
+            const h1 = lines.find(l => l.startsWith("# ")) || null;
+            const slug = name.replace(/\.md$/, "");
             const items = new Set();
-            for (const line of text.split(/\r?\n/)) {
-                const im = line.match(/^(?:[-*]\s+|#{1,6}\s+|\*\*|\|\s*)?([A-Z]{1,5}-\d+)\b/);
+            for (const line of lines) {
+                const im = line.match(ITEM_RE);
                 if (im) items.add(im[1]);
             }
-            docs.set(id, { file, stage, items, text });
+            docs.set(id, {
+                id, stage: s.stage, folder: s.folder, number: Number(m[1]),
+                file, path: at(file), entryId: `${s.folder}/${slug}`, link: `/${s.folder}/${slug}/`,
+                title: h1 ? h1.replace(/^#\s+/, "").trim() : id,
+                h1, text, lines, items,
+            });
         }
     }
 
-    // 3. Check each document
+    return { stages, docStages, docs, problems, refRe: citationRe(docStages.map(s => s.folder)), itemRe: ITEM_RE };
+}
+
+function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "MEMORY.md") {
+    const at = p => path.resolve(root, p);
+    const say = (file, msg) => problems.push(`${file}: ${msg}`);
+
+    // 1. The chain and its documents
+    const { docStages, docs, problems, refRe } = readDocs(root, docsDir, agentsFile);
+    const chain = docStages.map(s => s.folder);   // folder names in stage order
+    const rank = Object.fromEntries(chain.map((s, i) => [s, i]));
+    const prefixes = chain.map(s => s.toUpperCase());
+
+    // 2. Check each document
     for (const [id, d] of docs) {
-        const lines = d.text.split(/\r?\n/);
-        const h1 = lines.find(l => l.startsWith("# "));
+        const { lines, h1 } = d;
         if (!h1) say(d.file, "no level-1 heading");
         else if (!h1.startsWith(`# ${id}:`)) say(d.file, `first heading must start with "# ${id}:" (found "${h1.slice(0, 40)}")`);
 
@@ -135,10 +168,10 @@ function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "M
             if (!cites.length && !sources.length) {
                 const why = brokenPath ? `; ${brokenPath} does not exist` : "";
                 say(d.file, `"Derived from:" names no reference: cite an upstream document, or a source (${SOURCE_HELP})${why}`);
-            } else if (!cites.length && d.stage !== "adr") {
+            } else if (!cites.length && d.folder !== "adr") {
                 // A source stands in for an upstream document only while there is nothing earlier
                 // to cite. An ADR is cross-cutting, so this never applies to it.
-                const earlier = [...docs].find(([, o]) => rank[o.stage] < rank[d.stage]);
+                const earlier = [...docs].find(([, o]) => rank[o.folder] < rank[d.folder]);
                 if (earlier) say(d.file, `"Derived from:" names only a source, but ${earlier[0]} exists; cite the upstream document instead`);
             }
         }
@@ -150,8 +183,8 @@ function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "M
             if (!target) { say(d.file, `cites ${ref} but ${docId} does not exist`); continue; }
             // An ADR records a decision forced at any point, so it cites, and is cited, in
             // either direction; every other pair points backwards along the chain.
-            const crossCutting = d.stage === "adr" || target.stage === "adr";
-            if (!crossCutting && rank[target.stage] > rank[d.stage]) say(d.file, `cites ${ref}, which is later in the chain (${target.stage} after ${d.stage})`);
+            const crossCutting = d.folder === "adr" || target.folder === "adr";
+            if (!crossCutting && rank[target.folder] > rank[d.folder]) say(d.file, `cites ${ref}, which is later in the chain (${target.folder} after ${d.folder})`);
             if (item && !target.items.has(item)) say(d.file, `cites ${ref} but ${target.file} has no item ${item}`);
         }
     }
@@ -189,7 +222,7 @@ function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "M
     return { problems, summary: `docs-check: ${chain.length} stage(s) in ${agentsFile}, ${docs.size} document(s) under ${docsDir}/, no problems` };
 }
 
-module.exports = { check, readChain };
+module.exports = { check, readChain, readDocs };
 
 if (require.main === module) {
     const { problems, summary } = check(lib.root(), ...process.argv.slice(2));

@@ -2,9 +2,11 @@
 // Reads the documentation chain straight out of docs/. Nothing is copied or generated on disk: the
 // loader in src/content.config.mjs hands what this returns to Starlight in memory, and
 // astro.config.mjs builds the sidebar from the same call.
-// The stage table in AGENTS.md is parsed by readChain() in scripts/docs-check.js, the one parser of
-// that table, so stage order and folders are never restated here. It is given REPO and leaves the
-// working directory alone, so Astro's own root stays where Astro put it.
+// The chain itself comes from readDocs() in scripts/docs-check.js: the stage table, the documents,
+// and the expressions that recognise a citation and an item. The portal renders what the validator
+// checks, down to the file-name rule, so a document either takes part in both or in neither. What
+// is left here is presentation: markdown for Starlight, the overview page, the sidebar. readDocs()
+// is given REPO and leaves the working directory alone, so Astro's own root stays where Astro put it.
 // Run it directly for a summary of what the portal will render:
 //   node tools/docs-site/chain.mjs
 import fs from "node:fs";
@@ -13,7 +15,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
-const { readChain } = require("../../scripts/docs-check.js");
+const { readDocs } = require("../../scripts/docs-check.js");
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const DOCS = path.join(REPO, "docs");
@@ -27,39 +29,12 @@ function memoryFact(name) {
     return line ? line.replace(re, "").trim() : "";
 }
 
-// Every document in the chain: docs/<stage>/NNNN-<slug>.md, in stage order and then file order.
+// The chain as the portal renders it: the model, with the documents as an array in stage order and
+// then file order, and the problems as notes for the loader to log. A document the validator refuses
+// is one of those notes rather than a page, so the portal never renders what nothing checked.
 export function collect() {
-    const { stages, problems } = readChain(REPO);
-    const notes = [...problems];
-    const docStages = stages.filter(s => s.folder);
-    const docs = [];
-    for (const s of docStages) {
-        const dir = path.join(DOCS, s.folder);
-        if (!fs.existsSync(dir)) continue;
-        for (const file of fs.readdirSync(dir).filter(n => n.endsWith(".md") && n !== "README.md").sort()) {
-            const m = file.match(/^(\d{4})-.+\.md$/);
-            if (!m) { notes.push(`skipped docs/${s.folder}/${file}: not NNNN-<slug>.md`); continue; }
-            const name = file.replace(/\.md$/, "");
-            const text = fs.readFileSync(path.join(dir, file), "utf8");
-            const lines = text.split(/\r?\n/);
-            const h1 = lines.find(l => l.startsWith("# "));
-            docs.push({
-                id: `${s.folder.toUpperCase()}-${m[1]}`,
-                entryId: `${s.folder}/${name}`,
-                stage: s.stage, folder: s.folder, number: Number(m[1]), lines,
-                title: h1 ? h1.replace(/^#\s+/, "").trim() : `${s.folder.toUpperCase()}-${m[1]}`,
-                link: `/${s.folder}/${name}/`,
-                file: path.join(dir, file),
-            });
-        }
-    }
-    const byId = new Map(docs.map(d => [d.id, d]));
-    const prefixes = docStages.map(s => s.folder.toUpperCase());
-    return {
-        stages, docStages, docs, byId, notes,
-        refRe: new RegExp(`\\b(${prefixes.join("|") || "NONE"})-(\\d{4})(?:\\/([A-Z]{1,5}-\\d+))?\\b`, "g"),
-        itemRe: /^(?:[-*]\s+|#{1,6}\s+|\*\*|\|\s*)?([A-Z]{1,5}-\d+)\b/,
-    };
+    const { stages, docStages, docs, problems, refRe, itemRe } = readDocs(REPO);
+    return { stages, docStages, docs: [...docs.values()], byId: docs, notes: problems, refRe, itemRe };
 }
 
 // One document as markdown for Starlight: the H1 goes (Starlight renders the title itself), every
