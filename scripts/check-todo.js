@@ -89,7 +89,7 @@ function check(text, root) {
 module.exports = { check, TAGS };
 
 if (require.main === module) {
-    const file = process.argv.slice(2).find(a => !a.startsWith("--"));
+    const file = lib.args().find(a => !a.startsWith("--"));
     // No ledger is the honest state of a repo with nothing outstanding, and the same answer as an
     // empty one. Throwing ENOENT at a path that is simply not there says "broken" about "nothing to
     // report".

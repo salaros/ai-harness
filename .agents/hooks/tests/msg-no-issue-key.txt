@@ -1,4 +1,0 @@
-feat(hooks): warn when a commit cites no issue key
-
-The key is encouragement, not a gate: a change can be real before anyone
-has raised a ticket for it.

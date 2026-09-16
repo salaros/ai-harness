@@ -35,11 +35,6 @@ const GENERATED = /^(?:Merge |Revert "|fixup! |squash! |amend! )/;
 // `Issue tracker: none` into MEMORY.md for a project that plans in docs/, and nagging that repo for
 // a key on every commit would be asking for something it has already said it does not have.
 function noTracker(root) {
-    // HOOK_TEST is the suite running a fixture against this script. What the host project decided
-    // about trackers has nothing to do with whether a message parses, and reading it here fails the
-    // two warning cases in every repo that records "Issue tracker: none" -- a false alarm the
-    // installer's self check then reports as a broken install.
-    if (process.env.HOOK_TEST) return false;
     try {
         const m = fs.readFileSync(path.join(root, "MEMORY.md"), "utf8").match(/^\s*-\s*\*\*Issue tracker:\*\*\s*(.*)$/mi);
         return !!m && /^none\b/i.test(m[1].trim());
@@ -137,7 +132,7 @@ module.exports = { check, TYPES, MAX, MIN_WORDS, MIN_BODY };
 
 if (require.main === module) {
     // Read the message before changing directory: the path given may be relative to where Git ran.
-    const file = process.argv.slice(2).find(a => !a.startsWith("--"));
+    const file = lib.args().find(a => !a.startsWith("--"));
     const raw = file ? fs.readFileSync(file, "utf8") : lib.stdin();
     const root = lib.chdirRoot();
 

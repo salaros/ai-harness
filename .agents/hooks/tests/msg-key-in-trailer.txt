@@ -1,5 +1,0 @@
-feat(hooks): accept an issue key from a trailer line
-
-The trailer is where Git convention puts a reference.
-
-Refs: AB-42

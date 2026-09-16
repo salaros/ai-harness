@@ -3,6 +3,8 @@
 // output" shape: each function below gets a `t` (t.ok(condition, title, detail) for a verdict,
 // t.skip(why) for a check this repo cannot run) and the env test.js runs fixtures with (HOOK_TEST
 // set, the harness project-dir variables cleared).
+// Harness invariants that must hold in a target too live in scripts/check-harness.js, which this file
+// runs against the checkout; a decision table for a check(input, root) function goes in tables.js.
 // Run by test.js after the fixture table. Add a new invariant as a new function in the exported
 // array, not a fourth inline block in test.js. A function defined here and left out of that array
 // never runs and says nothing about it, so everyCheckIsRegistered below catches the omission.
@@ -13,81 +15,13 @@ const os = require("os");
 const path = require("path");
 const lib = require("../lib");
 const docsCheck = require("../../../scripts/docs-check");
-const commitMsg = require("../../../scripts/check-commit-msg");
-const todo = require("../../../scripts/check-todo");
+const harness = require("../../../scripts/check-harness");
 
 // scripts/update-harness.js is the upstream's own and is never installed, so a project that borrowed
 // this suite has no installer to test. Required lazily for that reason: at the top it would throw
 // before the first check ran, and take the whole suite with it.
 const INSTALLER = path.join(__dirname, "..", "..", "..", "scripts", "update-harness.js");
 const installer = () => fs.existsSync(INSTALLER) ? require(INSTALLER) : null;
-
-// A harness installed by scripts/update-harness.js has its files on disk and nothing in the index
-// until the project makes its first commit. Both mode checks below assert what the index records, so
-// that state is nothing to assert rather than a failure: saying the hooks are not executable when
-// they have simply never been committed sends the reader looking for a bug that is not there.
-function untracked(dir) { return fs.existsSync(dir); }
-
-// Git skips a hook that is not executable, and says nothing about it. On Windows core.fileMode is
-// normally false, so chmod is a no-op and a hook added there is recorded 100644: it runs for its
-// author and silently never runs on Linux or macOS. Only `git update-index --chmod=+x <file>` fixes
-// the mode Git records, so the mode in the index is what this asserts.
-// .claude/skills is one symlink to .agents/skills, so a skill has one copy on disk. A harness that
-// wants a link per skill gets .claude/skills/<name> instead, and both shapes are mode 120000.
-// `npx skills add` recreates per-skill links absolute, and `node scripts/skills.js relink` rewrites
-// them relative -- but a skill staged before the relink goes into the index as the directory it was
-// at the time, one 100644 blob per file. That commits a second copy of the skill that no longer
-// tracks the first, and leaves the worktree permanently dirty against it. Mode 120000 is the
-// symlink, so the mode in the index is what this asserts.
-function claudeSkillLinksAreSymlinks(t) {
-    const r = lib.run("git", ["ls-files", "-s", "--", ".claude/skills"]);
-    if (r.status !== 0) { t.skip(".claude/skills mode check: not a git checkout"); return; }
-    const rows = r.output.split(/\r?\n/).filter(Boolean).map(l => l.split(/\s+/));
-    if (!rows.length && untracked(".claude/skills")) { t.skip(".claude/skills mode check: present on disk, not committed yet"); return; }
-    t.ok(rows.length > 0, "git tracks entries under .claude/skills/", r.output);
-    const notLinks = rows.filter(([mode]) => mode !== "120000").map(row => row[row.length - 1]);
-    t.ok(!notLinks.length,
-        "every .claude/skills/ entry is committed as a symlink (node scripts/skills.js relink, then stage)",
-        notLinks.slice(0, 10).join(", "));
-}
-
-// A harness surfaces the skills it can see, so a skill with no link is a skill that does not exist
-// as far as the agent is concerned. One link to the whole folder shows every skill, a local one
-// written by hand included, and the only thing left to check is where it points. A folder of
-// per-skill links shows what someone linked and nothing else -- `npx skills` links what it
-// vendored -- so there the count is the check. Reading a name through the whole-folder link would
-// compare .agents/skills with itself and pass whatever the state.
-function everyInstalledSkillIsLinked(t) {
-    const skills = ".agents/skills", links = ".claude/skills";
-    if (!fs.existsSync(skills) || !fs.existsSync(links)) { t.skip("skill link check: no skills directories"); return; }
-    const installed = fs.readdirSync(skills).filter(n => fs.existsSync(path.join(skills, n, "SKILL.md")));
-    t.ok(installed.length > 0, "skills are installed under .agents/skills/");
-    if (fs.lstatSync(links).isSymbolicLink()) {
-        const target = fs.readlinkSync(links);
-        t.ok(path.resolve(path.dirname(links), target) === path.resolve(skills),
-            "the .claude/skills link points at .agents/skills", target);
-        return;
-    }
-    const unlinked = installed.filter(n => { try { fs.lstatSync(path.join(links, n)); return false; } catch { return true; } });
-    t.ok(!unlinked.length,
-        "every installed skill has a .claude/skills/ link (node scripts/skills.js relink)",
-        unlinked.slice(0, 10).join(", "));
-}
-
-// .claude/skills resolves to .agents/skills, so anything a tool writes into the first lands in the
-// second. `npx skills` links what it vendors into every harness folder it finds, and a link it puts
-// there would appear beside the skills as a sibling pointing at one of them. Nothing else in the
-// harness ever creates one, so an entry here that is not a directory is that, and it is worth
-// catching: the roster reads this folder, and a skill that is really a link to another skill counts
-// twice and vendors as neither.
-function skillsFolderHoldsSkillsNotLinks(t) {
-    const skills = ".agents/skills";
-    if (!fs.existsSync(skills)) { t.skip("skills folder check: no skills directory"); return; }
-    const links = fs.readdirSync(skills).filter(n => fs.lstatSync(path.join(skills, n)).isSymbolicLink());
-    t.ok(!links.length,
-        "every entry under .agents/skills/ is a skill, not a link to one",
-        links.slice(0, 10).join(", "));
-}
 
 // scripts/harness-files.tsv decides what an install does with each path, and a path no row matches
 // becomes `merge` (scripts/update-harness.js). That default is right -- a file the upstream ships
@@ -110,52 +44,6 @@ function everyTrackedPathIsClassified(t) {
     t.ok(!loose.length,
         "every tracked path matches a row in scripts/harness-files.tsv",
         loose.slice(0, 10).join(", "));
-}
-
-// Vendoring a skill copies someone else's work into this repo, and MIT and Apache-2.0 both ask that
-// the copyright and permission notice travel with the copy. `npx skills` carries only what sits
-// inside the skill folder, so an upstream keeping its licence at the repo root sends nothing, and
-// the notice has to be written here. Nothing about adding a skill prompts anyone to do that, which
-// is what this check is for: THIRD-PARTY-NOTICES.md is generated, so a new upstream with no row in
-// scripts/skill-licences.tsv fails the suite rather than shipping unattributed.
-function vendoredSkillsAreAttributed(t) {
-    const r = lib.node(["scripts/skills.js", "notices", "--check"]);
-    t.ok(r.status === 0,
-        "THIRD-PARTY-NOTICES.md covers every vendored skill (node scripts/skills.js notices)",
-        r.output);
-}
-
-// .agents/routing.md holds the rows more than one agent routes through, in a section per audience:
-// each section names its agents, each agent names its sections, and the two must agree. Either half
-// is a silent failure otherwise. A section nobody names is dead rows; an agent naming a section that
-// does not exist routes nothing, and neither shows up as a broken link or a bad exit code anywhere
-// else. `scripts/skills.js list` reads the same pairing to credit a moved row to the agents that
-// still route it, so this also pins that attribution.
-// The file lives above .agents/agents/ on purpose: .claude/agents is a symlink to that folder, and a
-// harness reads everything in there as an agent definition.
-function agentRoutingSectionsAgreeOnTheirAudience(t) {
-    const dir = ".agents/agents", shared = "routing.md";
-    const file = path.join(".agents", shared);
-    if (!fs.existsSync(file)) { t.skip("routing section check: no routing.md"); return; }
-    const bodies = {};
-    for (const f of fs.readdirSync(dir).filter(n => n.endsWith(".md"))) {
-        const text = fs.readFileSync(path.join(dir, f), "utf8");
-        const name = (text.match(/^name:\s*(.+)$/m) || [])[1];
-        if (name && text.includes(shared)) bodies[name.trim()] = text;
-    }
-    const sections = fs.readFileSync(file, "utf8").split(/^## /m).slice(1);
-    t.ok(sections.length > 0 && Object.keys(bodies).length > 0,
-        `${shared} has sections and agents point at it`, `${sections.length} section(s), ${Object.keys(bodies).length} agent(s)`);
-    for (const s of sections) {
-        const title = s.split(/\r?\n/)[0].trim();
-        const line = s.match(/^Read by .*$/m);
-        const stated = line ? [...line[0].matchAll(/`([a-z-]+)`/g)].map(m => m[1]).sort() : [];
-        const actual = Object.keys(bodies).filter(n => bodies[n].includes(title)).sort();
-        t.ok(stated.length > 0, `"${title}" says which agents read it, on a "Read by" line`);
-        t.ok(stated.join(",") === actual.join(","),
-            `"${title}" is read by exactly the agents it names`,
-            `names ${stated.join(", ") || "(none)"}; named by ${actual.join(", ") || "(none)"}`);
-    }
 }
 
 // The project-init gate. Exercised against temp directories rather than this checkout, whose own
@@ -192,26 +80,6 @@ function initialisationGateAnswersEveryState(t) {
         write(".skip-project-init", "");
         t.ok(init.check(dir).ok, "the marker file passes a clone with no MEMORY.md at all", init.check(dir).reason);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
-}
-
-function gitHooksAreExecutable(t) {
-    const r = lib.run("git", ["ls-files", "-s", "--", ".githooks"]);
-    if (r.status !== 0) { t.skip(".githooks mode check: not a git checkout"); return; }
-    const rows = r.output.split(/\r?\n/).filter(Boolean).map(l => l.split(/\s+/));
-    if (!rows.length && untracked(".githooks")) { t.skip(".githooks mode check: present on disk, not committed yet"); return; }
-    t.ok(rows.length > 0, "git tracks files under .githooks/", r.output);
-    const notExecutable = rows.filter(([mode]) => mode !== "100755").map(row => row[row.length - 1]);
-    t.ok(!notExecutable.length,
-        "every .githooks/ hook is committed executable (git update-index --chmod=+x <file>)",
-        notExecutable.join(", "));
-}
-
-// The lock file and .agents/skills must agree. This is breakage, not bookkeeping: a skill recorded
-// in the lock but absent from disk means a damaged or partial checkout, and `skills.js install`
-// fixes it. Nothing here requires a project to route, document or tabulate the skills it installs.
-function noSkillIsMissingFromDisk(t) {
-    const r = lib.node(["scripts/skills.js", "missing"]);
-    t.ok(r.status === 0, "node scripts/skills.js missing", r.output);
 }
 
 // docs-check's citation logic, exercised directly against a throwaway doc tree (real stage folder
@@ -372,67 +240,6 @@ function checkEditFollowsProjectDir(t, env) {
     fs.rmSync(other, { recursive: true, force: true });
     t.ok(r.status === 2 && r.output.includes(`# BRD-0001:`),
         "check-edit.js checks the chain in CLAUDE_PROJECT_DIR, not in its own checkout", r.output);
-}
-
-// What an issue reference looks like is the host project's decision, read from its own
-// docs/agents/issue-tracker.md and MEMORY.md. cases.tsv drives the script as a command, which can
-// only ever see this repo's files, so every fixture gets the same default and the three branches
-// below have no fixture at all -- the reason check() takes a root rather than reading the cwd.
-// Each case is a valid message, so the only thing that varies is the warning.
-function commitMsgReadsTheProjectsTracker(t) {
-    const MSG = "feat(billing): add a monthly invoice run\n\nInvoices were cut by hand every month.\n";
-    const project = (files, raw = MSG) => {
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "harness-tracker-"));
-        for (const [rel, text] of Object.entries(files)) {
-            fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
-            fs.writeFileSync(path.join(dir, rel), text);
-        }
-        const r = commitMsg.check(raw, dir);
-        fs.rmSync(dir, { recursive: true, force: true });
-        return r;
-    };
-    const TRACKER = "docs/agents/issue-tracker.md";
-
-    const dflt = project({});
-    t.ok(!dflt.problems.length && dflt.warnings.length === 1 && dflt.warnings[0].includes("PROJ-123"),
-        "check-commit-msg: an unconfigured project is warned with the Jira-shaped example", JSON.stringify(dflt));
-
-    const keyed = project({ [TRACKER]: "**Project key:** `AB`\n" });
-    t.ok(keyed.warnings.length === 1 && keyed.warnings[0].includes("AB-123"),
-        "check-commit-msg: the project's own key becomes the example in the warning", JSON.stringify(keyed));
-
-    const cited = project({ [TRACKER]: "**Project key:** `AB`\n" }, `${MSG}\nRefs: AB-42\n`);
-    t.ok(!cited.warnings.length, "check-commit-msg: a key matching the project's own is a reference", JSON.stringify(cited));
-
-    // GitHub Issues cite #42, which is nothing like AB-42, so a project says so with a regular
-    // expression and is warned about the right thing.
-    const github = project({ [TRACKER]: "**Key format:** `#\\d+`\n" });
-    t.ok(github.warnings.length === 1 && github.warnings[0].includes("#\\d+") && !github.warnings[0].includes("PROJ-123"),
-        "check-commit-msg: a configured key format replaces the example", JSON.stringify(github));
-    const hashed = project({ [TRACKER]: "**Key format:** `#\\d+`\n" }, MSG.replace("run", "run (#42)"));
-    t.ok(!hashed.warnings.length, "check-commit-msg: a reference matching the configured format counts", JSON.stringify(hashed));
-
-    // A project that plans in docs/ has already answered the question, so asking again on every
-    // commit is asking for something it said it does not have.
-    const none = project({ "MEMORY.md": "- **Issue tracker:** none\n" });
-    t.ok(!none.warnings.length, "check-commit-msg: a project recording no tracker is never warned", JSON.stringify(none));
-}
-
-// A TODO source that looks like a path means a path in the repo the ledger belongs to. As a command
-// that is always this checkout, so a fixture can only cite a file the template happens to ship;
-// check(text, root) is what lets the suite prove the resolution rather than assume it.
-function todoSourcesResolveAgainstTheGivenRoot(t) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "harness-todo-"));
-    fs.mkdirSync(path.join(dir, "src"), { recursive: true });
-    fs.writeFileSync(path.join(dir, "src", "billing.cs"), "// there\n");
-    const ledger = src => todo.check(`# TODO\n\n- [ ] Confirm the rounding rule #question (${src})\n`, dir);
-
-    const here = ledger("src/billing.cs:12");
-    t.ok(!here.problems.length && here.entries === 1,
-        "check-todo: a path:line source resolves in the root it was given", here.problems.join("\n"));
-    const elsewhere = ledger("scripts/lib.js");
-    t.ok(elsewhere.problems.some(p => p.includes("is not a source")),
-        "check-todo: a path outside that root is not a source, however real it is here", elsewhere.problems.join("\n"));
 }
 
 // scripts/harness-files.tsv decides what an install does to each path, and policyFor reads it.
@@ -644,55 +451,62 @@ function oneReaderForTheStacksTable(t) {
     t.ok(!others.length, `only ${reader} reads ${table} itself`, others.join(", "));
 }
 
-// A Git hook is a wrapper and nothing else: find the repo, hand over to scripts/githook.js. Every
-// decision it used to make -- reading the index, computing the merge diff, working out whether Git
-// had run it at all, chaining checks with `||` -- sat in a file the suite could not reach, and one
-// of those decisions was wrong for as long as nobody could test it. The shape is the invariant, so
-// it is asserted rather than trusted: strip the shebang and the comments, and two lines are left.
-function noGitHookDecidesAnything(t) {
-    if (!fs.existsSync(".githooks")) { t.skip("git hook shape: no .githooks folder"); return; }
-    const hooks = fs.readdirSync(".githooks");
-    t.ok(hooks.length > 0, "there are hooks in .githooks/");
-    for (const name of hooks) {
-        const body = fs.readFileSync(path.join(".githooks", name), "utf8")
-            .split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#"));
-        const want = [
-            "root=$(git rev-parse --show-toplevel) || exit 1",
-            `exec node "$root/scripts/githook.js" ${name} "$@"`,
-        ];
-        t.ok(body.length === want.length && body.every((l, i) => l === want[i]),
-            `.githooks/${name} decides nothing; it calls githook.js ${name}`, body.join("\n"));
-    }
+// The harness invariants are scripts/check-harness.js's, because they travel: a target runs them after
+// an edit and the installer runs them against what it wrote. The upstream holds itself to the same
+// ones, with the suite's own t, so a regression here fails the suite the way it fails an install.
+function harnessInvariantsHoldHere(t) {
+    for (const invariant of harness.INVARIANTS) invariant(t, lib.checkout);
+}
+
+// check-harness asserts the shape of the hooks githook.js handles and leaves a target's own hooks
+// alone. The upstream ships no hook of its own, so every file in its .githooks/ is one githook.js must
+// handle: a hook added there without a handler would reach every target and do nothing.
+function everyUpstreamHookIsHandled(t) {
     const known = Object.keys(require("../../../scripts/githook.js").HOOKS);
-    const unhandled = hooks.filter(n => !known.includes(n));
+    const unhandled = fs.readdirSync(path.join(lib.checkout, ".githooks")).filter(n => !known.includes(n));
     t.ok(!unhandled.length, "githook.js handles every hook in .githooks/", unhandled.join(", "));
+}
+
+// check-edit.js runs the invariants after an edit to a path they read, in any repo, and that path
+// list is check-harness's own. Points CLAUDE_PROJECT_DIR at a directory whose routing file names an
+// agent nobody has, edits it, and requires the hook to object.
+function checkEditRunsTheInvariantsOnTheirPaths(t, env) {
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), "harness-edit-invariants-"));
+    const routing = path.join(other, ".agents", "routing.md");
+    fs.mkdirSync(path.join(other, ".agents", "agents"), { recursive: true });
+    fs.writeFileSync(routing, "# Routing\n\n## Shared\n\nRead by `ghost`.\n");
+    fs.writeFileSync(path.join(other, ".agents", "agents", "engineer.md"), "---\nname: engineer\n---\nSee routing.md, Shared.\n");
+    const r = lib.node([".agents/hooks/check-edit.js"], {
+        input: JSON.stringify({ tool_input: { file_path: routing } }),
+        env: { ...env, CLAUDE_PROJECT_DIR: other },
+    });
+    fs.rmSync(other, { recursive: true, force: true });
+    t.ok(harness.reads(".agents/routing.md"), "check-harness reads .agents/routing.md");
+    t.ok(r.status === 2 && r.output.includes("is read by exactly the agents it names"),
+        "check-edit.js runs the harness invariants after an edit to a path they read", r.output);
 }
 
 // A check runs because it is in the array below, and nothing but this notices when one is not: an
 // unregistered function raises the pass count of the suite by zero and the failure count by zero,
 // so the tally reads exactly as it did before it was written. Caught by reading this file rather
 // than by any cleverness at run time, because a function nobody calls leaves no trace to inspect.
+// tables.js holds the in-process decision tables and registers them the same way, so both files are read.
 function everyCheckIsRegistered(t) {
-    const defined = [...fs.readFileSync(__filename, "utf8").matchAll(/^function (\w+)\(t\b/gm)].map(m => m[1]);
-    const registered = new Set(module.exports.map(f => f.name));
+    const files = [__filename, path.join(__dirname, "tables.js")];
+    const defined = files.flatMap(file => [...fs.readFileSync(file, "utf8").matchAll(/^function (\w+)\(t\b/gm)].map(m => m[1]));
+    const registered = new Set([...module.exports, ...require("./tables")].map(fn => fn.name));
     const missing = defined.filter(name => !registered.has(name));
     t.ok(defined.length > 0, "this file defines checks", String(defined.length));
-    t.ok(!missing.length, "every check defined here is in the exported array", missing.join(", "));
+    t.ok(!missing.length, "every check defined in self-checks.js and tables.js is in its exported array", missing.join(", "));
 }
 
 module.exports = [
     everyCheckIsRegistered,
-    gitHooksAreExecutable,
-    noGitHookDecidesAnything,
+    harnessInvariantsHoldHere,
+    everyUpstreamHookIsHandled,
+    everyTrackedPathIsClassified,
     oneReaderForTheStacksTable,
     initialisationGateAnswersEveryState,
-    claudeSkillLinksAreSymlinks,
-    everyInstalledSkillIsLinked,
-    skillsFolderHoldsSkillsNotLinks,
-    everyTrackedPathIsClassified,
-    agentRoutingSectionsAgreeOnTheirAudience,
-    noSkillIsMissingFromDisk,
-    vendoredSkillsAreAttributed,
     docsCheckCitationEdgeCases,
     docsCheckDerivedFromShapes,
     docsCheckSourceAndAdrExemption,
@@ -702,8 +516,7 @@ module.exports = [
     docsSiteRendersTheChain,
     sessionStartFollowsProjectDir,
     checkEditFollowsProjectDir,
-    commitMsgReadsTheProjectsTracker,
-    todoSourcesResolveAgainstTheGivenRoot,
+    checkEditRunsTheInvariantsOnTheirPaths,
     manifestPoliciesAreReadInOrder,
     installDecisionCoversEveryOutcome,
 ];

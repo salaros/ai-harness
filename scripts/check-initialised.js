@@ -71,7 +71,7 @@ module.exports = { check, explain, MARKER, FACTS };
 
 if (require.main === module) {
     lib.chdirRoot();
-    const action = process.argv[2] === "push" ? "push" : "commit";
+    const action = lib.args()[0] === "push" ? "push" : "commit";
     const r = check();
     if (r.ok) { console.log(`project: ${r.reason}`); process.exit(0); }
     explain(action, r);

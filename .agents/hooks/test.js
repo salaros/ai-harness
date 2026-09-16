@@ -3,45 +3,45 @@
 // Runs the harness suite. Every line of tests/cases.tsv is six tab-separated columns:
 //   <script and args> <fixture> <expected exit> <setup> <expected output> <note>
 // The script is relative to the repo root and run with node; the fixture is piped to it as stdin
-// with __ROOT__ replaced by this checkout; setup is "-" or "plant <path> <first line>", a file
-// that exists only while that case runs, and whose case is skipped where the path already exists;
-// or "absent <path>", a case skipped where that path exists; expected output is "-" or a substring that the combined
-// stdout and stderr must contain. Afterward runs tests/self-checks.js, for invariants that don't
-// fit that shape (add a new one there, not as a block below).
+// with __ROOT__ replaced by the root the case runs against; setup is "-", "plant <path> <first
+// line>" or "absent <path>"; expected output is "-" or a substring that the combined stdout and
+// stderr must contain. Afterward runs tests/self-checks.js and tests/tables.js, for checks that
+// don't fit that shape (add a new one there, not as a block below).
+// A case with no setup runs against this checkout. A case with one runs against a temp root instead,
+// seeded with the two files the scripts read from any root (AGENTS.md for the chain table,
+// scripts/stacks.tsv for the stacks) plus whatever it plants, and removed afterwards: a plant written
+// into this checkout would, in an installed repo, overwrite the project's own TODO.md or lock file.
+// A hook finds that root through CLAUDE_PROJECT_DIR, a script under scripts/ through --root.
 // A self check is handed `t`, which has two methods: t.ok(condition, title, detail) for a verdict,
 // and t.skip(why) for a check this repo cannot run -- an optional folder it did not install, a
 // tarball that is not a git checkout. Prints one FAIL line per mismatch and one SKIP line per
 // check that stood down, then the tally, and exits 1 if anything failed.
 // Usage: node .agents/hooks/test.js
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const lib = require("./lib");
+const scriptsLib = require("../../scripts/lib");
 const selfChecks = require("./tests/self-checks");
+const tables = require("./tests/tables");
 
 const root = lib.checkout;
 process.chdir(root);
 const env = { ...process.env, HOOK_TEST: "1" };
 for (const v of lib.ROOT_ENV_VARS) delete env[v];
-const rootForFixtures = root.split(path.sep).join("/");
+const slashes = p => p.split(path.sep).join("/");
 
-// A plant goes into the tree this suite runs in, which in an installed repo is the project's own:
-// the installer seeds TODO.md, and a Node project has a package-lock.json. A path that already
-// exists is never overwritten, because cleanup would then delete the project's file; the case
-// stands down with a SKIP line instead. Only the folders the plant created are removed afterwards.
-let planted = null;
-const plant = (file, ...firstLine) => {
-    if (fs.existsSync(file)) return false;
-    const madeDir = fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, firstLine.join(" ") + "\n");
-    planted = { file, madeDir };
-    return true;
+const SEED = ["AGENTS.md", "scripts/stacks.tsv"];
+let temp = null;
+const tempRoot = () => {
+    temp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-case-"));
+    for (const file of SEED) {
+        fs.mkdirSync(path.dirname(path.join(temp, file)), { recursive: true });
+        fs.copyFileSync(file, path.join(temp, file));
+    }
+    return temp;
 };
-const cleanup = () => {
-    if (!planted) return;
-    try { fs.unlinkSync(planted.file); } catch { }
-    if (planted.madeDir) try { fs.rmSync(planted.madeDir, { recursive: true }); } catch { }
-    planted = null;
-};
+const cleanup = () => { if (temp) fs.rmSync(temp, { recursive: true, force: true }); temp = null; };
 process.on("exit", cleanup);
 
 let pass = 0, fail = 0;
@@ -56,23 +56,33 @@ const t = {
 };
 
 for (const [script, fixture, expect, setup, want, note] of lib.readTsv(".agents/hooks/tests/cases.tsv")) {
-    if (setup.startsWith("plant ")) {
-        const [file, ...firstLine] = setup.split(" ").slice(1);
-        if (!plant(file, ...firstLine)) { skipped.push(`${script} < ${fixture}: ${file} exists here, and a case never overwrites it (${note})`); continue; }
+    const args = script.split(" ");
+    let caseRoot = root, caseEnv = env;
+    if (setup !== "-") {
+        caseRoot = tempRoot();
+        const [kind, file, ...firstLine] = setup.split(" ");
+        if (kind === "plant") {
+            fs.mkdirSync(path.dirname(path.join(caseRoot, file)), { recursive: true });
+            fs.writeFileSync(path.join(caseRoot, file), firstLine.join(" ") + "\n");
+        } else if (kind === "absent") {
+            fs.rmSync(path.join(caseRoot, file), { force: true });
+        } else {
+            failed(`${script} < ${fixture}: unknown setup "${setup}" (${note})`);
+            cleanup();
+            continue;
+        }
+        if (args[0].startsWith("scripts/")) args.push(`${scriptsLib.ROOT_FLAG}${caseRoot}`);
+        else caseEnv = { ...env, CLAUDE_PROJECT_DIR: caseRoot };
     }
-    if (setup.startsWith("absent ")) {
-        const file = setup.slice("absent ".length);
-        if (fs.existsSync(file)) { skipped.push(`${script} < ${fixture}: ${file} exists here, and this case needs it absent (${note})`); continue; }
-    }
-    const input = fs.readFileSync(path.join(".agents/hooks/tests", fixture), "utf8").split("__ROOT__").join(rootForFixtures);
-    const { status, output } = lib.node(script.split(" "), { input, env });
+    const input = fs.readFileSync(path.join(".agents/hooks/tests", fixture), "utf8").split("__ROOT__").join(slashes(caseRoot));
+    const { status, output } = lib.node(args, { input, env: caseEnv });
     cleanup();
     const ok = String(status) === expect && (want === "-" || output.includes(want));
     if (ok) pass++;
     else failed(`${script} < ${fixture}: exit ${status}, expected ${expect}, output must contain "${want}" (${note})`, output);
 }
 
-for (const check of selfChecks) check(t, env);
+for (const check of [...selfChecks, ...tables]) check(t, env);
 
 for (const why of skipped) console.log(`SKIP ${why}`);
 console.log(`harness tests: ${pass} passed, ${fail} failed${skipped.length ? `, ${skipped.length} skipped` : ""}`);

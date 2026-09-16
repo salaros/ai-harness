@@ -426,42 +426,20 @@ function write(target, file, text, exec) {
 
 // Merging is not checking. The installer knows it wrote a file; it cannot know whether the result
 // still works -- an AGENTS.md whose chain table no longer parses, routing sections naming an agent
-// this repo does not have, a skill nothing links to, an upstream with no licence row. The suite
-// answers all of that, and it is the upstream's own: fixtures that prove a harness are no use to a
-// project carrying one, so they do not travel.
+// this repo does not have, a skill nothing links to, an upstream with no licence row. Those are the
+// harness invariants, and scripts/check-harness.js holds them as functions of a root.
 //
-// So they are borrowed. Written in, run, and taken away again, leaving the repo as the install left
-// it. Running them from the upstream checkout instead would be tidier and does not work: both
-// lib.js files resolve the repo root from __dirname with no override, so the suite only ever tests
-// the checkout it sits in.
-const SUITE = [".agents/hooks/test.js", ".agents/hooks/tests/"];
-const wantedBySuite = file => SUITE.some(p => p.endsWith("/") ? file.startsWith(p) : file === p);
-
-function selfCheck(target, templateDir, head, files) {
-    const borrowed = [];
-    for (const { file } of files) {
-        if (!wantedBySuite(file)) continue;
-        // Anything already at one of these paths is the project's own: it is not overwritten here,
-        // and the cleanup below must not remove it either, so it is left out of the borrowed list.
-        if (fs.existsSync(path.join(target, file))) continue;
-        const text = blob(templateDir, head, file);
-        if (text === null) continue;
-        write(target, file, text);
-        borrowed.push(file);
-    }
-    phase(`self check: ${borrowed.length} file(s) borrowed from the upstream suite`);
-    if (!borrowed.length) return { skipped: "the suite is already in this repo; run it yourself with node .agents/hooks/test.js" };
-
-    try {
-        const r = lib.node([path.join(target, ".agents/hooks/test.js")], { cwd: target });
-        const lines = r.output.split(/\r?\n/).filter(l => l.trim());
-        return { failed: r.status !== 0, summary: lines[lines.length - 1] || "no output", output: r.output };
-    } finally {
-        // Only what this function wrote, and only the directories that writing it created.
-        for (const file of borrowed) { try { fs.rmSync(path.join(target, file)); } catch { /* already gone */ } }
-        const dirs = [...new Set(borrowed.map(f => path.dirname(f)))].sort((a, b) => b.length - a.length);
-        for (const dir of dirs) { try { fs.rmdirSync(path.join(target, dir)); } catch { /* the project's, or not empty */ } }
-    }
+// So they run from the upstream checkout against the target, and nothing is written into the target
+// to run them. The upstream's copy rather than the one just installed, so the check is the one that
+// matches the files this run wrote. The suite's fixtures stay upstream: they prove the harness
+// scripts, which the upstream's own CI has already done.
+function selfCheck(target, templateDir) {
+    const script = path.join(templateDir, "scripts", "check-harness.js");
+    if (!fs.existsSync(script)) return { skipped: "this upstream ref has no scripts/check-harness.js" };
+    phase("self check: the harness invariants, run from the upstream against this repo");
+    const harness = require(script);
+    const r = harness.check(target);
+    return { failed: r.failed.length > 0, summary: r.summary, output: harness.format(r) };
 }
 
 // ---------------------------------------------------------------- the run
@@ -584,8 +562,8 @@ function main() {
                 updated: new Date().toISOString().slice(0, 10),
             }, null, 2) + "\n");
             finish(target);
-            // After finish(), because the suite checks the links relink has just written.
-            if (!flag("--no-check")) notes.check = selfCheck(target, templateDir, head, files);
+            // After finish(), because the invariants check the links relink has just written.
+            if (!flag("--no-check")) notes.check = selfCheck(target, templateDir);
         }
         report(target, head, ref, base);
     } finally {
@@ -685,17 +663,16 @@ function report(target, head, ref, base) {
     }
     if (notes.conflicted.length) {
         list("CONFLICTED, resolve the markers by hand", notes.conflicted, true);
-        say(`\nEach one holds <<<<<<< yours / ======= / >>>>>>> upstream (new). Resolve them, then run the suite:\n  node .agents/hooks/test.js`);
+        say(`\nEach one holds <<<<<<< yours / ======= / >>>>>>> upstream (new). Resolve them, then check the harness:\n  node scripts/check-harness.js`);
     }
     const check = notes.check;
     if (check && check.skipped) say(`\nself check skipped: ${check.skipped}`);
     else if (check && check.failed) say(`\nSELF CHECK FAILED, so this install does not work yet:\n${check.output}`);
-    else if (check) say(`\nself check: ${check.summary}, run from the upstream suite and removed again`);
+    else if (check) say(`\nself check: ${check.summary}`);
 
     if (!dryRun) {
-        const suite = fs.existsSync(path.join(target, ".agents/hooks/test.js"));
-        say(`\nIn ${target}, point Git at the hooks once per clone:`);
-        say(`  node scripts/githooks-init.js${suite ? " && node .agents/hooks/test.js" : " && node scripts/docs-check.js"}`);
+        say(`\nIn ${target}, point Git at the hooks once per clone, then check the harness:`);
+        say(`  node scripts/githooks-init.js && node scripts/check-harness.js`);
     }
     if (notes.conflicted.length || notes.unreadable.length || (check && check.failed)) process.exit(1);
 }

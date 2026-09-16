@@ -1,4 +1,0 @@
-feat(hooks): count an issue key only where it refers
-
-A body that merely quotes "Refs: AB-42" as an example of a trailer is
-prose about a ticket, not a reference to one.

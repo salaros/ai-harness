@@ -1,3 +1,0 @@
-# TODO
-
-- [x] This one was answered #question (AGENTS.md)

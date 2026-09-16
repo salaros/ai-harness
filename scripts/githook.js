@@ -105,7 +105,7 @@ function prePush(root, { dry }) {
     if (dry) { console.log(`project: ${gate.reason}`); console.log("would format-check what the push carries"); return 0; }
     if (!gate.ok) { initialised.explain("push", gate); return 1; }
     console.log(`project: ${gate.reason}`);
-    const r = lib.node([path.join(root, "scripts", "format-changed.js"), "--push"], { cwd: root, input: lib.stdin(), stdio: ["pipe", "inherit", "inherit"] });
+    const r = lib.node([path.join(__dirname, "format-changed.js"), "--push", `${lib.ROOT_FLAG}${root}`], { cwd: root, input: lib.stdin(), stdio: ["pipe", "inherit", "inherit"] });
     return r.status === 0 ? 0 : 1;
 }
 
@@ -120,7 +120,7 @@ function postMerge(root, { dry }) {
     }
     const diff = lib.run("git", ["diff-tree", "-r", "--name-only", "--no-commit-id", "ORIG_HEAD", "HEAD"], { cwd: root });
     if (diff.status !== 0) { console.error(`git diff-tree failed: ${diff.output}`); return 1; }
-    const args = [path.join(root, "scripts", "on-manifest-change.js"), ...(dry ? ["--dry-run"] : [])];
+    const args = [path.join(__dirname, "on-manifest-change.js"), `${lib.ROOT_FLAG}${root}`, ...(dry ? ["--dry-run"] : [])];
     const r = lib.node(args, { cwd: root, input: diff.output + "\n", stdio: ["pipe", "inherit", "inherit"] });
     return r.status === 0 ? 0 : 1;
 }
@@ -138,7 +138,7 @@ if (require.main === module) {
     // Git's arguments are paths relative to wherever it ran the hook, so they are made absolute
     // before the chdir below moves the working directory to the repo root. This is why the wrappers
     // need no path handling of their own: they pass what Git gave them, unread.
-    const [name, ...given] = process.argv.slice(2);
+    const [name, ...given] = lib.args();
     const args = given.map(a => a.startsWith("--") ? a : path.resolve(a));
     const root = lib.chdirRoot();
     const hook = HOOKS[name];

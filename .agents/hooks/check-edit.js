@@ -4,13 +4,15 @@
 // whatever the harness sent) and applies the first matching rule below that objects: a refusal
 // when a vendored skill was edited in place, node --check for *.js, JSON validity for *.json, the
 // documentation chain for Markdown under docs/ and for AGENTS.md (whose table defines the chain),
-// and the hook test suite when the harness itself changed. Each rule catches something broken; none
-// of them asks a project to keep bookkeeping current.
+// the harness invariants (scripts/check-harness.js) when a path they read changed, and, in the
+// upstream only, the whole suite when any harness script, table or Git hook changed. Each rule
+// catches something broken; none of them asks a project to keep bookkeeping current.
 // Exit 2 = send the message on stderr back to the agent. Exit 0 = silent.
 // Wire it to the post-tool-use event of the edit/write tools (README, "Files per AI tool").
 const fs = require("fs");
 const lib = require("./lib");
 const docsCheck = require("../../scripts/docs-check");
+const harness = require("../../scripts/check-harness");
 
 // Resolved before the rules, because one of them hands it to docs-check: the chain to validate is
 // the one in the repo the harness is editing, which is what root() answers, and not whichever
@@ -35,11 +37,17 @@ const rules = [
         when: /^(?:AGENTS\.md|docs\/.*\.md)$/,
         check: () => { const r = docsCheck.check(root); return r.problems.length > 0 && `documentation chain check failed (see AGENTS.md, Documentation; fix with the docs-check skill):\n${r.problems.join("\n")}`; },
     },
-    {   // The harness itself changed: the suite must still pass (HOOK_TEST stops recursion).
-        // The suite is the template's own, and a repo that installed the harness has the hooks
-        // without the fixtures that prove them. There is nothing to run there, which is not a
-        // failure: reporting one would block every edit to a harness file in every such repo.
-        when: /^(?:\.agents\/hooks\/|\.githooks\/|scripts\/(?:on-manifest-change|docs-check|skills|check-staged-docs|format-changed|check-commit-msg|check-initialised|check-todo)\.js$|scripts\/stacks\.tsv$)/,
+    {   // The links, the skills folder, the routing, the Git hooks: facts every repo with the harness
+        // must keep, checked in whichever repo root() names. check-harness owns the path list, so a
+        // new invariant brings its own trigger.
+        when: file => harness.reads(file) && [file],
+        check: file => { const r = harness.check(root); return r.failed.length > 0 && `harness invariants failed after editing ${file}:\n${harness.format(r)}`; },
+    },
+    {   // The harness code itself changed: the suite must still pass (HOOK_TEST stops recursion).
+        // The suite is the upstream's own, and a target has the hooks without the fixtures that
+        // prove them. There is nothing to run there, which is not a failure: reporting one would
+        // block every edit to a harness file in every target. The invariants above still run there.
+        when: /^(?:\.agents\/hooks\/.+|\.githooks\/.+|scripts\/[^/]+\.(?:js|tsv))$/,
         check: file => {
             if (process.env.HOOK_TEST || !fs.existsSync(".agents/hooks/test.js")) return false;
             const r = lib.node([".agents/hooks/test.js"]);
@@ -53,7 +61,7 @@ let status = 0;
 for (const file of lib.filePaths(lib.payload(), root)) {
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) continue;
     for (const rule of rules) {
-        const m = file.match(rule.when);
+        const m = typeof rule.when === "function" ? rule.when(file) : file.match(rule.when);
         if (!m) continue;
         const msg = rule.check(file, m);
         if (msg) { process.stderr.write(msg + "\n"); status = 2; break; }

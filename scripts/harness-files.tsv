@@ -23,6 +23,7 @@ README.md	skip	The project's front page. The upstream's is about the harness its
 LICENSE	skip	The project chooses its own.
 MEMORY.md	skip	Written by project-init, and the one file that says what this project is.
 TODO.md	skip	The loose-ends ledger, all of it the project's own.
+CONTEXT.md	skip	The domain glossary. The upstream's names the harness's own terms; a project's names its domain.
 THIRD-PARTY-NOTICES.md	skip	Generated from the project's own lock file after the update, not copied.
 stylecop.json	template	.NET analyzer configuration. Meaningless in a repo that is not .NET, and confusing to find there.
 opencode.json	template	Wiring for one agent tool. A team that does not use OpenCode would carry dead config.
@@ -30,7 +31,7 @@ tools/docs-site/	optional:astro-docs	The Astro site that renders the chain. Opti
 package.json	template	The npm wrapper that publishes the installer. Whatever stack lands in a project’s src/ writes its own.
 scripts/update-harness.js	template	The installer. A project updates with npx @salaros/ai-harness, which clones the upstream, so it needs no copy of this.
 scripts/harness-files.tsv	template	This table. Read from the upstream checkout during an update, never from the project.
-.agents/hooks/test.js	template	The harness suite: fixtures that prove the harness. check-edit.js skips it where it is absent.
+.agents/hooks/test.js	template	The harness suite: fixtures that prove the harness scripts. check-edit.js skips it where it is absent; a target runs scripts/check-harness.js instead.
 .agents/hooks/tests/	template	Its fixtures.
 .github/	template	CI that runs the suite, which does not travel either. A project brings its own.
 skills-lock.json	skills	Merged as a union, so a skill the project vendored itself survives.
