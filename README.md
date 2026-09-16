@@ -95,7 +95,7 @@ The [release workflow](.github/workflows/release.yml) runs the tests, writes the
 
 ## License
 
-See [LICENSE](LICENSE). Vendored skills keep their own licences, listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+MIT; see [LICENSE](LICENSE). Vendored skills keep their own licences, listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## Contact
 
