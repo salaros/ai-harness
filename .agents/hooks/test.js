@@ -4,7 +4,8 @@
 //   <script and args> <fixture> <expected exit> <setup> <expected output> <note>
 // The script is relative to the repo root and run with node; the fixture is piped to it as stdin
 // with __ROOT__ replaced by this checkout; setup is "-" or "plant <path> <first line>", a file
-// that exists only while that case runs; expected output is "-" or a substring that the combined
+// that exists only while that case runs, and whose case is skipped where the path already exists;
+// or "absent <path>", a case skipped where that path exists; expected output is "-" or a substring that the combined
 // stdout and stderr must contain. Afterward runs tests/self-checks.js, for invariants that don't
 // fit that shape (add a new one there, not as a block below).
 // A self check is handed `t`, which has two methods: t.ok(condition, title, detail) for a verdict,
@@ -23,16 +24,22 @@ const env = { ...process.env, HOOK_TEST: "1" };
 for (const v of lib.ROOT_ENV_VARS) delete env[v];
 const rootForFixtures = root.split(path.sep).join("/");
 
+// A plant goes into the tree this suite runs in, which in an installed repo is the project's own:
+// the installer seeds TODO.md, and a Node project has a package-lock.json. A path that already
+// exists is never overwritten, because cleanup would then delete the project's file; the case
+// stands down with a SKIP line instead. Only the folders the plant created are removed afterwards.
 let planted = null;
 const plant = (file, ...firstLine) => {
-    planted = file;
-    fs.mkdirSync(path.dirname(file), { recursive: true });
+    if (fs.existsSync(file)) return false;
+    const madeDir = fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, firstLine.join(" ") + "\n");
+    planted = { file, madeDir };
+    return true;
 };
 const cleanup = () => {
     if (!planted) return;
-    try { fs.unlinkSync(planted); } catch { }
-    try { fs.rmdirSync(path.dirname(planted)); } catch { }   // only when the case created it
+    try { fs.unlinkSync(planted.file); } catch { }
+    if (planted.madeDir) try { fs.rmSync(planted.madeDir, { recursive: true }); } catch { }
     planted = null;
 };
 process.on("exit", cleanup);
@@ -49,7 +56,14 @@ const t = {
 };
 
 for (const [script, fixture, expect, setup, want, note] of lib.readTsv(".agents/hooks/tests/cases.tsv")) {
-    if (setup.startsWith("plant ")) plant(...setup.split(" ").slice(1));
+    if (setup.startsWith("plant ")) {
+        const [file, ...firstLine] = setup.split(" ").slice(1);
+        if (!plant(file, ...firstLine)) { skipped.push(`${script} < ${fixture}: ${file} exists here, and a case never overwrites it (${note})`); continue; }
+    }
+    if (setup.startsWith("absent ")) {
+        const file = setup.slice("absent ".length);
+        if (fs.existsSync(file)) { skipped.push(`${script} < ${fixture}: ${file} exists here, and this case needs it absent (${note})`); continue; }
+    }
     const input = fs.readFileSync(path.join(".agents/hooks/tests", fixture), "utf8").split("__ROOT__").join(rootForFixtures);
     const { status, output } = lib.node(script.split(" "), { input, env });
     cleanup();

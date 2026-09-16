@@ -20,10 +20,10 @@
 scripts/check-staged-docs.js --dry-run	staged-chain.txt	0	-	would check the staged chain	a staged chain document triggers the check
 scripts/check-staged-docs.js --dry-run	staged-none.txt	0	-	nothing staged	a commit touching no chain file is skipped
 scripts/format-changed.js --dry-run	format-md.txt	0	plant package-lock.json {}	would check: npx --no-install prettier	a Node repo format-checks its changed files
-scripts/format-changed.js --dry-run	format-md.txt	0	-	no stack claims them	without the stack lock file no formatter runs
+scripts/format-changed.js --dry-run	format-md.txt	0	absent package-lock.json	no stack claims them	without the stack lock file no formatter runs
 scripts/on-manifest-change.js --dry-run	paths-lock.txt	0	-	would run: node scripts/skills.js install	a changed skills lock restores the skills
 scripts/on-manifest-change.js --dry-run	paths-dotnet-tools.txt	0	-	would run: dotnet tool restore	a changed dotnet tool manifest restores Husky.NET
-scripts/on-manifest-change.js --dry-run	paths-package-json.txt	0	-	nothing to restore	package.json alone restores nothing while no lock file exists
+scripts/on-manifest-change.js --dry-run	paths-package-json.txt	0	absent package-lock.json	nothing to restore	package.json alone restores nothing while no lock file exists
 scripts/on-manifest-change.js --dry-run	paths-package-json.txt	0	plant package-lock.json {}	would run: npm install	package.json restores npm when package-lock.json exists
 scripts/on-manifest-change.js --dry-run	paths-csproj.txt	0	-	would run: dotnet restore	a nested project file restores NuGet
 scripts/on-manifest-change.js --dry-run	paths-none.txt	0	-	nothing to restore	unrelated files restore nothing
