@@ -6,11 +6,11 @@ disable-model-invocation: true
 
 # Project init
 
-The template knows nothing about the project it hosts. This skill asks the developer for the facts no file derives and writes them where every agent and every skill will look: `MEMORY.md` (read first, per `AGENTS.md`), the `Project` section of `README.md`, and, when the project uses one, the Jira key and site in `docs/agents/issue-tracker.md`. Nothing runs and nothing is scaffolded: you ask with your harness's question tool (Claude Code `AskUserQuestion`, OpenCode `question`, Cursor and Copilot ask in chat) and write the files with your edit tool, so it works the same on every OS.
+The template knows nothing about the project it hosts. This skill asks the developer for the facts no file derives and writes them where every agent and every skill will look: `MEMORY.md` (read first, per `AGENTS.md`), the `Project` section of `README.md`, and, when the project uses one, the Jira key and site in `docs/agents/issue-tracker.md`. The one command it runs is `node scripts/githooks-init.js`, which only sets local Git config; nothing is scaffolded. You ask with your harness's question tool (Claude Code `AskUserQuestion`, OpenCode `question`, Cursor and Copilot ask in chat) and write the files with your edit tool, so it works the same on every OS.
 
 ## Steps
 
-1. **Check for a previous run.** If `MEMORY.md` exists, show its facts and ask which ones change; the rest keep their current values. Done when you know whether this is a first run or an update, and which values you still need.
+1. **Check for a previous run, and install the Git hooks.** If `MEMORY.md` exists, show its facts and ask which ones change; the rest keep their current values. Then run `node scripts/githooks-init.js` from the repo root, on a first run and an update alike: it points `core.hooksPath` at `.githooks/` and repairs a hook that lost its executable bit, and running it again changes nothing. A clone nobody ran it in commits with no gate at all, and a .NET scaffold's `dotnet husky install` repoints `core.hooksPath` too. If it prints files to stage, include them in the commit at the end. Done when you know whether this is a first run or an update and which values you still need, and the script reported `core.hooksPath = .githooks`.
 
 2. **Interview**, one question at a time, in this order, with the harness's question tool. Offer options where the table lists them and free text otherwise. Push back on a vague answer the way `grilling` would; each value ends up in a file another agent will act on.
 
@@ -120,7 +120,7 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
 ## Report
 
-The nine facts recorded, which files changed, the scaffold commands handed over, whether `CONTEXT-MAP.md` was written, and the next skill to run.
+The nine facts recorded, whether the Git hooks were installed, which files changed, the scaffold commands handed over, whether `CONTEXT-MAP.md` was written, and the next skill to run.
 
 ## Gotchas
 
