@@ -2,7 +2,8 @@
 // scripts/check-staged-docs.js
 // Runs the documentation chain check over what is about to be committed. Reads the staged paths on
 // stdin, one per line, and does nothing unless one of them belongs to the chain (Markdown under
-// docs/, AGENTS.md whose table defines the stages, or MEMORY.md whose Requirements line enters it).
+// docs/, AGENTS.md whose table defines the stages, MEMORY.md whose Requirements line enters it, or
+// INTENT.md, whose required sections docs-check verifies when a project has one).
 // It checks the *index*, not the working tree: the commit records the staged content, so a document
 // half-fixed on disk must not pass and a break staged without saving must not slip through. The
 // staged chain is materialised into a temp directory with git checkout-index and thrown away after.
@@ -20,7 +21,7 @@ const { spawnSync } = require("child_process");
 const lib = require("./lib");
 const docsCheck = require("./docs-check");
 
-const CHAIN = /^(?:docs\/.*\.md|AGENTS\.md|MEMORY\.md)$/;
+const CHAIN = /^(?:docs\/.*\.md|AGENTS\.md|MEMORY\.md|INTENT\.md)$/;
 
 // Which of the staged paths the chain covers. Exported because the pre-commit hook's whole reason
 // for piping a list in is this filter, and it answers without touching git or the disk.
@@ -40,7 +41,7 @@ function check(root, staged) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "staged-docs-"));
     const prefix = tmp.split(path.sep).join("/") + "/";
     try {
-        const list = git(["ls-files", "-z", "--cached", "--", "docs", "AGENTS.md", "MEMORY.md"]);
+        const list = git(["ls-files", "-z", "--cached", "--", "docs", "AGENTS.md", "MEMORY.md", "INTENT.md"]);
         if (list.status !== 0) { warnings.push(`git ls-files failed: ${list.stderr || ""}`); return { touched, problems: [], warnings, summary: "" }; }
         if (list.stdout) {
             const out = git(["checkout-index", "-z", "--stdin", `--prefix=${prefix}`], { input: list.stdout });
@@ -51,8 +52,8 @@ function check(root, staged) {
         const staged_ = rel => fs.existsSync(path.join(tmp, rel)) ? path.join(tmp, rel) : path.join(root, rel);
         // The root stays the checkout even though the three paths point into the temp tree: a
         // "Derived from:" naming a repo-relative path means a path in the working tree, which the
-        // staged blobs of docs/, AGENTS.md and MEMORY.md say nothing about.
-        const { problems } = docsCheck.check(root, staged_("docs"), staged_("AGENTS.md"), staged_("MEMORY.md"));
+        // staged blobs of docs/, AGENTS.md, MEMORY.md and INTENT.md say nothing about.
+        const { problems } = docsCheck.check(root, staged_("docs"), staged_("AGENTS.md"), staged_("MEMORY.md"), staged_("INTENT.md"));
         return {
             touched,
             // The temp tree is an implementation detail, so a problem names the repo-relative path.

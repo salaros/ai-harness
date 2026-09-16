@@ -22,6 +22,7 @@
 README.md	skip	The project's front page. The upstream's is about the harness itself.
 LICENSE	skip	The project chooses its own.
 MEMORY.md	skip	Written by project-init, and the one file that says what this project is.
+INTENT.md	skip	The product's intent, when the project keeps one. Optional: the harness neither ships nor requires it.
 TODO.md	skip	The loose-ends ledger, all of it the project's own.
 CONTEXT.md	skip	The domain glossary. The upstream's names the harness's own terms; a project's names its domain.
 THIRD-PARTY-NOTICES.md	skip	Generated from the project's own lock file after the update, not copied.
