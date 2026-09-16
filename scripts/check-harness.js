@@ -2,7 +2,7 @@
 // scripts/check-harness.js
 // Proves the harness in a repo still works: the harness invariants, facts about the harness files
 // that must hold whatever the project around them does. Every skill visible to the agent, the skill
-// links committed as links, the routing sections and the agents naming them in agreement, every Git
+// links committed as links, every SKILL.md readable, the routing sections and the agents naming them in agreement, every Git
 // hook executable and still a two-line wrapper, every vendored skill attributed and on disk, the
 // chain table in AGENTS.md readable. Each one fails silently otherwise: nothing else in the harness
 // exits non-zero when a skill quietly vanishes from an agent's view.
@@ -141,6 +141,57 @@ function skillsFolderHoldsSkillsNotLinks(t, root) {
         links.slice(0, 10).join(", "));
 }
 
+// A harness finds a skill by the frontmatter of its SKILL.md, and one it cannot read is dropped
+// without a word: no error in the session, just a skill the agent never sees. The rules are the
+// Agent Skills specification's (https://agentskills.io/specification): `name` is 1-64 lowercase
+// letters, digits and single hyphens, and matches the folder; `description` is 1-1024 characters,
+// because it is all an agent matches a task against. A folder with no SKILL.md is caught here too,
+// since everything else that lists skills filters it out. Vendored skills are held to the same
+// rules, because a broken one is just as invisible; the fix goes upstream.
+const SKILL_NAME = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+// The two keys this check needs, from YAML frontmatter: a plain or quoted scalar, or a `>` / `|`
+// block scalar, whose indented lines are the value. Not a YAML parser, and nothing else needs one.
+function skillFrontmatter(text) {
+    const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/);
+    if (!m) return null;
+    const lines = m[1].split(/\r?\n/), fm = {};
+    for (let i = 0; i < lines.length; i++) {
+        const k = lines[i].match(/^([\w-]+):\s*(.*)$/);
+        if (!k) continue;
+        let value = k[2].trim();
+        if (/^[>|][-+]?$/.test(value)) {
+            const block = [];
+            while (i + 1 < lines.length && /^(\s+\S|\s*$)/.test(lines[i + 1])) block.push(lines[++i].trim());
+            value = block.join(" ").trim();
+        } else if (/^(".*"|'.*')$/.test(value)) {
+            value = value.slice(1, -1);
+        }
+        fm[k[1]] = value;
+    }
+    return fm;
+}
+
+function everySkillHasValidFrontmatter(t, root) {
+    const dir = path.join(root, ".agents/skills");
+    if (!fs.existsSync(dir)) { t.skip("skill frontmatter check: no skills directory"); return; }
+    const problems = [];
+    for (const name of fs.readdirSync(dir).sort()) {
+        const folder = path.join(dir, name);
+        if (fs.lstatSync(folder).isSymbolicLink() || !fs.statSync(folder).isDirectory()) continue;
+        const file = path.join(folder, "SKILL.md");
+        if (!fs.existsSync(file)) { problems.push(`${name}: no SKILL.md`); continue; }
+        const fm = skillFrontmatter(fs.readFileSync(file, "utf8"));
+        if (!fm) { problems.push(`${name}: SKILL.md does not start with --- frontmatter`); continue; }
+        if (!fm.name) problems.push(`${name}: no name`);
+        else if (fm.name !== name) problems.push(`${name}: name is '${fm.name}', not the folder name`);
+        else if (name.length > 64 || !SKILL_NAME.test(name)) problems.push(`${name}: name must be at most 64 lowercase letters, digits and single hyphens`);
+        if (!fm.description) problems.push(`${name}: no description`);
+        else if (fm.description.length > 1024) problems.push(`${name}: description is ${fm.description.length} characters, over 1024`);
+    }
+    t.ok(!problems.length, "every skill under .agents/skills/ has a SKILL.md with a valid name and description", problems.join("\n"));
+}
+
 // The lock file and .agents/skills must agree. This is breakage, not bookkeeping: a skill recorded
 // in the lock but absent from disk means a damaged or partial checkout, and `skills.js install`
 // fixes it. Nothing here requires a project to route, document or tabulate the skills it installs.
@@ -211,6 +262,7 @@ const INVARIANTS = [
     claudeSkillLinksAreSymlinks,
     everyInstalledSkillIsLinked,
     skillsFolderHoldsSkillsNotLinks,
+    everySkillHasValidFrontmatter,
     noSkillIsMissingFromDisk,
     vendoredSkillsAreAttributed,
     agentRoutingSectionsAgreeOnTheirAudience,
@@ -239,7 +291,7 @@ const format = r => [
     r.summary,
 ].join("\n");
 
-module.exports = { check, format, reads, PATHS, INVARIANTS };
+module.exports = { check, format, reads, skillFrontmatter, PATHS, INVARIANTS };
 
 if (require.main === module) {
     const r = check(lib.root());

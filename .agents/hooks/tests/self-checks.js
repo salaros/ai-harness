@@ -458,6 +458,49 @@ function harnessInvariantsHoldHere(t) {
     for (const invariant of harness.INVARIANTS) invariant(t, lib.checkout);
 }
 
+// The upstream's own skills all pass the frontmatter check, so harnessInvariantsHoldHere proves only
+// that it passes. Each broken shape gets a skill of its own in a temporary root, and the check must
+// name every one of them and none of the valid ones: quoted values and a folded description included.
+function skillFrontmatterCheckNamesEachProblem(t) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "harness-skill-frontmatter-"));
+    const skill = (name, text) => {
+        fs.mkdirSync(path.join(root, ".agents/skills", name), { recursive: true });
+        if (text !== null) fs.writeFileSync(path.join(root, ".agents/skills", name, "SKILL.md"), text);
+    };
+    skill("plain-ok", "---\nname: plain-ok\ndescription: Does one thing.\n---\nBody\n");
+    skill("quoted-ok", "---\nname: \"quoted-ok\"\ndescription: 'Does one thing.'\n---\n");
+    skill("folded-ok", "---\nname: folded-ok\ndescription: >\n  Spans\n  two lines.\nlicense: MIT\n---\n");
+    skill("no-file", null);
+    skill("no-frontmatter", "# Just a heading\n");
+    skill("wrong-name", "---\nname: other\ndescription: x\n---\n");
+    skill("Bad_Name", "---\nname: Bad_Name\ndescription: x\n---\n");
+    skill("no-description", "---\nname: no-description\n---\n");
+    skill("empty-folded", "---\nname: empty-folded\ndescription: >\n---\n");
+    skill("too-long", `---\nname: too-long\ndescription: ${"x".repeat(1025)}\n---\n`);
+
+    const found = [];
+    const probe = { ok: (condition, title, detail) => { if (!condition) found.push(...detail.split("\n")); }, skip: why => found.push(`skip: ${why}`) };
+    const invariant = harness.INVARIANTS.find(fn => fn.name === "everySkillHasValidFrontmatter");
+    invariant(probe, root);
+    fs.rmSync(root, { recursive: true, force: true });
+
+    const expected = {
+        "no-file": "no SKILL.md",
+        "no-frontmatter": "does not start with --- frontmatter",
+        "wrong-name": "name is 'other'",
+        "Bad_Name": "lowercase letters",
+        "no-description": "no description",
+        "empty-folded": "no description",
+        "too-long": "over 1024",
+    };
+    for (const [name, says] of Object.entries(expected)) {
+        t.ok(found.some(line => line.startsWith(`${name}:`) && line.includes(says)),
+            `the skill frontmatter check reports ${name} (${says})`, found.join("\n"));
+    }
+    const noise = found.filter(line => /^(plain-ok|quoted-ok|folded-ok):/.test(line) || line.startsWith("skip:"));
+    t.ok(!noise.length, "the skill frontmatter check accepts plain, quoted and folded values", noise.join("\n"));
+}
+
 // check-harness asserts the shape of the hooks githook.js handles and leaves a target's own hooks
 // alone. The upstream ships no hook of its own, so every file in its .githooks/ is one githook.js must
 // handle: a hook added there without a handler would reach every target and do nothing.
@@ -503,6 +546,7 @@ function everyCheckIsRegistered(t) {
 module.exports = [
     everyCheckIsRegistered,
     harnessInvariantsHoldHere,
+    skillFrontmatterCheckNamesEachProblem,
     everyUpstreamHookIsHandled,
     everyTrackedPathIsClassified,
     oneReaderForTheStacksTable,
