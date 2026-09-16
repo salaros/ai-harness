@@ -1,0 +1,248 @@
+#!/usr/bin/env node
+// scripts/check-harness.js
+// Proves the harness in a repo still works: the harness invariants, facts about the harness files
+// that must hold whatever the project around them does. Every skill visible to the agent, the skill
+// links committed as links, the routing sections and the agents naming them in agreement, every Git
+// hook executable and still a two-line wrapper, every vendored skill attributed and on disk, the
+// chain table in AGENTS.md readable. Each one fails silently otherwise: nothing else in the harness
+// exits non-zero when a skill quietly vanishes from an agent's view.
+// It travels with the harness, so a project can run it after changing any of those files, and
+// check-edit.js does whenever one of PATHS is edited. The installer runs the upstream's copy against
+// the target it has just written, and the upstream's suite runs the same functions against itself.
+// check(root) is the decision: nothing printed, nothing exited, and nothing but `root` read, so the
+// repo being checked need not be the one this file sits in.
+// Usage:
+//   node scripts/check-harness.js                 check this repo
+//   node scripts/check-harness.js --root=../other check another one
+const fs = require("fs");
+const path = require("path");
+const lib = require("./lib");
+const docsCheck = require("./docs-check");
+const { HOOKS } = require("./githook");
+
+// What the invariants below read, as the path a harness reports for an edit: an exact file, or a
+// prefix ending in / for everything under it. check-edit.js runs this script for an edit to any of
+// them, so an invariant reading a new file adds it here and the trigger widens with it.
+const PATHS = [
+    ".agents/skills/", ".claude/skills", ".agents/agents/", ".agents/routing.md", ".githooks/",
+    "skills-lock.json", "scripts/skill-licences.tsv", "THIRD-PARTY-NOTICES.md", "AGENTS.md",
+];
+const reads = file => PATHS.some(p => p.endsWith("/") ? file.startsWith(p) : file === p);
+
+// scripts/skills.js knows the roster and the licence table, so two invariants ask it rather than
+// reading them a second time. It runs from beside this file and is pointed at `root`.
+const skills = (root, ...args) => lib.node([path.join(__dirname, "skills.js"), ...args, `${lib.ROOT_FLAG}${root}`], { cwd: root });
+
+// Git's view of a folder, as [mode, path] rows, or null outside a git checkout.
+function indexed(root, dir) {
+    const r = lib.run("git", ["ls-files", "-s", "--", dir], { cwd: root });
+    if (r.status !== 0) return null;
+    return { rows: r.output.split(/\r?\n/).filter(Boolean).map(l => l.split(/\s+/)), output: r.output };
+}
+
+// A harness installed by scripts/update-harness.js has its files on disk and nothing in the index
+// until the project makes its first commit. Both mode checks below assert what the index records, so
+// that state is nothing to assert rather than a failure: saying the hooks are not executable when
+// they have simply never been committed sends the reader looking for a bug that is not there.
+const uncommitted = (root, dir, git) => !git.rows.length && fs.existsSync(path.join(root, dir));
+
+// Git skips a hook that is not executable, and says nothing about it. On Windows core.fileMode is
+// normally false, so chmod is a no-op and a hook added there is recorded 100644: it runs for its
+// author and silently never runs on Linux or macOS. Only `git update-index --chmod=+x <file>` fixes
+// the mode Git records, so the mode in the index is what this asserts.
+function gitHooksAreExecutable(t, root) {
+    const git = indexed(root, ".githooks");
+    if (!git) { t.skip(".githooks mode check: not a git checkout"); return; }
+    if (uncommitted(root, ".githooks", git)) { t.skip(".githooks mode check: present on disk, not committed yet"); return; }
+    t.ok(git.rows.length > 0, "git tracks files under .githooks/", git.output);
+    const notExecutable = git.rows.filter(([mode]) => mode !== "100755").map(row => row[row.length - 1]);
+    t.ok(!notExecutable.length,
+        "every .githooks/ hook is committed executable (git update-index --chmod=+x <file>)",
+        notExecutable.join(", "));
+}
+
+// A Git hook is a wrapper and nothing else: find the repo, hand over to scripts/githook.js. Every
+// decision it used to make -- reading the index, computing the merge diff, working out whether Git
+// had run it at all, chaining checks with `||` -- sat in a file no test could reach, and one of those
+// decisions was wrong for as long as nobody could test it. The shape is the invariant, so it is
+// asserted rather than trusted: strip the shebang and the comments, and two lines are left.
+// Only the hooks githook.js handles are the harness's. A hook a project wrote itself is its own
+// business, and an update leaves it alone for the same reason.
+function noGitHookDecidesAnything(t, root) {
+    const dir = path.join(root, ".githooks");
+    if (!fs.existsSync(dir)) { t.skip("git hook shape: no .githooks folder"); return; }
+    const hooks = fs.readdirSync(dir).filter(name => HOOKS[name]);
+    t.ok(hooks.length > 0, "there are harness hooks in .githooks/");
+    for (const name of hooks) {
+        const body = fs.readFileSync(path.join(dir, name), "utf8")
+            .split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+        const want = [
+            "root=$(git rev-parse --show-toplevel) || exit 1",
+            `exec node "$root/scripts/githook.js" ${name} "$@"`,
+        ];
+        t.ok(body.length === want.length && body.every((l, i) => l === want[i]),
+            `.githooks/${name} decides nothing; it calls githook.js ${name}`, body.join("\n"));
+    }
+}
+
+// .claude/skills is one symlink to .agents/skills, so a skill has one copy on disk. A harness that
+// wants a link per skill gets .claude/skills/<name> instead, and both shapes are mode 120000.
+// `npx skills add` recreates per-skill links absolute, and `node scripts/skills.js relink` rewrites
+// them relative -- but a skill staged before the relink goes into the index as the directory it was
+// at the time, one 100644 blob per file. That commits a second copy of the skill that no longer
+// tracks the first, and leaves the worktree permanently dirty against it. Mode 120000 is the
+// symlink, so the mode in the index is what this asserts.
+function claudeSkillLinksAreSymlinks(t, root) {
+    const git = indexed(root, ".claude/skills");
+    if (!git) { t.skip(".claude/skills mode check: not a git checkout"); return; }
+    if (uncommitted(root, ".claude/skills", git)) { t.skip(".claude/skills mode check: present on disk, not committed yet"); return; }
+    t.ok(git.rows.length > 0, "git tracks entries under .claude/skills/", git.output);
+    const notLinks = git.rows.filter(([mode]) => mode !== "120000").map(row => row[row.length - 1]);
+    t.ok(!notLinks.length,
+        "every .claude/skills/ entry is committed as a symlink (node scripts/skills.js relink, then stage)",
+        notLinks.slice(0, 10).join(", "));
+}
+
+// A harness surfaces the skills it can see, so a skill with no link is a skill that does not exist
+// as far as the agent is concerned. One link to the whole folder shows every skill, a local one
+// written by hand included, and the only thing left to check is where it points. A folder of
+// per-skill links shows what someone linked and nothing else -- `npx skills` links what it
+// vendored -- so there the count is the check. Reading a name through the whole-folder link would
+// compare .agents/skills with itself and pass whatever the state.
+function everyInstalledSkillIsLinked(t, root) {
+    const skillsDir = path.join(root, ".agents/skills"), links = path.join(root, ".claude/skills");
+    if (!fs.existsSync(skillsDir) || !fs.existsSync(links)) { t.skip("skill link check: no skills directories"); return; }
+    const installed = fs.readdirSync(skillsDir).filter(n => fs.existsSync(path.join(skillsDir, n, "SKILL.md")));
+    t.ok(installed.length > 0, "skills are installed under .agents/skills/");
+    if (fs.lstatSync(links).isSymbolicLink()) {
+        const target = fs.readlinkSync(links);
+        t.ok(path.resolve(path.dirname(links), target) === path.resolve(skillsDir),
+            "the .claude/skills link points at .agents/skills", target);
+        return;
+    }
+    const unlinked = installed.filter(n => { try { fs.lstatSync(path.join(links, n)); return false; } catch { return true; } });
+    t.ok(!unlinked.length,
+        "every installed skill has a .claude/skills/ link (node scripts/skills.js relink)",
+        unlinked.slice(0, 10).join(", "));
+}
+
+// .claude/skills resolves to .agents/skills, so anything a tool writes into the first lands in the
+// second. `npx skills` links what it vendors into every harness folder it finds, and a link it puts
+// there would appear beside the skills as a sibling pointing at one of them. Nothing else in the
+// harness ever creates one, so an entry here that is not a directory is that, and it is worth
+// catching: the roster reads this folder, and a skill that is really a link to another skill counts
+// twice and vendors as neither.
+function skillsFolderHoldsSkillsNotLinks(t, root) {
+    const dir = path.join(root, ".agents/skills");
+    if (!fs.existsSync(dir)) { t.skip("skills folder check: no skills directory"); return; }
+    const links = fs.readdirSync(dir).filter(n => fs.lstatSync(path.join(dir, n)).isSymbolicLink());
+    t.ok(!links.length,
+        "every entry under .agents/skills/ is a skill, not a link to one",
+        links.slice(0, 10).join(", "));
+}
+
+// The lock file and .agents/skills must agree. This is breakage, not bookkeeping: a skill recorded
+// in the lock but absent from disk means a damaged or partial checkout, and `skills.js install`
+// fixes it. Nothing here requires a project to route, document or tabulate the skills it installs.
+function noSkillIsMissingFromDisk(t, root) {
+    const r = skills(root, "missing");
+    t.ok(r.status === 0, "node scripts/skills.js missing", r.output);
+}
+
+// Vendoring a skill copies someone else's work into this repo, and MIT and Apache-2.0 both ask that
+// the copyright and permission notice travel with the copy. `npx skills` carries only what sits
+// inside the skill folder, so an upstream keeping its licence at the repo root sends nothing, and
+// the notice has to be written here. Nothing about adding a skill prompts anyone to do that, which
+// is what this check is for: THIRD-PARTY-NOTICES.md is generated, so a new upstream with no row in
+// scripts/skill-licences.tsv fails rather than shipping unattributed.
+function vendoredSkillsAreAttributed(t, root) {
+    if (!fs.existsSync(path.join(root, "skills-lock.json"))) { t.skip("licence notice check: no skills-lock.json, so nothing is vendored"); return; }
+    const r = skills(root, "notices", "--check");
+    t.ok(r.status === 0,
+        "THIRD-PARTY-NOTICES.md covers every vendored skill (node scripts/skills.js notices)",
+        r.output);
+}
+
+// .agents/routing.md holds the rows more than one agent routes through, in a section per audience:
+// each section names its agents, each agent names its sections, and the two must agree. Either half
+// is a silent failure otherwise. A section nobody names is dead rows; an agent naming a section that
+// does not exist routes nothing, and neither shows up as a broken link or a bad exit code anywhere
+// else. `scripts/skills.js list` reads the same pairing to credit a moved row to the agents that
+// still route it, so this also pins that attribution.
+// The file lives above .agents/agents/ on purpose: .claude/agents is a symlink to that folder, and a
+// harness reads everything in there as an agent definition.
+function agentRoutingSectionsAgreeOnTheirAudience(t, root) {
+    const dir = path.join(root, ".agents/agents"), shared = "routing.md";
+    const file = path.join(root, ".agents", shared);
+    if (!fs.existsSync(file) || !fs.existsSync(dir)) { t.skip("routing section check: no routing.md"); return; }
+    const bodies = {};
+    for (const f of fs.readdirSync(dir).filter(n => n.endsWith(".md"))) {
+        const text = fs.readFileSync(path.join(dir, f), "utf8");
+        const name = (text.match(/^name:\s*(.+)$/m) || [])[1];
+        if (name && text.includes(shared)) bodies[name.trim()] = text;
+    }
+    const sections = fs.readFileSync(file, "utf8").split(/^## /m).slice(1);
+    t.ok(sections.length > 0 && Object.keys(bodies).length > 0,
+        `${shared} has sections and agents point at it`, `${sections.length} section(s), ${Object.keys(bodies).length} agent(s)`);
+    for (const s of sections) {
+        const title = s.split(/\r?\n/)[0].trim();
+        const line = s.match(/^Read by .*$/m);
+        const stated = line ? [...line[0].matchAll(/`([a-z-]+)`/g)].map(m => m[1]).sort() : [];
+        const actual = Object.keys(bodies).filter(n => bodies[n].includes(title)).sort();
+        t.ok(stated.length > 0, `"${title}" says which agents read it, on a "Read by" line`);
+        t.ok(stated.join(",") === actual.join(","),
+            `"${title}" is read by exactly the agents it names`,
+            `names ${stated.join(", ") || "(none)"}; named by ${actual.join(", ") || "(none)"}`);
+    }
+}
+
+// docs-check reads the stages of the documentation chain out of the table in AGENTS.md, so a table
+// it cannot read turns every document check into a problem about the table. AGENTS.md reconciles on
+// every update, and a merge that mangles the table is exactly what a harness invariant is for.
+function chainTableIsReadable(t, root) {
+    if (!fs.existsSync(path.join(root, "AGENTS.md"))) { t.skip("chain table: no AGENTS.md"); return; }
+    const { stages, problems } = docsCheck.readChain(root);
+    t.ok(!problems.length && stages.length > 0, "the chain table in AGENTS.md is readable", problems.join("\n"));
+}
+
+const INVARIANTS = [
+    gitHooksAreExecutable,
+    noGitHookDecidesAnything,
+    claudeSkillLinksAreSymlinks,
+    everyInstalledSkillIsLinked,
+    skillsFolderHoldsSkillsNotLinks,
+    noSkillIsMissingFromDisk,
+    vendoredSkillsAreAttributed,
+    agentRoutingSectionsAgreeOnTheirAudience,
+    chainTableIsReadable,
+];
+
+// Every invariant against `root`. A failure carries its title and what was found; a skip is an
+// invariant this repo gives nothing to check, counted so that "all passed" never hides it.
+function check(root) {
+    const result = { passed: 0, failed: [], skipped: [] };
+    const t = {
+        ok: (condition, title, detail) => { if (condition) result.passed++; else result.failed.push({ title, detail: detail || "" }); },
+        skip: why => result.skipped.push(why),
+    };
+    for (const invariant of INVARIANTS) invariant(t, root);
+    const skips = result.skipped.length ? `, ${result.skipped.length} skipped` : "";
+    result.summary = `harness invariants: ${result.passed} passed, ${result.failed.length} failed${skips}`;
+    return result;
+}
+
+// The report a person reads, from what check() returned: one line per failure and skip, then the
+// tally. The installer prints the same text.
+const format = r => [
+    ...r.failed.map(f => `FAIL ${f.title}${f.detail ? "\n" + f.detail.replace(/^/gm, "    ") : ""}`),
+    ...r.skipped.map(why => `SKIP ${why}`),
+    r.summary,
+].join("\n");
+
+module.exports = { check, format, reads, PATHS, INVARIANTS };
+
+if (require.main === module) {
+    const r = check(lib.root());
+    console.log(format(r));
+    process.exit(r.failed.length ? 1 : 0);
+}
