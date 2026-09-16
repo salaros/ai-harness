@@ -8,7 +8,7 @@
 // arguments (`printf '...git push --force...'`) sits after none of those and is not matched;
 // text in an unrelated payload field never reaches the match at all.
 // Exit 2 = block, reason on stderr. Exit 0 = allow.
-// Wire it to the pre-tool-use event of the shell tool (README, "Files per AI tool").
+// Wire it to the pre-tool-use event of the shell tool (.agents/README.md, "Files per AI tool").
 const lib = require("./lib");
 
 // A token ends at a space, a JSON escape (backslash), the closing quote, or end of line.

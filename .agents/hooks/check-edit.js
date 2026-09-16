@@ -8,7 +8,7 @@
 // upstream only, the whole suite when any harness script, table or Git hook changed. Each rule
 // catches something broken; none of them asks a project to keep bookkeeping current.
 // Exit 2 = send the message on stderr back to the agent. Exit 0 = silent.
-// Wire it to the post-tool-use event of the edit/write tools (README, "Files per AI tool").
+// Wire it to the post-tool-use event of the edit/write tools (.agents/README.md, "Files per AI tool").
 const fs = require("fs");
 const lib = require("./lib");
 const docsCheck = require("../../scripts/docs-check");

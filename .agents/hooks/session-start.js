@@ -2,7 +2,7 @@
 // .agents/hooks/session-start.js
 // One-screen brief for an agent starting a session in this repo. Harness-neutral: takes no
 // arguments, ignores stdin, always exits 0. Whatever it prints lands in the agent's context.
-// Wire it to your harness's session-start event (README, "Files per AI tool").
+// Wire it to your harness's session-start event (.agents/README.md, "Files per AI tool").
 const fs = require("fs");
 const lib = require("./lib");
 
@@ -22,5 +22,5 @@ say(fs.existsSync("MEMORY.md") ? "project: facts in MEMORY.md" : "project: not i
 if (fs.existsSync("CONTEXT-MAP.md")) say("domain: multi-context, start at CONTEXT-MAP.md");
 if (fs.existsSync("CONTEXT.md")) say("domain: glossary in CONTEXT.md");
 if (fs.existsSync("docs/adr")) say(`decisions: docs/adr (${fs.readdirSync("docs/adr").length} ADRs)`);
-if (!fs.existsSync("docs/agents/issue-tracker.md")) say('issue tracker: not configured. code-review, to-tickets and triage need docs/agents/issue-tracker.md (README, "What each skill expects")');
+if (!fs.existsSync("docs/agents/issue-tracker.md")) say('issue tracker: not configured. code-review, to-tickets and triage need docs/agents/issue-tracker.md (.agents/README.md, "What each skill expects")');
 process.exit(0);
