@@ -1,6 +1,6 @@
 ---
 name: project-init
-description: Turn a repo cloned from this template into a named project. Asks the developer, through the harness's own question tool, for the project name and purpose, the language its prose is written in, where the requirements live, the unit type, the stack and, if there is one, the issue tracker, and records the answers in MEMORY.md, README.md and docs/agents/issue-tracker.md, plus a CONTEXT-MAP.md for a microservices repo. Use when a project starts, when MEMORY.md is missing, or when the stack or issue tracker changes.
+description: Turn a repo cloned from this template into a named project. Asks the developer, through the harness's own question tool, for the project name and purpose, the language its prose is written in, where the requirements live, the unit type, the stack and, if there is one, the issue tracker, and records the answers in MEMORY.md, README.md and docs/agents/issue-tracker.md, plus a CONTEXT-MAP.md for a microservices repo. Reads an existing INTENT.md for the name and purpose, and offers to write one when absent. Use when a project starts, when MEMORY.md is missing, or when the stack or issue tracker changes.
 disable-model-invocation: true
 ---
 
@@ -10,14 +10,16 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
 ## Steps
 
-1. **Check for a previous run, and install the Git hooks.** If `MEMORY.md` exists, show its facts and ask which ones change; the rest keep their current values. Then run `node scripts/githooks-init.js` from the repo root, on a first run and an update alike: it points `core.hooksPath` at `.githooks/` and repairs a hook that lost its executable bit, and running it again changes nothing. A clone nobody ran it in commits with no gate at all, and a .NET scaffold's `dotnet husky install` repoints `core.hooksPath` too. If it prints files to stage, include them in the commit at the end. Done when you know whether this is a first run or an update and which values you still need, and the script reported `core.hooksPath = .githooks`.
+1. **Check for a previous run, and install the Git hooks.** If `MEMORY.md` exists, show its facts and ask which ones change; the rest keep their current values. If `INTENT.md` exists at the root, read it: the bold name and the prose of its `## Product` section are the project's Name and Purpose, so those two questions are already answered. Then run `node scripts/githooks-init.js` from the repo root, on a first run and an update alike: it points `core.hooksPath` at `.githooks/` and repairs a hook that lost its executable bit, and running it again changes nothing. A clone nobody ran it in commits with no gate at all, and a .NET scaffold's `dotnet husky install` repoints `core.hooksPath` too. If it prints files to stage, include them in the commit at the end. Done when you know whether this is a first run or an update, whether `INTENT.md` exists, and which values you still need, and the script reported `core.hooksPath = .githooks`.
 
-2. **Interview**, one question at a time, in this order, with the harness's question tool. Offer options where the table lists them and free text otherwise. Push back on a vague answer the way `grilling` would; each value ends up in a file another agent will act on.
+2. **Interview**, one question at a time, in this order, with the harness's question tool. Offer options where the table lists them and free text otherwise. Push back on a vague answer the way `grilling` would; each value ends up in a file another agent will act on. With an `INTENT.md`, skip Name and Purpose, and offer `INTENT.md` as the first option for Requirements. Without one, ask the extra `INTENT.md` question right after Purpose.
 
    | Ask | Fact | Accept only |
    | --- | --- | --- |
    | What is the project called? | Name | A name usable as a heading and as a folder (`Acme Billing`) |
    | What does it do, in one sentence, for whom? | Purpose | One sentence with a subject, an outcome and a user |
+   | Write an `INTENT.md` with the product and its MVP stories? | INTENT.md | Only when none exists. Options: `yes` (recommended, first) or `no`. `no` is a complete answer: the harness never requires the file, and the rest of this skill runs as if it did not exist |
+   | Which stories must the MVP deliver, and when is each done? | MVP stories | Only after `yes`. At least one story, each a title, a priority (`must`, `should`, `could`) and one or more *Done when* criteria, each a single verifiable statement. Ask for personas and the user journey as optional follow-ups |
    | Which language is this project's prose written in? | Prose language | A language name (`English`, `Russian`, `Ukrainian`). It governs everything the project authors -- the `docs/` chain, `CONTEXT.md`, `TODO.md`, this file's own values and the README Project section -- and the language you answer the developer in. The harness stays English whatever the answer: `AGENTS.md`, `docs/agents/` and every `SKILL.md` are merged from upstream, so a translation is overwritten or collides |
    | Where do the requirements live? | Requirements | One or more sources, comma-separated: a repo-relative path that exists, a URL, or `jira:KEY-123`; `none yet` is allowed and means the `brd` skill runs next |
    | What kind of unit is it? | Unit type | Options: `library`, `cli`, `service`, `microservices`, `monolith`, `frontend`. `service` is one deployable service; `microservices` is several services in this one repo, orchestrated together (Aspire for .NET), each with its own domain context |
@@ -29,7 +31,42 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
    Done when every fact is a specific string that passes its "accept only" column.
 
-3. **Write `MEMORY.md`** at the repo root from this template, one fact per line. On an update, replace the changed lines and leave the file otherwise as it is.
+   When the developer answered `yes`, write `INTENT.md` at the root in the [INTENT.md format](https://www.intentdocs.com/intent-md) before moving on. It covers product intent only: stack, tooling and the tracker stay in `MEMORY.md`.
+
+   ```md
+   # INTENT.md
+
+   _Written by hand with the project-init skill on <YYYY-MM-DD>._
+
+   ## Product
+
+   **<name>** <purpose: the problem, who has it, and why solving it matters>
+
+   ## Personas
+
+   ### <persona name>, <role>
+   - Goals: <goals>
+   - Pain points: <pain points>
+
+   ## User journey
+
+   <step> → <step> → <step>
+
+   ## MVP stories — build these first
+
+   ### <user activity>
+
+   #### <story title>
+   - id: `<short-id>`
+   - priority: <must|should|could>
+
+   *Done when:*
+   - <criterion>
+   ```
+
+   Leave out `## Personas` and `## User journey` when the developer gave neither. Done when `node scripts/docs-check.js` reports nothing for `INTENT.md`.
+
+3. **Write `MEMORY.md`** at the repo root from this template, one fact per line. On an update, replace the changed lines and leave the file otherwise as it is. With an `INTENT.md`, leave out the Name and Purpose lines: `INTENT.md` owns them, and a copy here would drift.
 
    ```md
    # Project memory
@@ -47,7 +84,7 @@ The template knows nothing about the project it hosts. This skill asks the devel
    - **Issue tracker:** <tracker> at <url>, project `<KEY>` (conventions in `docs/agents/issue-tracker.md`)
    ```
 
-   Done when the file holds exactly these nine facts. A project with no browser code records `- **Frontend:** none`, and one with no tracker `- **Issue tracker:** none`, its work items living in `docs/` instead. The initialisation gate (`scripts/check-initialised.js`) requires the other six: a tracker is a choice rather than a property of the project, a service or a library has no UI to have a framework for, and a missing `Prose language` already means English, so it is never the unanswered question the gate exists to catch.
+   Done when the file holds exactly these nine facts, or the seven besides Name and Purpose when `INTENT.md` exists. A project with no browser code records `- **Frontend:** none`, and one with no tracker `- **Issue tracker:** none`, its work items living in `docs/` instead. The initialisation gate (`scripts/check-initialised.js`) requires the other six, reading Name and Purpose from `INTENT.md`'s `## Product` when that file exists: a tracker is a choice rather than a property of the project, a service or a library has no UI to have a framework for, and a missing `Prose language` already means English, so it is never the unanswered question the gate exists to catch.
 
 4. **Write the `Project` section of `README.md`.** Insert it before the first `## ` heading, between the two marker comments below; on an update, replace everything between the markers. Leave the rest of the README alone.
 
@@ -70,7 +107,7 @@ The template knows nothing about the project it hosts. This skill asks the devel
    <!-- project-init:end -->
    ```
 
-   Done when the README has one marker pair and the table matches `MEMORY.md`.
+   With an `INTENT.md`, take `<name>` and `<purpose>` from its `## Product` and end the sentence under the table with "The product and its MVP stories are in `INTENT.md`." Done when the README has one marker pair and the table matches `MEMORY.md`.
 
 5. **Update `docs/agents/issue-tracker.md`**, only when a tracker was named. With `none`, skip this step: leave the file as it is, and say in the report that the project has no tracker and its work items live in `docs/`. `to-tickets` is the one skill that needs a tracker, and it can ask for one when someone reaches for it.
 
@@ -120,7 +157,7 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
 ## Report
 
-The nine facts recorded, whether the Git hooks were installed, which files changed, the scaffold commands handed over, whether `CONTEXT-MAP.md` was written, and the next skill to run.
+The facts recorded, whether `INTENT.md` was read, written or declined, whether the Git hooks were installed, which files changed, the scaffold commands handed over, whether `CONTEXT-MAP.md` was written, and the next skill to run.
 
 ## Gotchas
 
@@ -131,3 +168,4 @@ The nine facts recorded, whether the Git hooks were installed, which files chang
 - When there is a key, it is upper case and the site a full URL; a lower-case key or a bare host name silently breaks the JQL in `issue-tracker.md`.
 - On an update, the old key must go everywhere in `issue-tracker.md`, including inside JQL strings and the `<KEY>-42` example; search for it before declaring the step done.
 - Change values through the skill, never by editing between the README markers: the next run replaces everything inside them.
+- `INTENT.md` is product intent and nothing else. The language, runtime, frontend and tracker go in `MEMORY.md` even when `INTENT.md` exists, because its format leaves them out on purpose. A name or purpose change goes into `INTENT.md`'s `## Product`, which may be exported from IntentDocs: say so rather than overwrite an exported file the developer will re-sync.

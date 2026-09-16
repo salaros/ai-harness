@@ -10,6 +10,7 @@ How the harness is put together: what each file is for, how skills, hooks and ag
 | `AGENTS.md` | The file every agent reads: layout, skills, the documentation chain and the working rules. |
 | `CLAUDE.md` | One line, `@AGENTS.md`, because Claude Code reads `CLAUDE.md` instead of `AGENTS.md`. |
 | `MEMORY.md` | The project facts, one per line: name, purpose, prose language, requirements, stack, and the issue tracker if there is one. The `project-init` skill writes it. |
+| `INTENT.md` | Optional. The product's intent in the [INTENT.md format](https://www.intentdocs.com/intent-md): product, MVP stories with their done-when criteria, and optionally personas, the user journey and later releases. When present, its `## Product` gives the name and purpose `MEMORY.md` would otherwise hold, and `docs-check` requires its `# INTENT.md` title, `## Product` and `## MVP stories`. The harness neither ships nor requires one; `project-init` offers to write it. |
 | `CONTEXT.md`, `CONTEXT-MAP.md` | The domain glossary, written by `domain-modeling`. A `microservices` repo adds `CONTEXT-MAP.md` and one `CONTEXT.md` per service; see `docs/agents/domain.md`. |
 | `TODO.md` | Loose ends: unanswered questions, unverified assumptions and deferred work, in the [todo-md](https://github.com/todo-md/todo-md) format. The `loose-ends` skill writes it. A settled entry is deleted, not ticked. |
 | `CODING_STANDARDS.md` | Rules the `code-review` skill applies. Anything a tool enforces stays out of it. |
@@ -68,7 +69,7 @@ Three Node scripts in `.agents/hooks/`. Each reads the tool's JSON payload on st
 
 | Hook | Checks |
 | --- | --- |
-| `pre-commit` | The project is initialised: `MEMORY.md` exists and holds no `<placeholder>`. `TODO.md` follows the ledger format. Staged documents keep the documentation chain intact. |
+| `pre-commit` | The project is initialised: `MEMORY.md` exists and holds no `<placeholder>`, with the name and purpose taken from `INTENT.md` when there is one. `TODO.md` follows the ledger format. Staged documents, `MEMORY.md` and `INTENT.md` keep the documentation chain intact. |
 | `commit-msg` | The message is a conventional commit: `<type>(<scope>)?!?: <description>`, subject at most 72 characters, at least four words, and a body. A missing issue key is a warning, not an error, and no warning at all when `MEMORY.md` records `Issue tracker: none`. |
 | `pre-push` | The project is initialised, and the pushed files pass the stack's formatter from `scripts/stacks.tsv`. It reports and blocks, never rewrites, and skips a formatter that is not installed. |
 | `post-merge` | Restores dependencies when a manifest changed: skills, npm, pnpm, yarn, NuGet or uv, as `scripts/stacks.tsv` says. |
@@ -139,9 +140,9 @@ To switch to GitHub, GitLab or local Markdown, run `/setup-matt-pocock-skills`.
 | `triage` | `issue-tracker.md`, `triage-labels.md`, `.out-of-scope/` | `.out-of-scope/<concept>.md`, labels and comments |
 | `domain-modeling` | `CONTEXT.md`, `docs/adr/` | `CONTEXT.md`, `docs/adr/NNNN-<slug>.md` |
 | `brd`, `prd`, `feature-forge`, `bdd-scenarios`, `design-doc`, `create-implementation-plan` | the document one stage upstream, `CONTEXT.md` | `docs/<stage>/NNNN-<slug>.md`, or `.scratch/<feature>/` for the plan |
-| `docs-check` | the `AGENTS.md` chain table, `docs/` | repairs in place |
+| `docs-check` | the `AGENTS.md` chain table, `docs/`, `MEMORY.md`, `INTENT.md` | repairs in place |
 | `loose-ends` | `TODO.md` | `TODO.md` |
-| `project-init` | your answers | `MEMORY.md`, the Project section of `README.md`, `issue-tracker.md`, and `CONTEXT-MAP.md` for `microservices` |
+| `project-init` | your answers, `INTENT.md` if present | `MEMORY.md`, `INTENT.md` if you accept one, the Project section of `README.md`, `issue-tracker.md`, and `CONTEXT-MAP.md` for `microservices` |
 | `teach` | the working directory | `MISSION.md`, `RESOURCES.md`, `NOTES.md` and lesson folders |
 | `loop-me` | `NOTES.md` | `workflows/<name>.md`, `NOTES.md` |
 | `implement`, `tdd`, `prototype` | a spec or tickets, the stack's tooling | code in `src/` and `tests/` |
