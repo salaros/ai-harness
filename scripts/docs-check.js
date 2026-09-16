@@ -8,7 +8,7 @@
 // the ID its file name gives it, the upstream documents it was derived from, and every citation
 // (DOC-ID or DOC-ID/ITEM) pointing backwards along the chain to something that exists.
 // Every document carries a "Derived from:" line naming at least one reference: an upstream
-// document, or a source (a URL, a repo-relative path that exists, or jira:KEY-123). A path may be a
+// document, or a source (isSource below: a URL, a path that exists, or jira:KEY-123). A path may be a
 // bare file name at the root, which is how INTENT.md is cited. A source
 // stands in for an upstream document only while the chain holds nothing earlier; an ADR may
 // always cite one, and is exempt from the backwards-only rule in both directions. MEMORY.md's
@@ -33,21 +33,36 @@ const fs = require("fs");
 const path = require("path");
 const lib = require("./lib");
 
-const SOURCE_HELP = "a URL, a repo-relative path that exists, or jira:KEY-123";
-// A path with a folder in it, or a Markdown file at the root such as INTENT.md: the shapes worth a
-// "does not exist" hint. Any other bare word with a dot ("Node.js", "e.g") stays prose.
-const looksLikePath = token => (/^[\w.][\w./-]*$/.test(token) && token.includes("/")) || /^[\w-][\w.-]*\.md$/i.test(token);
+// What a source is, for every checker that accepts one: the chain's "Derived from:" lines, MEMORY.md's
+// Requirements and TODO.md's entries all call isSource, so the rule and its help text live here once.
+const SOURCE_HELP = "a URL, a repo-relative path that exists (optionally path:line), or jira:KEY-123";
+// path:12 and path:12-40 point at lines of a file; the file is what has to exist.
+const withoutLine = token => token.replace(/:\d+(?:-\d+)?$/, "");
+// A path with a folder in it (a folder itself is written src/), or a Markdown file at the root such
+// as INTENT.md: the shapes worth a "does not exist" hint. Any other bare word with a dot ("Node.js",
+// "e.g") or without one ("docs", "scripts") stays prose, however real that name is on disk.
+const looksLikePath = token => (/^[\w.][\w./-]*$/.test(withoutLine(token)) && token.includes("/")) || /^[\w-][\w.-]*\.md$/i.test(withoutLine(token));
 // A bare file name counts as a source only when that file is at the root, so prose that happens to
 // contain a dot never passes for a reference.
-const isRootFile = (token, at) => /^[\w-][\w.-]*\.\w+$/.test(token) && fs.existsSync(at(token)) && fs.statSync(at(token)).isFile();
-// A source is the non-chain thing a document derives from. Only a path can be verified here;
-// a URL and a Jira key are checked for shape, since neither can be followed. `at` resolves a
-// repo-relative path against the root the caller gave.
-const isSource = (token, at) =>
-    /^https?:\/\/\S+$/i.test(token)
-    || /^jira:[A-Za-z][A-Za-z0-9]*-\d+$/.test(token)
-    || (looksLikePath(token) && fs.existsSync(at(token)))
-    || isRootFile(token, at);
+const isRootFile = (file, at) => /^[\w-][\w.-]*\.\w+$/.test(file) && fs.existsSync(at(file)) && fs.statSync(at(file)).isFile();
+// A source is the non-chain thing a document derives from. Only a path can be verified here; a URL
+// and a Jira key are checked for shape, since neither can be followed. A Jira key is upper case, as
+// Jira issues them. `root` is the repo a path resolves in.
+function isSource(token, root) {
+    const at = p => path.resolve(root, p);
+    const file = withoutLine(token);
+    return /^https?:\/\/\S+$/i.test(token)
+        || /^jira:[A-Z][A-Z0-9_]*-\d+$/.test(token)
+        || (looksLikePath(token) && fs.existsSync(at(file)))
+        || isRootFile(file, at);
+}
+// Which repo-relative paths belong to the chain: Markdown under docs/, the AGENTS.md table that
+// defines the stages, MEMORY.md whose Requirements line enters it, and INTENT.md. The edit hook and
+// the pre-commit hook both ask inChain, so an edit and a commit never disagree about what to check;
+// CHAIN_PATHS is the same set as git pathspecs.
+const CHAIN_FILES = ["AGENTS.md", "MEMORY.md", "INTENT.md"];
+const CHAIN_PATHS = ["docs", ...CHAIN_FILES];
+const inChain = file => CHAIN_FILES.includes(file) || /^docs\/.+\.md$/.test(file);
 // "x, y (z)" -> ["x", "y", "z"], with surrounding punctuation stripped.
 const tokensOf = text => text.split(/[\s,;]+/).filter(Boolean)
     .map(t => t.replace(/^[("'<[]+|[)"'>\].]+$/g, ""))
@@ -198,8 +213,8 @@ function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "M
         else {
             const tokens = referenceTokens(derived);
             const cites = [...derived.matchAll(refRe)].map(m => `${m[1]}-${m[2]}`).filter(c => c !== id);
-            const sources = tokens.filter(t => isSource(t, at));
-            const brokenPath = tokens.find(t => looksLikePath(t) && !fs.existsSync(at(t)));
+            const sources = tokens.filter(t => isSource(t, root));
+            const brokenPath = tokens.find(t => looksLikePath(t) && !fs.existsSync(at(withoutLine(t))));
             if (!cites.length && !sources.length) {
                 const why = brokenPath ? `; ${brokenPath} does not exist` : "";
                 say(d.file, `"Derived from:" names no reference: cite an upstream document, or a source (${SOURCE_HELP})${why}`);
@@ -245,8 +260,8 @@ function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "M
                 for (const token of named) {
                     if (!docs.has(token)) say(memoryFile, `Requirements names ${token}, which does not exist`);
                 }
-                if (!named.length && !tokens.some(t => isSource(t, at))) {
-                    const broken = tokens.find(t => looksLikePath(t) && !fs.existsSync(at(t)));
+                if (!named.length && !tokens.some(t => isSource(t, root))) {
+                    const broken = tokens.find(t => looksLikePath(t) && !fs.existsSync(at(withoutLine(t))));
                     say(memoryFile, `Requirements names no reference: cite a document ID, a source (${SOURCE_HELP}), or "none yet"`
                         + (broken ? `; ${broken} does not exist` : ""));
                 }
@@ -271,7 +286,7 @@ function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "M
     return { problems, summary: `docs-check: ${chain.length} stage(s) in ${agentsFile}, ${docs.size} document(s) under ${docsDir}/, no problems` };
 }
 
-module.exports = { check, readChain, readDocs, readIntent };
+module.exports = { check, readChain, readDocs, readIntent, isSource, SOURCE_HELP, inChain, CHAIN_PATHS };
 
 if (require.main === module) {
     const { problems, summary } = check(lib.root(), ...lib.args());

@@ -20,7 +20,7 @@ The chain in `AGENTS.md` ("Documentation") only pays off when every document can
 2. **Repair** each problem in the document it names, never by deleting the citation:
    - a missing or wrong first heading: make it `# <ID>: <title>` where the ID comes from the file name (`docs/ears/0003-x.md` is `EARS-0003`);
    - a missing `**Derived from:**` line: add it under the heading, citing the upstream document IDs;
-   - a `**Derived from:**` line naming no reference: put a real one on it. Upstream document IDs where the chain has them, otherwise a source, meaning a URL, a repo-relative path that exists, or `jira:KEY-123`. Prose alone does not count, and a path that is not there is reported by name;
+   - a `**Derived from:**` line naming no reference: put a real one on it. Upstream document IDs where the chain has them, otherwise a source, meaning a URL, a repo-relative path that exists (`path:line` allowed, a folder written `src/`), or `jira:KEY-123` in upper case. Prose alone does not count, a bare folder name or a lower-case key reads as prose, and a path that is not there is reported by name;
    - a source-only line where an upstream document exists: the named document was written after this one, so cite it instead. This is the message you get after adding a BRD behind an existing PRD;
    - a `Requirements` line in `MEMORY.md` that names nothing valid: give it sources, comma-separated, or the BRD's ID once one exists;
    - a citation to a document that does not exist: find the intended file and fix the number, or write the missing upstream document first;

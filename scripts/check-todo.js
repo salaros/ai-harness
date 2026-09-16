@@ -23,8 +23,8 @@
 //   git show :TODO.md | node scripts/check-todo.js
 //   node scripts/check-todo.js TODO.md
 const fs = require("fs");
-const path = require("path");
 const lib = require("./lib");
+const docsCheck = require("./docs-check");
 
 const TAGS = ["question", "assumption", "deferred"];
 const HEADER = /^#\s+TODO\s*$/;
@@ -33,16 +33,10 @@ const BOX = /^(\s*)-\s\[([^\]])\]\s+(.*)$/;
 const TAG = new RegExp(`(?:^|\\s)#(${TAGS.join("|")})(?=\\s|$)`);
 const ANY_TAG = /(?:^|\s)#([A-Za-z][\w-]*)/g;
 const SOURCE = /\(([^()]+)\)\s*$/;
-// A source says where the entry came from, in the vocabulary AGENTS.md already gives the chain:
-// a URL, a repo-relative path that exists, or jira:KEY-123, plus path:line for pointing at code.
-const URL = /^https?:\/\/\S+$/;
-const ISSUE = /^jira:[A-Z][A-Z0-9]+-\d+$/;
-
+// A source says where the entry came from, by the rule the chain's "Derived from:" lines follow:
+// docs-check owns it, so a source that passes in a document passes here too.
 function badSource(src, root) {
-    if (URL.test(src) || ISSUE.test(src)) return null;
-    const file = src.replace(/:\d+(?:-\d+)?$/, "");
-    if (/^[^\s:]/.test(file) && fs.existsSync(path.resolve(root, file))) return null;
-    return `"${src}" is not a source: a URL, a repo-relative path that exists (optionally path:line), or jira:KEY-123`;
+    return docsCheck.isSource(src.trim(), root) ? null : `"${src}" is not a source: ${docsCheck.SOURCE_HELP}`;
 }
 
 // The whole decision: the ledger's text, and the repo a source that looks like a path lives in.

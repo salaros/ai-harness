@@ -21,18 +21,17 @@ const { spawnSync } = require("child_process");
 const lib = require("./lib");
 const docsCheck = require("./docs-check");
 
-const CHAIN = /^(?:docs\/.*\.md|AGENTS\.md|MEMORY\.md|INTENT\.md)$/;
-
-// Which of the staged paths the chain covers. Exported because the pre-commit hook's whole reason
-// for piping a list in is this filter, and it answers without touching git or the disk.
-const inChain = staged => staged.filter(p => CHAIN.test(p));
+// Which of the staged paths the chain covers, by docs-check's membership rule, the one the edit hook
+// asks too. Exported because the pre-commit hook's whole reason for piping a list in is this filter,
+// and it answers without touching git or the disk.
+const chainFiles = staged => staged.filter(docsCheck.inChain);
 
 // The chain as the commit will record it. A git command that fails is a warning rather than a
 // problem: a hook that blocks a commit because it could not read the index is worse than one that
 // lets the working-tree check downstream have the last word.
 function check(root, staged) {
     const git = (args, opts) => spawnSync("git", args, { encoding: "utf8", cwd: root, ...opts });
-    const touched = inChain(staged);
+    const touched = chainFiles(staged);
     const warnings = [];
     if (!touched.length) return { touched, problems: [], warnings, summary: "nothing staged from the documentation chain" };
 
@@ -41,7 +40,7 @@ function check(root, staged) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "staged-docs-"));
     const prefix = tmp.split(path.sep).join("/") + "/";
     try {
-        const list = git(["ls-files", "-z", "--cached", "--", "docs", "AGENTS.md", "MEMORY.md", "INTENT.md"]);
+        const list = git(["ls-files", "-z", "--cached", "--", ...docsCheck.CHAIN_PATHS]);
         if (list.status !== 0) { warnings.push(`git ls-files failed: ${list.stderr || ""}`); return { touched, problems: [], warnings, summary: "" }; }
         if (list.stdout) {
             const out = git(["checkout-index", "-z", "--stdin", `--prefix=${prefix}`], { input: list.stdout });
@@ -66,14 +65,14 @@ function check(root, staged) {
     }
 }
 
-module.exports = { check, inChain, CHAIN };
+module.exports = { check, chainFiles };
 
 if (require.main === module) {
     const root = lib.chdirRoot();
     const staged = lib.stdin().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
     if (process.argv.includes("--dry-run")) {
-        const touched = inChain(staged);
+        const touched = chainFiles(staged);
         console.log(touched.length
             ? `would check the staged chain (${touched.length} file(s)): ${touched.join(" ")}`
             : "nothing staged from the documentation chain");

@@ -53,7 +53,7 @@ function preCommit(root, { dry }) {
     const stagedTodo = staged(root, TODO);
     const onDisk = fs.existsSync(path.join(root, TODO));
     const changed = lib.run("git", ["diff", "--cached", "--name-only", "--diff-filter=ACMRD"], { cwd: root });
-    const touched = stagedDocs.inChain(lines(changed.output));
+    const touched = stagedDocs.chainFiles(lines(changed.output));
 
     if (dry) {
         console.log(`project: ${gate.reason}`);

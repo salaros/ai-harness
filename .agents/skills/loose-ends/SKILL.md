@@ -23,7 +23,7 @@ The file holds what has nowhere else to live. That boundary is the whole skill: 
 | `#assumption` | taken on trust, not verified, and the work rests on it | verifying it, or finding it false |
 | `#deferred` | knowingly left undone, with no line of code to mark | doing it, or deciding it will never be done |
 
-The **source** says where the entry came from, in the vocabulary `AGENTS.md` gives the documentation chain: a URL, a repo-relative path that exists, or `jira:KEY-123`. Add a line number for code: `scripts/lib.js:34`.
+The **source** says where the entry came from, by the rule `AGENTS.md` gives the documentation chain, and `docs-check` and the `pre-commit` hook apply the same one: a URL, a repo-relative path that exists, or `jira:KEY-123` in upper case. Add a line number for code (`scripts/lib.js:34`), and write a folder with its slash (`src/`): a bare `src` is prose.
 
 ```md
 # TODO

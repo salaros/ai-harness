@@ -328,6 +328,22 @@ function checkEditFollowsProjectDir(t, env) {
         "check-edit.js checks the chain in CLAUDE_PROJECT_DIR, not in its own checkout", r.output);
 }
 
+// MEMORY.md is in the chain, so an edit that breaks its Requirements line is reported at once rather
+// than at the commit, which is the only place it used to surface.
+function checkEditChecksMemoryRequirements(t, env) {
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), "harness-edit-memory-"));
+    fs.copyFileSync(path.join(lib.checkout, "AGENTS.md"), path.join(other, "AGENTS.md"));
+    const memory = path.join(other, "MEMORY.md");
+    fs.writeFileSync(memory, "# Project memory\n\n- **Requirements:** the notes we took\n");
+    const r = lib.node([".agents/hooks/check-edit.js"], {
+        input: JSON.stringify({ tool_input: { file_path: memory } }),
+        env: { ...env, CLAUDE_PROJECT_DIR: other },
+    });
+    fs.rmSync(other, { recursive: true, force: true });
+    t.ok(r.status === 2 && r.output.includes("Requirements names no reference"),
+        "check-edit.js runs docs-check when MEMORY.md is edited", r.output);
+}
+
 // scripts/harness-files.tsv decides what an install does to each path, and policyFor reads it.
 // First match wins, a row ending in / covers everything under it, and an `optional:<flag>` row is
 // seeded only when the run asked for that flag. The real table is checked elsewhere; what is pinned
@@ -687,6 +703,7 @@ module.exports = [
     docsSiteRendersTheChain,
     sessionStartFollowsProjectDir,
     checkEditFollowsProjectDir,
+    checkEditChecksMemoryRequirements,
     checkEditRunsTheInvariantsOnTheirPaths,
     manifestPoliciesAreReadInOrder,
     installerRejectsUnknownArguments,

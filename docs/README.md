@@ -4,7 +4,7 @@ Everything written about this project before and beside its code lives here, one
 
 Every document is `docs/<stage>/NNNN-<slug>.md`, its ID is `<STAGE>-NNNN`, its first heading is `# <STAGE>-NNNN: <title>`, and it carries a `**Derived from:**` line naming at least one reference. Items a later stage will refine start their line with a short ID (`BR-2`, `FR-3`, `AC-1`, `### D-1`), and later documents cite them as `DOC-ID/ITEM`.
 
-A reference is an upstream document ID, or a **source**: a URL, a repo-relative path that exists, or `jira:KEY-123`. A file at the root counts by its bare name, so a project that keeps its product intent in an optional `INTENT.md` cites `INTENT.md`. A source stands in for an upstream document only while the chain holds nothing earlier, so the first document written may name one and every later document cites the chain. An ADR is the exception at both ends: it may cite a source or any document at any time, and any document may cite it.
+A reference is an upstream document ID, or a **source**: a URL, a repo-relative path that exists (optionally `path:line`, a folder written `src/`), or `jira:KEY-123` in upper case. A file at the root counts by its bare name, so a project that keeps its product intent in an optional `INTENT.md` cites `INTENT.md`. A source stands in for an upstream document only while the chain holds nothing earlier, so the first document written may name one and every later document cites the chain. An ADR is the exception at both ends: it may cite a source or any document at any time, and any document may cite it.
 
 ## BRD, Business Requirements Document
 

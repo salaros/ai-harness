@@ -12,6 +12,8 @@ const os = require("os");
 const path = require("path");
 const commitMsg = require("../../../scripts/check-commit-msg");
 const todo = require("../../../scripts/check-todo");
+const docsCheck = require("../../../scripts/docs-check");
+const stagedDocs = require("../../../scripts/check-staged-docs");
 
 // A temp repo holding `files` (repo-relative path -> content), handed to `use`, and removed after.
 function withRoot(files, use) {
@@ -118,6 +120,12 @@ function todoDecisions(t) {
         // template happens to ship; this is the row that proves the resolution rather than assuming it.
         [text("# TODO", "", "- [ ] Confirm the rounding rule #question (scripts/lib.js)"), "is not a source", null,
             "a path outside that root is not a source, however real it is here"],
+        [text("# TODO", "", "- [ ] Split the billing folder #deferred (src)"), "is not a source", null,
+            "a bare folder name is prose, as it is in a Derived from line"],
+        [text("# TODO", "", "- [ ] Split the billing folder #deferred (src/)"), null, "1 open item(s)",
+            "a folder written with its slash is a source"],
+        [text("# TODO", "", "- [ ] Chase the ticket #deferred (jira:ab-42)"), "is not a source", null,
+            "a lower-case Jira key is rejected, as docs-check rejects it"],
     ];
     for (const [ledger, blocks, summary, why] of rows) {
         const r = withRoot(REPO, root => todo.check(ledger, root));
@@ -126,7 +134,56 @@ function todoDecisions(t) {
     }
 }
 
+// What counts as a source, the one rule "Derived from:", MEMORY.md's Requirements and TODO.md share.
+function sourceDecisions(t) {
+    const REPO = { "INTENT.md": "# INTENT.md\n", "src/billing.cs": "// there\n", "docs/brief.md": "# Brief\n" };
+    const rows = [
+        // token, is a source, why
+        ["https://example.com/spec", true, "a URL"],
+        ["jira:AB-42", true, "an upper-case Jira key"],
+        ["jira:MY_PROJ-7", true, "a Jira key with an underscore, which Jira allows"],
+        ["jira:ab-42", false, "a lower-case Jira key, which Jira never issues"],
+        ["src/billing.cs", true, "a path that exists"],
+        ["src/billing.cs:12", true, "path:line, where the file exists"],
+        ["src/billing.cs:12-40", true, "path:from-to, where the file exists"],
+        ["src/missing.cs:12", false, "path:line whose file does not exist"],
+        ["src/", true, "a folder, written with its slash"],
+        ["src", false, "a bare word, even one naming a real folder"],
+        ["INTENT.md", true, "a file at the root"],
+        ["Node.js", false, "prose with a dot"],
+        ["during the review", false, "prose"],
+    ];
+    withRoot(REPO, root => {
+        for (const [token, want, why] of rows) {
+            t.ok(docsCheck.isSource(token, root) === want, `isSource: ${why}`, `${token} -> ${!want}`);
+        }
+    });
+}
+
+// Which files are the chain. The edit hook and the pre-commit hook both ask inChain, so one table
+// pins what an edit and a commit check.
+function chainMembership(t) {
+    const rows = [
+        ["docs/brd/0001-x.md", true, "a document under docs/"],
+        ["docs/README.md", true, "any Markdown under docs/"],
+        ["AGENTS.md", true, "the table that defines the stages"],
+        ["MEMORY.md", true, "MEMORY.md, whose Requirements line enters the chain"],
+        ["INTENT.md", true, "INTENT.md"],
+        ["docs/diagram.png", false, "a file under docs/ that is not Markdown"],
+        ["README.md", false, "Markdown outside docs/"],
+        ["src/docs/x.md", false, "a docs/ folder that is not at the root"],
+    ];
+    for (const [file, want, why] of rows) {
+        t.ok(docsCheck.inChain(file) === want, `inChain: ${why}`, `${file} -> ${!want}`);
+    }
+    const staged = rows.map(r => r[0]);
+    t.ok(JSON.stringify(stagedDocs.chainFiles(staged)) === JSON.stringify(staged.filter(docsCheck.inChain)),
+        "the pre-commit hook's staged filter is inChain", stagedDocs.chainFiles(staged).join(" "));
+}
+
 module.exports = [
     commitMessageDecisions,
     todoDecisions,
+    sourceDecisions,
+    chainMembership,
 ];

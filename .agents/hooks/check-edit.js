@@ -3,8 +3,8 @@
 // Runs after the harness writes or edits a file. Gets the edited path from lib.js (repo-relative,
 // whatever the harness sent) and applies the first matching rule below that objects: a refusal
 // when a vendored skill was edited in place, node --check for *.js, JSON validity for *.json, the
-// documentation chain for Markdown under docs/, for AGENTS.md (whose table defines the chain) and for
-// INTENT.md (whose required sections docs-check verifies),
+// documentation chain for any file docs-check counts in it (Markdown under docs/, AGENTS.md, MEMORY.md
+// and INTENT.md),
 // the harness invariants (scripts/check-harness.js) when a path they read changed, and, in the
 // upstream only, the whole suite when any harness script, table or Git hook changed. Each rule
 // catches something broken; none of them asks a project to keep bookkeeping current.
@@ -34,9 +34,9 @@ const rules = [
         when: /\.json$/,
         check: file => { try { JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { return `invalid JSON in ${file}: ${e.message}`; } },
     },
-    {   // The chain: any Markdown under docs/, the AGENTS.md table the validator reads the stages from,
-        // and INTENT.md, whose required sections it checks when a project has one.
-        when: /^(?:AGENTS\.md|INTENT\.md|docs\/.*\.md)$/,
+    {   // The chain, by docs-check's own membership rule, which the pre-commit hook asks too: Markdown
+        // under docs/, the AGENTS.md table, MEMORY.md's Requirements line and INTENT.md.
+        when: docsCheck.inChain,
         check: () => { const r = docsCheck.check(root); return r.problems.length > 0 && `documentation chain check failed (see AGENTS.md, Documentation; fix with the docs-check skill):\n${r.problems.join("\n")}`; },
     },
     {   // The links, the skills folder, the routing, the Git hooks: facts every repo with the harness
