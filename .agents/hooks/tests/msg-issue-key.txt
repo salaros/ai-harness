@@ -1,3 +1,0 @@
-fix(hooks): cite the ticket this change came from (AB-42)
-
-The key ties the commit back to the work item that asked for it.

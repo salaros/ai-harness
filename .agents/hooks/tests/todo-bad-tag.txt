@@ -1,3 +1,0 @@
-# TODO
-
-- [ ] Something vague #todo (AGENTS.md)

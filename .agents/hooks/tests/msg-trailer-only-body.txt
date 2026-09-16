@@ -1,3 +1,0 @@
-feat(hooks): reject a body that is only a trailer line
-
-Refs: AB-42
