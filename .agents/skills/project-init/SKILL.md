@@ -1,6 +1,6 @@
 ---
 name: project-init
-description: Turn a repo cloned from this template into a named project. Asks the developer, through the harness's own question tool, for the project name and purpose, the language its prose is written in, where the requirements live, the unit type, the stack and, if there is one, the issue tracker, and records the answers in MEMORY.md, README.md and docs/agents/issue-tracker.md. Use when a project starts, when MEMORY.md is missing, or when the stack or issue tracker changes.
+description: Turn a repo cloned from this template into a named project. Asks the developer, through the harness's own question tool, for the project name and purpose, the language its prose is written in, where the requirements live, the unit type, the stack and, if there is one, the issue tracker, and records the answers in MEMORY.md, README.md and docs/agents/issue-tracker.md, plus a CONTEXT-MAP.md for a microservices repo. Use when a project starts, when MEMORY.md is missing, or when the stack or issue tracker changes.
 disable-model-invocation: true
 ---
 
@@ -20,7 +20,7 @@ The template knows nothing about the project it hosts. This skill asks the devel
    | What does it do, in one sentence, for whom? | Purpose | One sentence with a subject, an outcome and a user |
    | Which language is this project's prose written in? | Prose language | A language name (`English`, `Russian`, `Ukrainian`). It governs everything the project authors -- the `docs/` chain, `CONTEXT.md`, `TODO.md`, this file's own values and the README Project section -- and the language you answer the developer in. The harness stays English whatever the answer: `AGENTS.md`, `docs/agents/` and every `SKILL.md` are merged from upstream, so a translation is overwritten or collides |
    | Where do the requirements live? | Requirements | One or more sources, comma-separated: a repo-relative path that exists, a URL, or `jira:KEY-123`; `none yet` is allowed and means the `brd` skill runs next |
-   | What kind of unit is it? | Unit type | Options: `library`, `cli`, `service`, `monolith`, `frontend` |
+   | What kind of unit is it? | Unit type | Options: `library`, `cli`, `service`, `microservices`, `monolith`, `frontend`. `service` is one deployable service; `microservices` is several services in this one repo, orchestrated together (Aspire for .NET), each with its own domain context |
    | Which language? | Language | One language (`C#`, `TypeScript`, `Python`) |
    | Which runtime and package manager? | Runtime / package manager | Version included (`.NET 9 / NuGet`, `Node 22 / pnpm`, `Python 3.13 / uv`) |
    | Which frontend framework? | Frontend | Only when the project has browser code: `React`, `Vue`, `Blazor`, or `none`. The `engineer` agent routes its framework skills on this, so a guess here sends it to the wrong ones |
@@ -78,7 +78,9 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
 6. **Remember, in your harness too.** If your harness keeps persistent memory (Claude Code auto-memory), save one `project` memory saying that the project facts live in `MEMORY.md` at the repo root and repeating the name, stack and, if there is one, the Jira key, so they are in context before the repo is read. Skip this in a harness without memory. Done when the memory exists or the harness has none.
 
-7. **Hand over the scaffold.** Read `scripts/stacks.tsv` and take the scaffold column of the row for the stack; replace `{Name}` with the PascalCase project name, `{name}` with the kebab-case one, and `{template}` with the unit type's template (`classlib`, `console`, `webapi` or `blazor` for .NET by library, cli, service or monolith and frontend; `--lib` for a Python library, `--app --package` otherwise). Give the developer the commands as a code block, one per line. Do not run them: scaffolding is the developer's call and a separate step. For a stack with no row, add one to `scripts/stacks.tsv` (triggers, needs, restore, scaffold, formats, format) so the post-merge hook restores it and the pre-push hook format-checks it too, and point at `src/README.md` and `tests/README.md`. Done when the developer has the commands and the table has a row for the stack.
+7. **Hand over the scaffold.** Read `scripts/stacks.tsv` and take the scaffold column of the row for the stack (for `microservices` on .NET, the `dotnet-aspire` row instead of `dotnet`); replace `{Name}` with the PascalCase project name, `{name}` with the kebab-case one, and `{template}` with the unit type's template (`classlib`, `console`, `webapi` or `blazor` for .NET by library, cli, service or monolith and frontend; `--lib` for a Python library, `--app --package` otherwise). Give the developer the commands as a code block, one per line. Do not run them: scaffolding is the developer's call and a separate step. For a stack with no row, add one to `scripts/stacks.tsv` (triggers, needs, restore, scaffold, formats, format) so the post-merge hook restores it and the pre-push hook format-checks it too, and point at `src/README.md` and `tests/README.md`. Done when the developer has the commands and the table has a row for the stack.
+
+   For `microservices` on a stack with no scaffold for it, hand over the stack's own row and say that the services are laid out by hand as `docs/agents/domain.md` ("Microservices") describes. With .NET, the `dotnet-aspire` row creates the AppHost, ServiceDefaults and an Aspire test project but no service: give the developer the "Adding a service" steps from `docs/agents/domain.md` for the first one.
 
    For .NET, the scaffold ends by installing Husky.NET as a local tool and then running `git config core.hooksPath .githooks`. That last command is not redundant: `dotnet husky install` repoints `core.hooksPath` at `.husky`, which would disable this repo's own hooks. Tell the developer to keep it, and that `dotnet tool restore` is what a teammate runs after cloning.
 
@@ -100,11 +102,25 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
    Done when `dotnet husky run --group pre-push` reports the task, not an empty run. Skip this step entirely for any other stack.
 
-9. **Close the loop.** Ask the developer to commit (`git add -A`, then a commit such as `initialise <name>`). If Requirements was `none yet`, hand off to the `brd` skill; otherwise point out that the `business-analyst` agent can start the documentation chain from the requirements location now on record. The post-merge Git hook restores whatever `scripts/stacks.tsv` says for the changed manifests, so the row added in step 7 is all it needs.
+9. **Set up the context map, for `microservices` only.** Each service owns its vocabulary, so the repo is multi-context, and the `domain-modeling` skill, both agents and the session-start hook recognise that by a root `CONTEXT-MAP.md`. Write it if it is absent, from the template below, with the one `Shared` entry and no services yet: `domain-modeling` adds a service's entry and its `src/<Service>/CONTEXT.md` when the first term of that service is resolved. Keep the root `CONTEXT.md` for the terms every service uses. On an update that changes the unit type away from `microservices`, leave an existing map alone and say so in the report.
+
+   ```md
+   # Context Map
+
+   ## Contexts
+
+   - [Shared](./CONTEXT.md): terms every service uses
+
+   ## Relationships
+   ```
+
+   Done when `CONTEXT-MAP.md` exists and names `CONTEXT.md`. Skip this step for every other unit type.
+
+10. **Close the loop.** Ask the developer to commit (`git add -A`, then a commit such as `initialise <name>`). If Requirements was `none yet`, hand off to the `brd` skill; otherwise point out that the `business-analyst` agent can start the documentation chain from the requirements location now on record. The post-merge Git hook restores whatever `scripts/stacks.tsv` says for the changed manifests, so the row added in step 7 is all it needs.
 
 ## Report
 
-The nine facts recorded, which files changed, the scaffold commands handed over, and the next skill to run.
+The nine facts recorded, which files changed, the scaffold commands handed over, whether `CONTEXT-MAP.md` was written, and the next skill to run.
 
 ## Gotchas
 

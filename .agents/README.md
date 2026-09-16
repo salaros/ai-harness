@@ -10,7 +10,7 @@ How the harness is put together: what each file is for, how skills, hooks and ag
 | `AGENTS.md` | The file every agent reads: layout, skills, the documentation chain and the working rules. |
 | `CLAUDE.md` | One line, `@AGENTS.md`, because Claude Code reads `CLAUDE.md` instead of `AGENTS.md`. |
 | `MEMORY.md` | The project facts, one per line: name, purpose, prose language, requirements, stack, and the issue tracker if there is one. The `project-init` skill writes it. |
-| `CONTEXT.md` | The domain glossary, written by `domain-modeling`. |
+| `CONTEXT.md`, `CONTEXT-MAP.md` | The domain glossary, written by `domain-modeling`. A `microservices` repo adds `CONTEXT-MAP.md` and one `CONTEXT.md` per service; see `docs/agents/domain.md`. |
 | `TODO.md` | Loose ends: unanswered questions, unverified assumptions and deferred work, in the [todo-md](https://github.com/todo-md/todo-md) format. The `loose-ends` skill writes it. A settled entry is deleted, not ticked. |
 | `CODING_STANDARDS.md` | Rules the `code-review` skill applies. Anything a tool enforces stays out of it. |
 | `skills-lock.json` | Source, path and hash of every vendored skill, written by `npx skills`. |
@@ -141,7 +141,7 @@ To switch to GitHub, GitLab or local Markdown, run `/setup-matt-pocock-skills`.
 | `brd`, `prd`, `feature-forge`, `bdd-scenarios`, `design-doc`, `create-implementation-plan` | the document one stage upstream, `CONTEXT.md` | `docs/<stage>/NNNN-<slug>.md`, or `.scratch/<feature>/` for the plan |
 | `docs-check` | the `AGENTS.md` chain table, `docs/` | repairs in place |
 | `loose-ends` | `TODO.md` | `TODO.md` |
-| `project-init` | your answers | `MEMORY.md`, the Project section of `README.md`, `issue-tracker.md` |
+| `project-init` | your answers | `MEMORY.md`, the Project section of `README.md`, `issue-tracker.md`, and `CONTEXT-MAP.md` for `microservices` |
 | `teach` | the working directory | `MISSION.md`, `RESOURCES.md`, `NOTES.md` and lesson folders |
 | `loop-me` | `NOTES.md` | `workflows/<name>.md`, `NOTES.md` |
 | `implement`, `tdd`, `prototype` | a spec or tickets, the stack's tooling | code in `src/` and `tests/` |

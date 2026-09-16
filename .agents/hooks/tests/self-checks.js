@@ -428,8 +428,14 @@ function oneReaderForTheStacksTable(t) {
     const stacks = require("../../../scripts/stacks.js");
     const rows = stacks.rows(lib.checkout);
     t.ok(rows.length > 0, `${table} holds rows`);
-    t.ok(rows.every(r => r.stack && r.triggers), "every row names a stack and what triggers it",
-        rows.filter(r => !r.stack || !r.triggers).map(r => JSON.stringify(r)).join("\n"));
+    // A row with no triggers is scaffold-only (dotnet-aspire): nothing restores or formats through it,
+    // so it must at least scaffold, or it is a row that does nothing at all.
+    const idle = r => !r.stack || (!r.triggers && !r.scaffold);
+    t.ok(!rows.some(idle), "every row names a stack and what triggers it, or only scaffolds",
+        rows.filter(idle).map(r => JSON.stringify(r)).join("\n"));
+    t.ok(rows.filter(r => !r.triggers).every(r => !r.restore && !r.formats && !r.format),
+        "a scaffold-only row restores and formats nothing, since no file can trigger it",
+        rows.filter(r => !r.triggers && (r.restore || r.formats || r.format)).map(r => r.stack).join(", "));
 
     const wide = fs.readFileSync(table, "utf8").split(/\r?\n/)
         .filter(l => l.trim() && !l.startsWith("#"))
