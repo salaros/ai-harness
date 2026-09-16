@@ -23,12 +23,14 @@ name: release
 # nothing. A ruleset on GitHub freezes tags matching the trigger below, so a published version's tag
 # cannot be moved or deleted afterwards.
 #
-# Cutting one is by hand. Bump the version in package.json, commit it, land it on `master`, then:
+# Cutting one is by hand, and the tag is the only place the version is written. package.json holds
+# 0.0.0 on every branch and is never bumped: this job writes the tag's version into it just before
+# the publish, so the tarball and the tag cannot disagree. Land the work on `master`, then:
 #
 #   git tag -a 0.2.4 -m "0.2.4" && git push origin 0.2.4
 #
-# The guards refuse the three ways a hand-cut tag goes wrong: lightweight instead of annotated,
-# disagreeing with package.json, or naming a commit that never reached `master`.
+# The guards refuse the three ways a hand-cut tag goes wrong: lightweight instead of annotated, not
+# a plain MAJOR.MINOR.PATCH version, or naming a commit that never reached `master`.
 
 on:
   push:
@@ -76,7 +78,7 @@ jobs:
       - name: Documentation chain
         run: node scripts/docs-check.js
 
-      - name: The tag is annotated, agrees with package.json, and is on master
+      - name: The tag is annotated, is a version, and is on master
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           # actions/checkout chooses which refs reach this clone, and a guard that assumes an answer
@@ -91,24 +93,34 @@ jobs:
             "+refs/heads/master:refs/remotes/origin/master"
 
           kind="$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")"
-          pkg="$(node -p "require('./package.json').version")"
           echo "tag $GITHUB_REF_NAME is a $kind naming $(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")"
           echo "HEAD is $(git rev-parse HEAD), origin/master is $(git rev-parse origin/master)"
-          echo "package.json says $pkg"
 
           if [ "$kind" != "tag" ]; then
             echo "::error::$GITHUB_REF_NAME is a $kind, not an annotated tag: cut it with git tag -a"
             exit 1
           fi
-          if [ "$GITHUB_REF_NAME" != "$pkg" ]; then
-            echo "::error::tag $GITHUB_REF_NAME disagrees with package.json, which says $pkg"
+          # The trigger's glob also lets through 1.2.3foo and 1.2.3.4, which npm would either reject
+          # after the suite ran or publish under a name nobody meant. Only MAJOR.MINOR.PATCH passes,
+          # with no leading zeros, so the version written below is exactly the tag.
+          if ! [[ "$GITHUB_REF_NAME" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::$GITHUB_REF_NAME is not a MAJOR.MINOR.PATCH version"
             exit 1
           fi
           if ! git merge-base --is-ancestor HEAD origin/master; then
             echo "::error::$GITHUB_REF_NAME names a commit that is not on master, the released line"
             exit 1
           fi
-          echo "publishing $pkg"
+
+      # package.json holds 0.0.0 in the repository, so the tag is the one source of the version. It
+      # is written here, into this runner's copy only, and nothing is committed back: a push to
+      # master from a tag build would need a token that can write the code, and the tag already
+      # records the release.
+      - name: package.json takes the version from the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          npm pkg set version="$GITHUB_REF_NAME"
+          echo "publishing $(node -p "require('./package.json').version")"
 
       # What the tarball carries is a separate question from what the repo holds: the files list in
       # package.json is short on purpose, and one missing entry ships an installer that cannot run.
