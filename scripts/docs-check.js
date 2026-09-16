@@ -8,10 +8,12 @@
 // the ID its file name gives it, the upstream documents it was derived from, and every citation
 // (DOC-ID or DOC-ID/ITEM) pointing backwards along the chain to something that exists.
 // Every document carries a "Derived from:" line naming at least one reference: an upstream
-// document, or a source (a URL, a repo-relative path that exists, or jira:KEY-123). A source
+// document, or a source (a URL, a repo-relative path that exists, or jira:KEY-123). A path may be a
+// bare file name at the root, which is how INTENT.md is cited. A source
 // stands in for an upstream document only while the chain holds nothing earlier; an ADR may
 // always cite one, and is exempt from the backwards-only rule in both directions. MEMORY.md's
-// Requirements line follows the same reference rule, or says "none yet".
+// Requirements line follows the same reference rule, or says "none yet". INTENT.md is optional;
+// when there is one it must carry the sections its specification requires, as readIntent() reads them.
 // Prints one line per problem and exits 1 when there are any. The edit hook requires check().
 // readDocs() is the model both this file and anything else that renders the chain read: the stages,
 // the documents, and the two expressions that recognise a citation and an item. It is exported
@@ -25,21 +27,27 @@
 // Neither changes the working directory: chdir is process-wide, so a library that moves it moves it
 // for its caller. The caller decides where the root is -- a hook honours the harness's project-dir
 // variable, a command uses its own location -- and says so here.
-// Usage: node scripts/docs-check.js [docs-dir] [agents-file] [memory-file]
-//        (defaults: docs, AGENTS.md, MEMORY.md, each relative to the repo root)
+// Usage: node scripts/docs-check.js [docs-dir] [agents-file] [memory-file] [intent-file]
+//        (defaults: docs, AGENTS.md, MEMORY.md, INTENT.md, each relative to the repo root)
 const fs = require("fs");
 const path = require("path");
 const lib = require("./lib");
 
 const SOURCE_HELP = "a URL, a repo-relative path that exists, or jira:KEY-123";
-const looksLikePath = token => /^[\w.][\w./-]*$/.test(token) && token.includes("/");
+// A path with a folder in it, or a Markdown file at the root such as INTENT.md: the shapes worth a
+// "does not exist" hint. Any other bare word with a dot ("Node.js", "e.g") stays prose.
+const looksLikePath = token => (/^[\w.][\w./-]*$/.test(token) && token.includes("/")) || /^[\w-][\w.-]*\.md$/i.test(token);
+// A bare file name counts as a source only when that file is at the root, so prose that happens to
+// contain a dot never passes for a reference.
+const isRootFile = (token, at) => /^[\w-][\w.-]*\.\w+$/.test(token) && fs.existsSync(at(token)) && fs.statSync(at(token)).isFile();
 // A source is the non-chain thing a document derives from. Only a path can be verified here;
 // a URL and a Jira key are checked for shape, since neither can be followed. `at` resolves a
 // repo-relative path against the root the caller gave.
 const isSource = (token, at) =>
     /^https?:\/\/\S+$/i.test(token)
     || /^jira:[A-Za-z][A-Za-z0-9]*-\d+$/.test(token)
-    || (looksLikePath(token) && fs.existsSync(at(token)));
+    || (looksLikePath(token) && fs.existsSync(at(token)))
+    || isRootFile(token, at);
 // "x, y (z)" -> ["x", "y", "z"], with surrounding punctuation stripped.
 const tokensOf = text => text.split(/[\s,;]+/).filter(Boolean)
     .map(t => t.replace(/^[("'<[]+|[)"'>\].]+$/g, ""))
@@ -141,7 +149,34 @@ function readDocs(root, docsDir = "docs", agentsFile = "AGENTS.md") {
     return { stages, docStages, docs, problems, refRe: citationRe(docStages.map(s => s.folder)), itemRe: ITEM_RE };
 }
 
-function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "MEMORY.md") {
+// INTENT.md (https://www.intentdocs.com/intent-md): the product's intent, one per product, at the
+// root. Optional, so the harness neither ships nor requires one. Given its text, returns whether the
+// "# INTENT.md" title is there, the product's bold name and the prose describing it from
+// "## Product" (null when the section is missing), and whether "## MVP stories" is there; that heading
+// may run on, as in "## MVP stories — build these first". check-initialised.js takes the product's
+// name and purpose from here, so the gate and this validator agree on what a product section is.
+function readIntent(text) {
+    const lines = text.split(/\r?\n/);
+    const h1 = lines.find(l => /^#\s/.test(l));
+    const section = name => {
+        const start = lines.findIndex(l => new RegExp(`^##\\s+${name}\\b`, "i").test(l));
+        if (start < 0) return null;
+        const end = lines.findIndex((l, i) => i > start && /^#{1,2}\s/.test(l));
+        return lines.slice(start + 1, end < 0 ? lines.length : end).join("\n").trim();
+    };
+    const body = section("Product");
+    let product = null;
+    if (body !== null) {
+        const bold = body.match(/\*\*([^*]+)\*\*/);
+        product = {
+            name: bold ? bold[1].trim().replace(/[:.]+$/, "").trim() : "",
+            purpose: body.replace(/\*\*[^*]+\*\*/, "").replace(/^[\s:.,—–-]+/, "").replace(/\s+/g, " ").trim(),
+        };
+    }
+    return { title: !!h1 && h1.trim() === "# INTENT.md", product, stories: section("MVP stories") !== null };
+}
+
+function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "MEMORY.md", intentFile = "INTENT.md") {
     const at = p => path.resolve(root, p);
     const say = (file, msg) => problems.push(`${file}: ${msg}`);
 
@@ -219,10 +254,24 @@ function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "M
         }
     }
 
+    // 5. INTENT.md, only when there is one: the sections its specification requires. The stories
+    // themselves are the product owner's, so their shape is not checked.
+    if (fs.existsSync(at(intentFile))) {
+        const intent = readIntent(fs.readFileSync(at(intentFile), "utf8"));
+        const spec = "see https://www.intentdocs.com/intent-md";
+        if (!intent.title) say(intentFile, `first heading must be "# INTENT.md" (${spec})`);
+        if (!intent.product) say(intentFile, `no "## Product" section (${spec})`);
+        else {
+            if (!intent.product.name) say(intentFile, `"## Product" names no product in bold, as in "**Acme Billing** invoices …" (${spec})`);
+            if (!intent.product.purpose) say(intentFile, `"## Product" does not say what the product does, for whom and why (${spec})`);
+        }
+        if (!intent.stories) say(intentFile, `no "## MVP stories" section (${spec})`);
+    }
+
     return { problems, summary: `docs-check: ${chain.length} stage(s) in ${agentsFile}, ${docs.size} document(s) under ${docsDir}/, no problems` };
 }
 
-module.exports = { check, readChain, readDocs };
+module.exports = { check, readChain, readDocs, readIntent };
 
 if (require.main === module) {
     const { problems, summary } = check(lib.root(), ...lib.args());

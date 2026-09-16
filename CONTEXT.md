@@ -20,6 +20,10 @@ _Avoid_: self check, sanity check
 What a target records about itself that no file in it derives, such as its name, where its requirements live and its runtime. It is kept in `MEMORY.md`.
 _Avoid_: project config, settings, metadata
 
+**Product intent**:
+What a target's product is for and what its MVP must deliver: the product, its MVP stories and their done-when criteria. Optional, and kept in `INTENT.md` when a target has one, where it owns the name and purpose the project memory would otherwise hold. It never names the stack, tooling or issue tracker.
+_Avoid_: vision doc, product brief, roadmap
+
 **Project fact**:
 One labelled entry of the project memory, such as Requirements or Issue tracker. A fact is unanswered while its value is empty or still holds a `<placeholder>`. A required fact that is unanswered leaves the target uninitialised.
 _Avoid_: field, setting, key

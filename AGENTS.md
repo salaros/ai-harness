@@ -8,7 +8,9 @@ Each folder's README says what belongs in it and how it is organised: `src/`, `t
 
 ## Project
 
-`MEMORY.md` at the root holds the facts no file derives: what the project is, where its requirements live, the stack, and the issue tracker if the project has one. Read it first. The `project-init` skill writes it; until it exists this is still an unconfigured clone, and that skill is the first thing to run. The `pre-commit` and `pre-push` hooks refuse to let work leave a clone whose `MEMORY.md` is missing or still holds `<placeholders>`, unless an empty `.skip-project-init` at the root says this clone has no project to configure.
+`MEMORY.md` at the root holds the facts no file derives: what the project is, where its requirements live, the stack, and the issue tracker if the project has one. Read it first.
+
+`INTENT.md` at the root is optional product intent in the [INTENT.md format](https://www.intentdocs.com/intent-md): `## Product` and `## MVP stories`, never stack or tooling. When it exists, read it with `MEMORY.md`: its `## Product` owns the name and purpose, `MEMORY.md` keeps the configuration, and a BRD, a PRD or `Requirements` may cite `INTENT.md` as a source. `docs-check` holds it to its required sections. The `project-init` skill writes it; until it exists this is still an unconfigured clone, and that skill is the first thing to run. The `pre-commit` and `pre-push` hooks refuse to let work leave a clone whose `MEMORY.md` is missing or still holds `<placeholders>`, unless an empty `.skip-project-init` at the root says this clone has no project to configure.
 
 ## Documentation
 

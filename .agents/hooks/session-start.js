@@ -19,6 +19,7 @@ if (fs.existsSync("scripts/skills.js")) {
 }
 
 say(fs.existsSync("MEMORY.md") ? "project: facts in MEMORY.md" : "project: not initialised (no MEMORY.md). Run the project-init skill first");
+if (fs.existsSync("INTENT.md")) say("intent: product and MVP stories in INTENT.md");
 if (fs.existsSync("CONTEXT-MAP.md")) say("domain: multi-context, start at CONTEXT-MAP.md");
 if (fs.existsSync("CONTEXT.md")) say("domain: glossary in CONTEXT.md");
 if (fs.existsSync("docs/adr")) say(`decisions: docs/adr (${fs.readdirSync("docs/adr").length} ADRs)`);

@@ -317,10 +317,19 @@ const SKELETONS = {
     ],
 };
 
+// A repo that already has an INTENT.md names the product and its purpose there, so the MEMORY.md
+// laid down beside it leaves those two out rather than asking for them a second time.
+function skeletonLines(target, file, lines) {
+    if (file !== "MEMORY.md" || !fs.existsSync(path.join(target, "INTENT.md"))) return lines;
+    const facts = lines.filter(l => !/^- \*\*(?:Name|Purpose):\*\*/.test(l));
+    const first = facts.findIndex(l => l.startsWith("- **"));
+    return [...facts.slice(0, first), "The name and purpose are in `INTENT.md`, under `## Product`.", "", ...facts.slice(first)];
+}
+
 function skeletons(target) {
     for (const [file, lines] of Object.entries(SKELETONS)) {
         if (fs.existsSync(path.join(target, file))) { step("seed", "100644", "yours", file); continue; }
-        write(target, file, lines.join("\n"));
+        write(target, file, skeletonLines(target, file, lines).join("\n"));
         step("seed", "100644", "created", file, "seeded");
     }
 }
@@ -708,6 +717,6 @@ function report(target, head, ref, base) {
 // The decision, and the two pure helpers under it, so the suite can put a case in and read the
 // answer out rather than building a git checkout to reach one branch. Everything else here writes to
 // somebody's repository and stays behind main().
-module.exports = { unknownArgs, usage, policyFor, decideText, decideBinary, lineCounts, overlap, NEAREST };
+module.exports = { unknownArgs, usage, policyFor, decideText, decideBinary, lineCounts, overlap, NEAREST, skeletonLines };
 
 if (require.main === module) main();

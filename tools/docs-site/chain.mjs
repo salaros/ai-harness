@@ -15,13 +15,20 @@ import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
-const { readDocs } = require("../../scripts/docs-check.js");
+const { readDocs, readIntent } = require("../../scripts/docs-check.js");
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const DOCS = path.join(REPO, "docs");
 
 // One fact out of MEMORY.md ("- **Name:** Acme Billing"), or "" while the template is unconfigured.
+// A project with an INTENT.md names itself and its purpose there, in "## Product", so those two are
+// read from it first.
 function memoryFact(name) {
+    const intentFile = path.join(REPO, "INTENT.md");
+    if (["Name", "Purpose"].includes(name) && fs.existsSync(intentFile)) {
+        const { product } = readIntent(fs.readFileSync(intentFile, "utf8"));
+        if (product && product[name.toLowerCase()]) return product[name.toLowerCase()];
+    }
     const file = path.join(REPO, "MEMORY.md");
     if (!fs.existsSync(file)) return "";
     const re = new RegExp(`^\\s*[-*]?\\s*\\**${name}:?\\**:?`, "i");

@@ -76,9 +76,85 @@ function initialisationGateAnswersEveryState(t) {
         write("MEMORY.md", full);
         t.ok(init.check(dir).ok, "a MEMORY.md with every required fact passes", init.check(dir).reason);
 
+        // INTENT.md, when there is one, owns the name and purpose; the configuration stays in MEMORY.md.
+        const intent = ["# INTENT.md", "", "## Product", "", "**Acme Billing** invoices small firms monthly, so nobody cuts invoices by hand.",
+            "", "## MVP stories — build these first", "", "### Send an invoice", ""].join("\n");
+        const configOnly = full.split("\n").filter(l => !/\*\*(?:Name|Purpose):/.test(l)).join("\n");
+        clear();
+        write("INTENT.md", intent);
+        write("MEMORY.md", configOnly);
+        const fromIntent = init.check(dir);
+        t.ok(fromIntent.ok && fromIntent.reason.includes("INTENT.md"),
+            "INTENT.md's Product gives the name and purpose MEMORY.md leaves out", fromIntent.reason);
+
+        write("MEMORY.md", configOnly.replace("service", "<unit type>"));
+        const stillConfig = init.check(dir);
+        t.ok(!stillConfig.ok && stillConfig.missing.join() === "Unit type",
+            "INTENT.md does not stand in for configuration facts", stillConfig.reason);
+
+        write("INTENT.md", intent.replace("**Acme Billing** ", ""));
+        write("MEMORY.md", full);
+        const nameless = init.check(dir);
+        t.ok(!nameless.ok && nameless.missing.join() === "Name" && nameless.reason.includes("INTENT.md"),
+            "an INTENT.md whose Product names no product is blocked, even when MEMORY.md has a Name", nameless.reason);
+
+        write("INTENT.md", intent.replace(/## Product[\s\S]*?(?=## MVP)/, ""));
+        fs.unlinkSync(path.join(dir, "MEMORY.md"));
+        const bare = init.check(dir);
+        t.ok(!bare.ok && ["Name", "Purpose", "Language"].every(f => bare.missing.includes(f)),
+            "an INTENT.md with no Product and no MEMORY.md is blocked on both", bare.reason);
+
         clear();
         write(".skip-project-init", "");
         t.ok(init.check(dir).ok, "the marker file passes a clone with no MEMORY.md at all", init.check(dir).reason);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
+// INTENT.md is optional, and when present docs-check holds it to the sections its specification
+// requires. Each broken shape gets its own message; a well-formed file and an absent one get none.
+function docsCheckIntentShape(t) {
+    const tree = docTree();
+    const good = ["# INTENT.md", "", "_Written by hand._", "", "## Product", "", "**Acme Billing** invoices small firms monthly.",
+        "", "## Personas", "", "### Dana, bookkeeper", "", "## MVP stories — build these first", "", "### Send an invoice", "",
+        "*Done when:*", "- the customer receives a PDF", "", "## Release 2 — reminders", ""];
+    const cases = [
+        ["a well-formed file", good, ""],
+        ["a wrong title", ["# Intent", ...good.slice(1)], "first heading must be"],
+        ["no Product section", good.filter(l => l !== "## Product" && !l.startsWith("**Acme")), 'no "## Product" section'],
+        ["a Product with no bold name", good.map(l => l.replace("**Acme Billing** ", "Acme Billing ")), "names no product in bold"],
+        ["a Product with a name and nothing else", good.map(l => l.replace(" invoices small firms monthly.", "")), "does not say what the product does"],
+        ["no MVP stories section", good.map(l => l.replace("## MVP stories — build these first", "## Stories")), 'no "## MVP stories" section'],
+    ];
+    const at = name => path.join(tree.dir, name);
+    const problemsFor = (file) => docsCheck.check(lib.checkout, tree.dir, "AGENTS.md", at("no-memory-here.md"), file).problems;
+    t.ok(problemsFor(at("absent-intent.md")).length === 0, "docs-check: a project with no INTENT.md is not asked for one", problemsFor(at("absent-intent.md")).join("\n"));
+    for (const [title, lines, needle] of cases) {
+        tree.write("intent.md", ...lines);
+        const problems = problemsFor(at("intent.md"));
+        const detail = problems.join("\n") || "(none)";
+        t.ok(needle ? problems.some(p => p.includes(needle)) : problems.length === 0, `docs-check: INTENT.md, ${title}`, detail);
+    }
+    const parsed = docsCheck.readIntent(good.join("\n"));
+    t.ok(parsed.product.name === "Acme Billing" && parsed.product.purpose === "invoices small firms monthly.",
+        "docs-check: readIntent separates the bold name from the purpose", JSON.stringify(parsed));
+    tree.clean();
+}
+
+// A repo that installs the harness beside an INTENT.md gets a MEMORY.md skeleton without the name
+// and purpose, which INTENT.md already gives; any other repo gets every placeholder.
+function memorySkeletonDefersToIntent(t) {
+    const inst = installer();
+    if (!inst) { t.skip("memory skeleton: no scripts/update-harness.js"); return; }
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "harness-skeleton-"));
+    try {
+        const lines = ["# Project memory", "", "- **Name:** <name>", "- **Purpose:** <purpose>", "- **Language:** <language>", ""];
+        const plain = inst.skeletonLines(dir, "MEMORY.md", lines);
+        t.ok(plain === lines, "memory skeleton: every placeholder without an INTENT.md", plain.join("\n"));
+        fs.writeFileSync(path.join(dir, "INTENT.md"), "# INTENT.md\n");
+        const beside = inst.skeletonLines(dir, "MEMORY.md", lines).join("\n");
+        t.ok(!beside.includes("<name>") && !beside.includes("<purpose>") && beside.includes("<language>") && beside.includes("INTENT.md"),
+            "memory skeleton: no name or purpose beside an INTENT.md", beside);
+        t.ok(inst.skeletonLines(dir, "TODO.md", lines) === lines, "memory skeleton: other skeletons ignore INTENT.md", "");
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
 
@@ -144,10 +220,19 @@ function docsCheckDerivedFromShapes(t) {
     tree.write("brd/9103-absent.md", "# BRD-9103: Absent");
     tree.write("brd/9104-words.md", "# BRD-9104: Words", "", "**Derived from:** the whiteboard");
     tree.write("brd/9105-gone.md", "# BRD-9105: Gone", "", "**Derived from:** docs/nowhere/missing.md");
+    // A bare file name is a path at the root, which is how INTENT.md is cited. AGENTS.md stands in
+    // for it, since the upstream ships no INTENT.md for the checkout to resolve against.
+    tree.write("brd/9106-root.md", "# BRD-9106: Root", "", "**Derived from:** the product intent in AGENTS.md");
+    tree.write("brd/9107-root-gone.md", "# BRD-9107: Root gone", "", "**Derived from:** NO-SUCH-INTENT.md");
+    tree.write("brd/9108-dotted.md", "# BRD-9108: Dotted", "", "**Derived from:** a talk about Node.js");
     const r = tree.run();
     tree.clean();
-    for (const ok of ["brd/9100-url.md", "brd/9101-jira.md", "brd/9102-path.md"])
+    for (const ok of ["brd/9100-url.md", "brd/9101-jira.md", "brd/9102-path.md", "brd/9106-root.md"])
         t.ok(r.for(ok).length === 0, `docs-check: ${ok} derives from a valid source`, r.all);
+    t.ok(r.for("brd/9107-root-gone.md").some(p => p.includes("NO-SUCH-INTENT.md does not exist")),
+        "docs-check: Derived from names a root file that is not there", r.all);
+    t.ok(r.for("brd/9108-dotted.md").some(p => p.includes("names no reference") && !p.includes("does not exist")),
+        "docs-check: a dotted word in prose is neither a source nor a missing path", r.all);
     t.ok(r.for("brd/9103-absent.md").some(p => p.includes("missing a")), "docs-check: no Derived from line at all", r.all);
     t.ok(r.for("brd/9104-words.md").some(p => p.includes("names no reference")), "docs-check: Derived from names nothing", r.all);
     t.ok(r.for("brd/9105-gone.md").some(p => p.includes("does not exist")), "docs-check: Derived from names a path that is not there", r.all);
@@ -186,6 +271,7 @@ function docsCheckMemoryRequirements(t) {
         ["none yet", ["# Project", "", "- **Requirements:** none yet"], 0, ""],
         ["a document that exists", ["- **Requirements:** BRD-9300"], 0, ""],
         ["several sources", ["- **Requirements:** https://example.com/a, jira:ABC-1"], 0, ""],
+        ["a file at the root, as INTENT.md is cited", ["- **Requirements:** MVP stories in AGENTS.md"], 0, ""],
         ["a document that does not exist", ["- **Requirements:** BRD-9999"], 1, "does not exist"],
         ["prose instead of a reference", ["- **Requirements:** the whiteboard"], 1, "names no reference"],
         // The rule is "Derived from:"'s: one reference on the line, and the rest of the words are the
@@ -585,6 +671,8 @@ module.exports = [
     docsCheckDerivedFromShapes,
     docsCheckSourceAndAdrExemption,
     docsCheckMemoryRequirements,
+    docsCheckIntentShape,
+    memorySkeletonDefersToIntent,
     chainIsParsedInPipelineOrder,
     oneModelForValidatorAndPortal,
     docsSiteRendersTheChain,

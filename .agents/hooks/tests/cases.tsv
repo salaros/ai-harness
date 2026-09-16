@@ -12,12 +12,15 @@
 .agents/hooks/check-edit.js	claude-good-js.json	0	-	-	a valid JavaScript file passes
 .agents/hooks/check-edit.js	claude-agents-md.json	0	-	-	editing AGENTS.md runs docs-check, whose table it holds
 .agents/hooks/check-edit.js	claude-docs-readme.json	0	-	-	a non-chain Markdown file under docs/ passes docs-check
+.agents/hooks/check-edit.js	claude-intent-md.json	2	plant INTENT.md # Intent	first heading must be "# INTENT.md"	an INTENT.md without its required title fails docs-check
 .agents/hooks/guard-command.js	guard-force-push.json	2	-	blocked this command	force push is blocked
 .agents/hooks/guard-command.js	guard-safe.json	0	-	-	force-with-lease is allowed
 .agents/hooks/guard-command.js	guard-metadata-not-command.json	0	-	-	dangerous text in an unrelated payload field (not the command) is ignored
 .agents/hooks/guard-command.js	guard-quoted-in-command.json	0	-	-	a dangerous phrase quoted as data inside another command's own arguments is not treated as an invocation
 .agents/hooks/session-start.js	empty.json	0	-	branch:	session brief always exits 0
+.agents/hooks/session-start.js	empty.json	0	plant INTENT.md # INTENT.md	intent: product and MVP stories in INTENT.md	the session brief points at INTENT.md when a project keeps one
 scripts/check-staged-docs.js --dry-run	staged-chain.txt	0	-	would check the staged chain	a staged chain document triggers the check
+scripts/check-staged-docs.js --dry-run	staged-intent.txt	0	-	would check the staged chain (1 file(s)): INTENT.md	a staged INTENT.md triggers the chain check
 scripts/check-staged-docs.js --dry-run	staged-none.txt	0	-	nothing staged	a commit touching no chain file is skipped
 scripts/format-changed.js --dry-run	format-md.txt	0	plant package-lock.json {}	would check: npx --no-install prettier	a Node repo format-checks its changed files
 scripts/format-changed.js --dry-run	format-md.txt	0	absent package-lock.json	no stack claims them	without the stack lock file no formatter runs
