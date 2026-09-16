@@ -225,7 +225,7 @@ function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "M
 module.exports = { check, readChain, readDocs };
 
 if (require.main === module) {
-    const { problems, summary } = check(lib.root(), ...process.argv.slice(2));
+    const { problems, summary } = check(lib.root(), ...lib.args());
     console.log(problems.length ? problems.join("\n") : summary);
     process.exit(problems.length ? 1 : 0);
 }

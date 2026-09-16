@@ -234,6 +234,6 @@ const commands = {
     },
 };
 
-const [cmd, ...args] = process.argv.slice(2);
+const [cmd, ...args] = lib.args();
 if (!commands[cmd]) { console.error(`usage: node scripts/skills.js <${Object.keys(commands).join("|")}>`); process.exit(2); }
 commands[cmd](...args);

@@ -137,7 +137,7 @@ module.exports = { check, TYPES, MAX, MIN_WORDS, MIN_BODY };
 
 if (require.main === module) {
     // Read the message before changing directory: the path given may be relative to where Git ran.
-    const file = process.argv.slice(2).find(a => !a.startsWith("--"));
+    const file = lib.args().find(a => !a.startsWith("--"));
     const raw = file ? fs.readFileSync(file, "utf8") : lib.stdin();
     const root = lib.chdirRoot();
 
