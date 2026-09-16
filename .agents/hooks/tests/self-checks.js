@@ -373,6 +373,15 @@ function installerRejectsUnknownArguments(t) {
         const got = harness.unknownArgs(args, optional).join(" ");
         t.ok(got === want, `unknownArgs: ${why}`, `${args.join(" ")} -> "${got}", expected "${want}"`);
     }
+    const early = [
+        [["--dry-rn"], "--dry-rn", "a letter off a known flag fails before the clone"],
+        [["--Adopt", "extra"], "--Adopt extra", "anything not shaped like a flag fails before the clone"],
+        [["--astro-docs", "--ref", "v2"], "", "an optional part is left for the manifest to judge"],
+    ];
+    for (const [args, want, why] of early) {
+        const got = harness.mistypedArgs(args).join(" ");
+        t.ok(got === want, `mistypedArgs: ${why}`, `${args.join(" ")} -> "${got}", expected "${want}"`);
+    }
     const text = harness.usage();
     t.ok(/Usage:/.test(text) && text.includes("npx @salaros/ai-harness --help") && !text.includes("node scripts/"),
         "usage: read from the header comment, in the npx form", text);

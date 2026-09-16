@@ -57,6 +57,27 @@ function unknownArgs(args, optional) {
     }
     return unknown;
 }
+// The part of that check that needs no manifest, so a typo fails before the clone rather than after
+// it: anything not shaped like a flag, and anything a letter or two from a flag this script already
+// knows, which no optional part would be named.
+function mistypedArgs(args) {
+    const named = [...FLAGS, ...VALUES];
+    const near = (a, b) => {
+        const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+        for (let j = 1; j <= b.length; j++) d[0][j] = j;
+        for (let i = 1; i <= a.length; i++)
+            for (let j = 1; j <= b.length; j++)
+                d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        return d[a.length][b.length] <= 2;
+    };
+    const mistyped = [];
+    for (let i = 0; i < args.length; i++) {
+        if (VALUES.includes(args[i])) { i++; continue; }
+        if (named.includes(args[i])) continue;
+        if (!/^--[a-z0-9]+(-[a-z0-9]+)*$/.test(args[i]) || named.some(n => near(args[i], n))) mistyped.push(args[i]);
+    }
+    return mistyped;
+}
 // Read from the comment block at the top of this file, so the usage has one copy.
 function usage() {
     const lines = fs.readFileSync(__filename, "utf8").split(/\r?\n/);
@@ -479,6 +500,8 @@ function selfCheck(target, templateDir) {
 
 function main() {
     if (flag("--help") || flag("-h")) { console.log(usage()); return; }
+    const mistyped = mistypedArgs(argv);
+    if (mistyped.length) fail(`unknown argument(s): ${mistyped.join(" ")}. Nothing was written; run with --help for the options.`);
     const target = targetRoot();
     if (!fs.existsSync(path.join(target, ".git"))) fail(`${target} is not a git checkout`);
 
@@ -488,6 +511,14 @@ function main() {
     const { dir: templateDir, temporary } = templateCheckout(ref);
 
     try {
+        // Checked before anything is said about the target, so a bad argument is the only message.
+        const rows = policies(templateDir);
+        const optional = rows.filter(r => r.policy.startsWith("optional:")).map(r => r.policy.slice("optional:".length));
+        const unknown = unknownArgs(argv, optional);
+        if (unknown.length) {
+            if (temporary) fs.rmSync(templateDir, { recursive: true, force: true });
+            fail(`unknown argument(s): ${unknown.join(" ")}. Nothing was written; run with --help for the options.`);
+        }
         const head = at(templateDir, ["rev-parse", "HEAD"]).output.trim();
         // A base is what makes this an update rather than an overwrite. Without one -- a first
         // install, or an upstream whose history was rewritten -- an existing file is left alone
@@ -516,10 +547,6 @@ function main() {
             else say(`this repo has a harness (${stale.join(", ")}) but no ${LOCK}, so it predates the receipt and there is no merge base.\nEvery harness file already here is kept, which leaves old checks running against new skills. Re-run with --adopt to replace them, or --dry-run --quiet to list them first.`);
         }
 
-        const rows = policies(templateDir);
-        const optional = rows.filter(r => r.policy.startsWith("optional:")).map(r => r.policy.slice("optional:".length));
-        const unknown = unknownArgs(argv, optional);
-        if (unknown.length) fail(`unknown argument(s): ${unknown.join(" ")}. Nothing was written; run with --help for the options.`);
         const wants = name => flag(`--${name}`);
         const files = templateFiles(templateDir);
         const skills = [];
@@ -717,6 +744,6 @@ function report(target, head, ref, base) {
 // The decision, and the two pure helpers under it, so the suite can put a case in and read the
 // answer out rather than building a git checkout to reach one branch. Everything else here writes to
 // somebody's repository and stays behind main().
-module.exports = { unknownArgs, usage, policyFor, decideText, decideBinary, lineCounts, overlap, NEAREST, skeletonLines };
+module.exports = { unknownArgs, mistypedArgs, usage, policyFor, decideText, decideBinary, lineCounts, overlap, NEAREST, skeletonLines };
 
 if (require.main === module) main();
