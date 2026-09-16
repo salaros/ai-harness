@@ -50,6 +50,7 @@ Run the same command again to update. Files you haven't edited take the new vers
 | `--adopt` | Replace every harness file with the upstream's, for repos installed before `harness-lock.json` existed. Discards your edits to those files. |
 | `--astro-docs` | Also install `tools/docs-site/`, a website that renders your documentation |
 | `--no-check` | Skip the check the installer runs after writing |
+| `--help` | Print the options and exit. Any argument not listed here stops the installer before it writes. |
 
 The npm package holds only the installer. It fetches the harness from `master` at run time, so two runs a month apart may install different skills. Use `--ref` when you need the same result every time.
 

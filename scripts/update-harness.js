@@ -24,6 +24,7 @@
 //   node scripts/update-harness.js --no-check          install without proving it afterwards
 //   node scripts/update-harness.js --quiet             the summary alone, no line per path
 //   node scripts/update-harness.js --adopt             take every harness file from the upstream, losing local edits
+//   node scripts/update-harness.js --help              print this usage and exit
 // Installing into a repo that has no harness yet, from anywhere:
 //   git clone https://github.com/salaros/ai-harness .harness && \
 //     node .harness/scripts/update-harness.js --from .harness --target . && rm -rf .harness
@@ -41,6 +42,29 @@ const DEFAULT_REF = "master";
 const argv = process.argv.slice(2);
 const flag = name => argv.includes(name);
 const value = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback; };
+// Every argument the installer knows. An optional part of the harness adds its own flag through the
+// manifest (optional:<flag>), so those are checked once the upstream checkout is read. Anything else
+// stops the run before a file is written: this script installs when it is run, so a mistyped
+// --dry-rn, or a --help it did not understand, used to install for real.
+const FLAGS = ["--dry-run", "--adopt", "--quiet", "--no-check", "--help", "-h"];
+const VALUES = ["--ref", "--target", "--from"];
+function unknownArgs(args, optional) {
+    const known = [...FLAGS, ...optional.map(name => `--${name}`)];
+    const unknown = [];
+    for (let i = 0; i < args.length; i++) {
+        if (VALUES.includes(args[i])) i++;
+        else if (!known.includes(args[i])) unknown.push(args[i]);
+    }
+    return unknown;
+}
+// Read from the comment block at the top of this file, so the usage has one copy.
+function usage() {
+    const lines = fs.readFileSync(__filename, "utf8").split(/\r?\n/);
+    const start = lines.findIndex(l => l.startsWith("// Usage:"));
+    const out = [];
+    for (let i = start + 1; i < lines.length && lines[i].startsWith("//   "); i++) out.push(lines[i].slice(3).replace("node scripts/update-harness.js", "npx @salaros/ai-harness"));
+    return ["Installs or updates the agent harness in the current git repository.", "", "Usage:", ...out].join("\n");
+}
 const dryRun = flag("--dry-run");
 const adopt = flag("--adopt");
 
@@ -445,6 +469,7 @@ function selfCheck(target, templateDir) {
 // ---------------------------------------------------------------- the run
 
 function main() {
+    if (flag("--help") || flag("-h")) { console.log(usage()); return; }
     const target = targetRoot();
     if (!fs.existsSync(path.join(target, ".git"))) fail(`${target} is not a git checkout`);
 
@@ -483,6 +508,9 @@ function main() {
         }
 
         const rows = policies(templateDir);
+        const optional = rows.filter(r => r.policy.startsWith("optional:")).map(r => r.policy.slice("optional:".length));
+        const unknown = unknownArgs(argv, optional);
+        if (unknown.length) fail(`unknown argument(s): ${unknown.join(" ")}. Nothing was written; run with --help for the options.`);
         const wants = name => flag(`--${name}`);
         const files = templateFiles(templateDir);
         const skills = [];
@@ -680,6 +708,6 @@ function report(target, head, ref, base) {
 // The decision, and the two pure helpers under it, so the suite can put a case in and read the
 // answer out rather than building a git checkout to reach one branch. Everything else here writes to
 // somebody's repository and stays behind main().
-module.exports = { policyFor, decideText, decideBinary, lineCounts, overlap, NEAREST };
+module.exports = { unknownArgs, usage, policyFor, decideText, decideBinary, lineCounts, overlap, NEAREST };
 
 if (require.main === module) main();

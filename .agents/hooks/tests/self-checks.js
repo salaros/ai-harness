@@ -271,6 +271,30 @@ function manifestPoliciesAreReadInOrder(t) {
     }
 }
 
+// The installer writes whenever it runs, so an argument it does not know has to stop it: a --help it
+// ignored once installed the harness into the repo it was asked about.
+function installerRejectsUnknownArguments(t) {
+    const harness = installer();
+    if (!harness) { t.skip("installer arguments: the installer is the upstream's own, not installed here"); return; }
+    const cases = [
+        [["--dry-run", "--quiet"], [], "", "known flags pass"],
+        [["--ref", "v2", "--target", "../x"], [], "", "a value after --ref or --target is not a flag"],
+        [["--astro-docs"], ["astro-docs"], "", "an optional part the manifest names is known"],
+        [["--astro-docs"], [], "--astro-docs", "an optional part the manifest does not name is not"],
+        [["--dry-rn", "extra"], [], "--dry-rn extra", "a typo and a stray word are both reported"],
+    ];
+    for (const [args, optional, want, why] of cases) {
+        const got = harness.unknownArgs(args, optional).join(" ");
+        t.ok(got === want, `unknownArgs: ${why}`, `${args.join(" ")} -> "${got}", expected "${want}"`);
+    }
+    const text = harness.usage();
+    t.ok(/Usage:/.test(text) && text.includes("npx @salaros/ai-harness --help") && !text.includes("node scripts/"),
+        "usage: read from the header comment, in the npx form", text);
+    const run = require("child_process").spawnSync(process.execPath, [INSTALLER, "--help"], { cwd: os.tmpdir(), encoding: "utf8" });
+    t.ok(run.status === 0 && run.stdout.includes("Usage:"), "--help prints the usage and exits 0 without a repository",
+        `exit ${run.status}: ${run.stderr}`);
+}
+
 // What an install does to a file the target already has. Every branch used to need a git checkout,
 // an upstream history and a temp tree to reach even once, so none of them had a test; the decision
 // takes the base, the base recovery and the merge as arguments now, and the fakes below stand in for
@@ -568,5 +592,6 @@ module.exports = [
     checkEditFollowsProjectDir,
     checkEditRunsTheInvariantsOnTheirPaths,
     manifestPoliciesAreReadInOrder,
+    installerRejectsUnknownArguments,
     installDecisionCoversEveryOutcome,
 ];
