@@ -3,7 +3,7 @@
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.agents/hooks/session-start.js\"", "timeout": 20 }
+          { "type": "command", "command": "node \"$(git rev-parse --show-toplevel)/.agents/hooks/session-start.js\"", "timeout": 20 }
         ]
       }
     ],
@@ -11,7 +11,7 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.agents/hooks/guard-command.js\"", "timeout": 10 }
+          { "type": "command", "command": "node \"$(git rev-parse --show-toplevel)/.agents/hooks/guard-command.js\"", "timeout": 10 }
         ]
       }
     ],
@@ -19,7 +19,7 @@
       {
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [
-          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.agents/hooks/check-edit.js\"", "timeout": 30 }
+          { "type": "command", "command": "node \"$(git rev-parse --show-toplevel)/.agents/hooks/check-edit.js\"", "timeout": 30 }
         ]
       }
     ]

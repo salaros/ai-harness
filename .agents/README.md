@@ -95,7 +95,7 @@ Only the Claude Code wiring ships in the repository and has been tested. The oth
 | --- | --- | --- |
 | Instructions | `CLAUDE.md` containing `@AGENTS.md` | yes |
 | Skills | `.claude/skills`, a symlink to `../.agents/skills` | yes |
-| Hooks | `.claude/settings.json`: `SessionStart`, `PreToolUse` (matcher `Bash`), `PostToolUse` (matcher `Edit\|Write\|MultiEdit`), each running `node "$CLAUDE_PROJECT_DIR/.agents/hooks/<hook>.js"` | yes |
+| Hooks | `.claude/settings.json`: `SessionStart`, `PreToolUse` (matcher `Bash`), `PostToolUse` (matcher `Edit\|Write\|MultiEdit`), each running `node "$(git rev-parse --show-toplevel)/.agents/hooks/<hook>.js"` | yes |
 | Agents | `.claude/agents`, a symlink to `../.agents/agents` | yes |
 | Personal overrides | `.claude/settings.local.json`, ignored by Git | no |
 
@@ -107,10 +107,12 @@ On Windows the symlinks need Developer Mode and `git config --global core.symlin
 | --- | --- | --- | --- | --- | --- |
 | OpenAI Codex | `AGENTS.md` | `.agents/skills/` | create `.codex/hooks.json` ([docs](https://developers.openai.com/codex/hooks)) | create `.codex/agents/<name>.toml` | `[mcp_servers.atlassian]` in `.codex/config.toml`, then `codex mcp login atlassian` |
 | Cursor | `AGENTS.md` | `.agents/skills/` | create `.cursor/hooks.json`: `sessionStart`, `beforeShellExecution`, `afterFileEdit` ([docs](https://cursor.com/docs/agent/hooks)) | copy or link into `.cursor/agents/` | create `.cursor/mcp.json` |
-| GitHub Copilot | `AGENTS.md` | `.agents/skills/` | create `.github/hooks/*.json`: `sessionStart`, `preToolUse`, `postToolUse` ([docs](https://docs.github.com/en/copilot/reference/hooks-reference)) | copy into `.github/agents/<name>.agent.md` | create `.vscode/mcp.json` |
+| GitHub Copilot | `AGENTS.md` | `.agents/skills/` | none: the CLI and VS Code read `.claude/settings.json` ([docs](https://docs.github.com/en/copilot/reference/hooks-reference)) | copy into `.github/agents/<name>.agent.md` | create `.vscode/mcp.json` |
 | Gemini CLI | point `.gemini/settings.json` at `AGENTS.md` | `.agents/skills/` | `hooks` in `.gemini/settings.json`: `SessionStart`, `BeforeTool`, `AfterTool` ([docs](https://geminicli.com/docs/hooks/)) | copy or link into `.gemini/agents/` | `mcpServers` in `.gemini/settings.json` |
 | OpenCode | `AGENTS.md` | `.agents/skills/` | a JS plugin in `.opencode/plugins/` that runs the scripts ([docs](https://opencode.ai/docs/plugins/)) | none | `opencode.json`, in repo |
 | Anything else | `AGENTS.md` | load each `SKILL.md` whose description matches | run the scripts on the tool's events: payload on stdin, exit 2 blocks | paste an agent file as the system prompt | the tool's own file |
+
+The hook commands find the scripts through `git rev-parse --show-toplevel` rather than `$CLAUDE_PROJECT_DIR`, which only Claude Code sets. Copilot reads the same file without setting it, and denies a tool whose pre-tool hook errors, so a command built on that variable blocked every shell command there. `$(...)` reads the same in bash and PowerShell. VS Code ignores the matchers, so there every hook runs on every tool; the scripts pass anything that is not theirs.
 
 Codex sends edits as `apply_patch` commands, which `check-edit.js` does not read yet.
 
