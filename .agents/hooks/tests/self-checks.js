@@ -347,28 +347,40 @@ function checkEditChecksMemoryRequirements(t, env) {
 // .claude/settings.json is read by more than Claude Code: Copilot (CLI and VS Code) reads it too, and
 // sets no CLAUDE_PROJECT_DIR. A command built on that variable pointed node at /.agents/hooks/...,
 // which exits 1, and Copilot denies a tool whose preToolUse hook errors, so every shell command was
-// refused. Runs each command as a shell would, with the project-dir variables cleared and from a
-// subfolder, and requires it to reach its script: a safe command passes the guard and a force push
-// does not. PowerShell reads "$(...)" the same way, which is why the command uses nothing else.
-function claudeHooksRunWithoutProjectDir(t, env) {
+// refused. The command also has to survive whichever shell the host picks: bash under Claude Code and
+// on WSL2, PowerShell for Copilot on Windows, cmd.exe for a Node host spawning with shell: true.
+// "$(git rev-parse ...)" is bash and PowerShell only, and PowerShell -Command reports a native exit 2
+// as 1, which VS Code reads as a warning and lets the tool run. So node finds the root itself and the
+// command ends "; exit $LASTEXITCODE": PowerShell exits with node's status, bash exits with the last
+// status when the variable is empty, and cmd.exe hands both words to node -e, which ignores them.
+// Runs each command through the system shell and every PowerShell installed, from a subfolder with
+// the project-dir variables cleared: session-start must print, and the guard must pass a safe
+// command and block a force push with exit 2.
+function claudeHooksRunInEveryShell(t, env) {
     const settings = path.join(lib.checkout, ".claude", "settings.json");
     if (!fs.existsSync(settings)) { t.skip("hook commands: no .claude/settings.json"); return; }
-    if (lib.run("bash", ["-c", "true"]).status !== 0) { t.skip("hook commands: no bash to run them with"); return; }
     const commands = Object.values(JSON.parse(fs.readFileSync(settings, "utf8")).hooks)
         .flat().flatMap(group => group.hooks.map(h => h.command));
-    const run = (command, input) => lib.run("bash", ["-c", command], { cwd: path.join(lib.checkout, "scripts"), env, input });
-    for (const command of commands) {
-        t.ok(!/PROJECT_DIR/.test(command), `hook command names no harness-specific variable: ${command}`, command);
-        const script = command.match(/\.agents\/hooks\/[\w-]+\.js/);
-        t.ok(script && run(command.replace(/^node /, "test -f ")).status === 0,
-            `hook command finds its script without a project-dir variable: ${script && script[0]}`, command);
+    const cwd = path.join(lib.checkout, "scripts");
+    const shells = { [process.platform === "win32" ? "cmd.exe" : "sh"]: (command, input) => lib.run(command, [], { shell: true, cwd, env, input }) };
+    for (const ps of process.platform === "win32" ? ["pwsh", "powershell"] : ["pwsh"]) {
+        if (lib.run(ps, ["-NoProfile", "-Command", "exit 0"]).status !== 0) { t.skip(`hook commands: no ${ps} to run them with`); continue; }
+        shells[ps] = (command, input) => lib.run(ps, ["-NoProfile", "-Command", command], { cwd, env, input });
     }
-    const guard = commands.find(c => c.includes("guard-command.js"));
-    if (!guard) return;
+    for (const command of commands) t.ok(!/PROJECT_DIR/.test(command), `hook command names no harness-specific variable: ${command}`, command);
+    const start = commands.find(c => c.includes("session-start.js")), guard = commands.find(c => c.includes("guard-command.js"));
     const payload = command => JSON.stringify({ toolName: "bash", toolArgs: JSON.stringify({ command }) });
-    const safe = run(guard, payload("git status")), force = run(guard, payload("git push --force"));
-    t.ok(safe.status === 0 && force.status === 2,
-        "guard-command.js runs from its settings.json command with no project-dir variable", `${safe.status} ${safe.output}\n${force.status} ${force.output}`);
+    for (const [name, run] of Object.entries(shells)) {
+        if (start) {
+            const s = run(start, "{}");
+            t.ok(s.status === 0 && s.output.includes("project:"), `session-start.js runs from its settings.json command in ${name}`, `${s.status} ${s.output}`);
+        }
+        if (guard) {
+            const safe = run(guard, payload("git status")), force = run(guard, payload("git push --force"));
+            t.ok(safe.status === 0 && force.status === 2, `guard-command.js allows and blocks from its settings.json command in ${name}`,
+                `safe ${safe.status} ${safe.output}\nforce ${force.status} ${force.output}`);
+        }
+    }
 }
 
 // scripts/harness-files.tsv decides what an install does to each path, and policyFor reads it.
@@ -731,7 +743,7 @@ module.exports = [
     sessionStartFollowsProjectDir,
     checkEditFollowsProjectDir,
     checkEditChecksMemoryRequirements,
-    claudeHooksRunWithoutProjectDir,
+    claudeHooksRunInEveryShell,
     checkEditRunsTheInvariantsOnTheirPaths,
     manifestPoliciesAreReadInOrder,
     installerRejectsUnknownArguments,

@@ -95,7 +95,7 @@ Only the Claude Code wiring ships in the repository and has been tested. The oth
 | --- | --- | --- |
 | Instructions | `CLAUDE.md` containing `@AGENTS.md` | yes |
 | Skills | `.claude/skills`, a symlink to `../.agents/skills` | yes |
-| Hooks | `.claude/settings.json`: `SessionStart`, `PreToolUse` (matcher `Bash`), `PostToolUse` (matcher `Edit\|Write\|MultiEdit`), each running `node "$(git rev-parse --show-toplevel)/.agents/hooks/<hook>.js"` | yes |
+| Hooks | `.claude/settings.json`: `SessionStart`, `PreToolUse` (matcher `Bash`), `PostToolUse` (matcher `Edit\|Write\|MultiEdit`), each loading `.agents/hooks/<hook>.js` from the root `git rev-parse --show-toplevel` gives | yes |
 | Agents | `.claude/agents`, a symlink to `../.agents/agents` | yes |
 | Personal overrides | `.claude/settings.local.json`, ignored by Git | no |
 
@@ -112,7 +112,7 @@ On Windows the symlinks need Developer Mode and `git config --global core.symlin
 | OpenCode | `AGENTS.md` | `.agents/skills/` | a JS plugin in `.opencode/plugins/` that runs the scripts ([docs](https://opencode.ai/docs/plugins/)) | none | `opencode.json`, in repo |
 | Anything else | `AGENTS.md` | load each `SKILL.md` whose description matches | run the scripts on the tool's events: payload on stdin, exit 2 blocks | paste an agent file as the system prompt | the tool's own file |
 
-The hook commands find the scripts through `git rev-parse --show-toplevel` rather than `$CLAUDE_PROJECT_DIR`, which only Claude Code sets. Copilot reads the same file without setting it, and denies a tool whose pre-tool hook errors, so a command built on that variable blocked every shell command there. `$(...)` reads the same in bash and PowerShell. VS Code ignores the matchers, so there every hook runs on every tool; the scripts pass anything that is not theirs.
+The hook commands find the scripts with `node -e` asking `git rev-parse --show-toplevel`, not through `$CLAUDE_PROJECT_DIR`. Only Claude Code sets that variable. Copilot reads the same file without setting it and denies a tool whose pre-tool hook errors, so a command built on the variable blocked every shell command there. Each command ends `; exit $LASTEXITCODE`, because PowerShell reports a hook's exit 2 as 1, which VS Code treats as a warning and runs the tool anyway. Bash, WSL2, cmd.exe, Windows PowerShell and PowerShell 7 all run the command as written: bash exits with the last status, and cmd.exe passes the two words to `node -e`, which ignores them. A WSL2 shell on a checkout under `/mnt/c` needs Git to trust it (`git config --global --add safe.directory <path>`), or the root lookup fails and Copilot blocks. VS Code ignores the matchers, so there every hook runs on every tool call, and each script lets through a call it does not handle.
 
 Codex sends edits as `apply_patch` commands, which `check-edit.js` does not read yet.
 
