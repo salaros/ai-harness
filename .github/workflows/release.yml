@@ -12,9 +12,9 @@ name: release
 # What a release is here
 # ----------------------
 #
-# The version names the installer and nothing else. npm carries the four paths in package.json's
+# The version names the installer and nothing else. npm carries the five paths in package.json's
 # `files` list; the skills, hooks, agents and the documentation chain travel by the clone the
-# installer makes of `master`. So a bump is due when one of those four paths changes, and a weekly
+# installer makes of `master`. So a bump is due when one of those five paths changes, and a weekly
 # skills update reaches every user the moment it lands on `master`, with no release at all.
 #
 # The tag is bare and annotated -- `0.2.4`, not `v0.2.4` -- and sits on `master`, which is the
@@ -124,12 +124,12 @@ jobs:
 
       # What the tarball carries is a separate question from what the repo holds: the files list in
       # package.json is short on purpose, and one missing entry ships an installer that cannot run.
-      - name: The tarball carries the installer and its library
+      - name: The tarball carries the installer and its modules
         run: |
           npm pack --dry-run --json > "$RUNNER_TEMP/pack.json"
           node -e '
             const files = require(process.env.RUNNER_TEMP + "/pack.json")[0].files.map(f => f.path);
-            const want = ["scripts/update-harness.js", "scripts/lib.js", "README.md", "LICENSE"];
+            const want = ["scripts/update-harness.js", "scripts/lib.js", "scripts/project-facts.js", "README.md", "LICENSE"];
             const missing = want.filter(f => !files.includes(f));
             if (missing.length) {
               console.error("missing from the tarball: " + missing.join(", "));

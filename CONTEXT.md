@@ -25,5 +25,5 @@ What a target's product is for and what its MVP must deliver: the product, its M
 _Avoid_: vision doc, product brief, roadmap
 
 **Project fact**:
-One labelled entry of the project memory, such as Requirements or Issue tracker. A fact is unanswered while its value is empty or still holds a `<placeholder>`. A required fact that is unanswered leaves the target uninitialised.
+One labelled entry of the project memory, such as Requirements or Issue tracker. A fact is unanswered while its value is empty or nothing but `<placeholders>`. A required fact that is unanswered leaves the target uninitialised. When a target has product intent, Name and Purpose are read from it alone, never from the project memory.
 _Avoid_: field, setting, key

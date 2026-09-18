@@ -16,6 +16,7 @@ const path = require("path");
 const lib = require("../lib");
 const docsCheck = require("../../../scripts/docs-check");
 const harness = require("../../../scripts/check-harness");
+const projectFacts = require("../../../scripts/project-facts");
 
 // scripts/update-harness.js is the upstream's own and is never installed, so a project that borrowed
 // this suite has no installer to test. Required lazily for that reason: at the top it would throw
@@ -47,7 +48,9 @@ function everyTrackedPathIsClassified(t) {
 }
 
 // The project-init gate. Exercised against temp directories rather than this checkout, whose own
-// answer depends on whether the developer running the suite has created the marker file.
+// answer depends on whether the developer running the suite has created the marker file. How a line
+// is read is projectFactDecisions' in tables.js; this is what the gate makes of the answer: which
+// file it blames, what it names as missing, and the marker.
 function initialisationGateAnswersEveryState(t) {
     const init = require("../../../scripts/check-initialised");
     const full = ["# Project memory", "", "- **Name:** Acme Billing", "- **Purpose:** Invoices customers monthly.",
@@ -59,19 +62,10 @@ function initialisationGateAnswersEveryState(t) {
     try {
         t.ok(!init.check(dir).ok, "an unconfigured clone is blocked", init.check(dir).reason);
 
-        write("MEMORY.md", "");
-        t.ok(!init.check(dir).ok, "an empty MEMORY.md is blocked", init.check(dir).reason);
-
         write("MEMORY.md", full.replace("C#", "<language>"));
         const placeheld = init.check(dir);
-        t.ok(!placeheld.ok && placeheld.missing.includes("Language"),
+        t.ok(!placeheld.ok && placeheld.missing.join() === "Language" && placeheld.reason.includes("MEMORY.md records no Language"),
             "a fact left as a <placeholder> is blocked and named", placeheld.reason);
-
-        write("MEMORY.md", full.split("\n").filter(l => !l.includes("Runtime")).join("\n"));
-        t.ok(!init.check(dir).ok, "a missing stack line is blocked", init.check(dir).reason);
-
-        write("MEMORY.md", full.split("\n").filter(l => !l.includes("Issue tracker:")).join("\n"));
-        t.ok(init.check(dir).ok, "a project with no issue tracker at all passes", init.check(dir).reason);
 
         write("MEMORY.md", full);
         t.ok(init.check(dir).ok, "a MEMORY.md with every required fact passes", init.check(dir).reason);
@@ -86,11 +80,6 @@ function initialisationGateAnswersEveryState(t) {
         const fromIntent = init.check(dir);
         t.ok(fromIntent.ok && fromIntent.reason.includes("INTENT.md"),
             "INTENT.md's Product gives the name and purpose MEMORY.md leaves out", fromIntent.reason);
-
-        write("MEMORY.md", configOnly.replace("service", "<unit type>"));
-        const stillConfig = init.check(dir);
-        t.ok(!stillConfig.ok && stillConfig.missing.join() === "Unit type",
-            "INTENT.md does not stand in for configuration facts", stillConfig.reason);
 
         write("INTENT.md", intent.replace("**Acme Billing** ", ""));
         write("MEMORY.md", full);
@@ -134,28 +123,47 @@ function docsCheckIntentShape(t) {
         const detail = problems.join("\n") || "(none)";
         t.ok(needle ? problems.some(p => p.includes(needle)) : problems.length === 0, `docs-check: INTENT.md, ${title}`, detail);
     }
-    const parsed = docsCheck.readIntent(good.join("\n"));
-    t.ok(parsed.product.name === "Acme Billing" && parsed.product.purpose === "invoices small firms monthly.",
-        "docs-check: readIntent separates the bold name from the purpose", JSON.stringify(parsed));
     tree.clean();
 }
 
-// A repo that installs the harness beside an INTENT.md gets a MEMORY.md skeleton without the name
-// and purpose, which INTENT.md already gives; any other repo gets every placeholder.
+// The installer lays down MEMORY.md's facts from the table the gate reads, every one a placeholder:
+// all of them in a plain repo, all but the name and purpose beside an INTENT.md. Either skeleton is
+// unanswered as a whole, so a fresh install is blocked until project-init runs.
 function memorySkeletonDefersToIntent(t) {
     const inst = installer();
     if (!inst) { t.skip("memory skeleton: no scripts/update-harness.js"); return; }
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "harness-skeleton-"));
     try {
-        const lines = ["# Project memory", "", "- **Name:** <name>", "- **Purpose:** <purpose>", "- **Language:** <language>", ""];
-        const plain = inst.skeletonLines(dir, "MEMORY.md", lines);
-        t.ok(plain === lines, "memory skeleton: every placeholder without an INTENT.md", plain.join("\n"));
+        const header = ["# Project memory", ""];
+        const labels = projectFacts.FACTS.map(f => f.label);
+        const plain = inst.skeletonLines(dir, "MEMORY.md", header).join("\n");
+        const plainFacts = projectFacts.readFacts({ memory: plain });
+        t.ok(labels.every(l => plainFacts[l] === ""), "memory skeleton: every fact, as a placeholder, without an INTENT.md", plain);
         fs.writeFileSync(path.join(dir, "INTENT.md"), "# INTENT.md\n");
-        const beside = inst.skeletonLines(dir, "MEMORY.md", lines).join("\n");
-        t.ok(!beside.includes("<name>") && !beside.includes("<purpose>") && beside.includes("<language>") && beside.includes("INTENT.md"),
+        const beside = inst.skeletonLines(dir, "MEMORY.md", header).join("\n");
+        const besideFacts = projectFacts.readFacts({ memory: beside });
+        t.ok(besideFacts.Name === null && besideFacts.Purpose === null && besideFacts.Language === "" && beside.includes("INTENT.md"),
             "memory skeleton: no name or purpose beside an INTENT.md", beside);
-        t.ok(inst.skeletonLines(dir, "TODO.md", lines) === lines, "memory skeleton: other skeletons ignore INTENT.md", "");
+        t.ok(inst.skeletonLines(dir, "TODO.md", header) === header, "memory skeleton: other skeletons are left as written", "");
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
+// The project-init skill writes MEMORY.md from a template of its own, which the installer's skeleton
+// and the gate never read. The labels are what every reader agrees on, so the template must list
+// exactly the facts scripts/project-facts.js holds, in the same order; its placeholders are the
+// skill's to word.
+function projectInitTemplateMatchesFacts(t) {
+    const skill = path.join(lib.checkout, ".agents", "skills", "project-init", "SKILL.md");
+    if (!fs.existsSync(skill)) { t.skip("project-init template: no project-init skill here"); return; }
+    const text = fs.readFileSync(skill, "utf8");
+    const block = text.match(/```md\r?\n\s*# Project memory[\s\S]*?```/);
+    t.ok(!!block, "project-init: SKILL.md carries a MEMORY.md template", skill);
+    if (!block) return;
+    const labels = [...block[0].matchAll(/^\s*- \*\*([^*]+?):\*\*/gm)].map(m => m[1]);
+    const facts = projectFacts.FACTS.map(f => f.label);
+    t.ok(labels.join("|") === facts.join("|"),
+        "project-init: the template lists the facts scripts/project-facts.js holds, in order",
+        `template: ${labels.join(", ")}\nfacts:    ${facts.join(", ")}`);
 }
 
 // docs-check's citation logic, exercised directly against a throwaway doc tree (real stage folder
@@ -737,6 +745,7 @@ module.exports = [
     docsCheckMemoryRequirements,
     docsCheckIntentShape,
     memorySkeletonDefersToIntent,
+    projectInitTemplateMatchesFacts,
     chainIsParsedInPipelineOrder,
     oneModelForValidatorAndPortal,
     docsSiteRendersTheChain,

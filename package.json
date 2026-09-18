@@ -8,6 +8,7 @@
   "files": [
     "scripts/update-harness.js",
     "scripts/lib.js",
+    "scripts/project-facts.js",
     "README.md",
     "LICENSE"
   ],

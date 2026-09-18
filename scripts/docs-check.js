@@ -13,7 +13,7 @@
 // stands in for an upstream document only while the chain holds nothing earlier; an ADR may
 // always cite one, and is exempt from the backwards-only rule in both directions. MEMORY.md's
 // Requirements line follows the same reference rule, or says "none yet". INTENT.md is optional;
-// when there is one it must carry the sections its specification requires, as readIntent() reads them.
+// when there is one it must carry the sections its specification requires, as readIntent() in scripts/project-facts.js reads them.
 // Prints one line per problem and exits 1 when there are any. The edit hook requires check().
 // readDocs() is the model both this file and anything else that renders the chain read: the stages,
 // the documents, and the two expressions that recognise a citation and an item. It is exported
@@ -32,6 +32,7 @@
 const fs = require("fs");
 const path = require("path");
 const lib = require("./lib");
+const { readFactsAt, readIntent } = require("./project-facts");
 
 // What a source is, for every checker that accepts one: the chain's "Derived from:" lines, MEMORY.md's
 // Requirements and TODO.md's entries all call isSource, so the rule and its help text live here once.
@@ -164,33 +165,6 @@ function readDocs(root, docsDir = "docs", agentsFile = "AGENTS.md") {
     return { stages, docStages, docs, problems, refRe: citationRe(docStages.map(s => s.folder)), itemRe: ITEM_RE };
 }
 
-// INTENT.md (https://www.intentdocs.com/intent-md): the product's intent, one per product, at the
-// root. Optional, so the harness neither ships nor requires one. Given its text, returns whether the
-// "# INTENT.md" title is there, the product's bold name and the prose describing it from
-// "## Product" (null when the section is missing), and whether "## MVP stories" is there; that heading
-// may run on, as in "## MVP stories — build these first". check-initialised.js takes the product's
-// name and purpose from here, so the gate and this validator agree on what a product section is.
-function readIntent(text) {
-    const lines = text.split(/\r?\n/);
-    const h1 = lines.find(l => /^#\s/.test(l));
-    const section = name => {
-        const start = lines.findIndex(l => new RegExp(`^##\\s+${name}\\b`, "i").test(l));
-        if (start < 0) return null;
-        const end = lines.findIndex((l, i) => i > start && /^#{1,2}\s/.test(l));
-        return lines.slice(start + 1, end < 0 ? lines.length : end).join("\n").trim();
-    };
-    const body = section("Product");
-    let product = null;
-    if (body !== null) {
-        const bold = body.match(/\*\*([^*]+)\*\*/);
-        product = {
-            name: bold ? bold[1].trim().replace(/[:.]+$/, "").trim() : "",
-            purpose: body.replace(/\*\*[^*]+\*\*/, "").replace(/^[\s:.,—–-]+/, "").replace(/\s+/g, " ").trim(),
-        };
-    }
-    return { title: !!h1 && h1.trim() === "# INTENT.md", product, stories: section("MVP stories") !== null };
-}
-
 function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "MEMORY.md", intentFile = "INTENT.md") {
     const at = p => path.resolve(root, p);
     const say = (file, msg) => problems.push(`${file}: ${msg}`);
@@ -242,14 +216,14 @@ function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "M
     // 4. MEMORY.md's Requirements takes part in traceability once a BRD exists, so it follows the
     // same reference rule: sources, document IDs, or "none yet".
     if (fs.existsSync(at(memoryFile))) {
-        const line = fs.readFileSync(at(memoryFile), "utf8").split(/\r?\n/).find(l => /^\s*[-*]?\s*\**Requirements:?\**:?/i.test(l));
-        if (!line) say(memoryFile, "no Requirements line (the project-init skill writes one)");
+        // Read as every other reader of project facts reads it, through scripts/project-facts.js.
+        const value = readFactsAt(root, memoryFile, intentFile).Requirements;
+        if (value === null) say(memoryFile, "no Requirements line (the project-init skill writes one)");
         else {
-            const value = line.replace(/^\s*[-*]?\s*\**Requirements:?\**:?/i, "").trim();
-            // A `<placeholder>` means project-init has not run. check-initialised.js already blocks
-            // every commit and push until it does, and says so in those words; repeating it here as
-            // a broken citation sends the reader looking for a document that was never named.
-            if (/^<[^>]*>$/.test(value)) { /* unconfigured, and gated elsewhere */ }
+            // An unanswered `<placeholder>` means project-init has not run. check-initialised.js
+            // already blocks every commit and push until it does, and says so in those words; repeating
+            // it here as a broken citation sends the reader looking for a document that was never named.
+            if (!value) { /* unconfigured, and gated elsewhere */ }
             else if (!/^none yet\b/i.test(value)) {
                 // The same rule as "Derived from:": at least one reference on the line, and the rest
                 // of the words are the writer's. Holding every comma-separated piece to it turned a
@@ -286,7 +260,7 @@ function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "M
     return { problems, summary: `docs-check: ${chain.length} stage(s) in ${agentsFile}, ${docs.size} document(s) under ${docsDir}/, no problems` };
 }
 
-module.exports = { check, readChain, readDocs, readIntent, isSource, SOURCE_HELP, inChain, CHAIN_PATHS };
+module.exports = { check, readChain, readDocs, isSource, SOURCE_HELP, inChain, CHAIN_PATHS };
 
 if (require.main === module) {
     const { problems, summary } = check(lib.root(), ...lib.args());

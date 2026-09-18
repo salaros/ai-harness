@@ -32,6 +32,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const lib = require("./lib");
+const projectFacts = require("./project-facts");
 const { spawnSync } = require("child_process");
 
 const TEMPLATE = "https://github.com/salaros/ai-harness.git";
@@ -311,14 +312,6 @@ const SKELETONS = {
         "`pre-commit` and `pre-push` hooks refuse to let work leave a clone while any value is still a",
         "`<placeholder>`.",
         "",
-        "- **Name:** <name>",
-        "- **Purpose:** <purpose>",
-        "- **Prose language:** <prose language>",
-        "- **Requirements:** <requirements>",
-        "- **Unit type:** <unit type>",
-        "- **Language:** <language>",
-        "- **Runtime / package manager:** <runtime>",
-        "",
     ],
     "CONTEXT.md": [
         "# Context",
@@ -338,13 +331,13 @@ const SKELETONS = {
     ],
 };
 
-// A repo that already has an INTENT.md names the product and its purpose there, so the MEMORY.md
-// laid down beside it leaves those two out rather than asking for them a second time.
+// MEMORY.md's fact lines come from scripts/project-facts.js, the table the gate checks them against,
+// so a skeleton never asks for a fact the gate does not know or leaves out one it requires. A repo
+// that already has an INTENT.md names the product and its purpose there, so the MEMORY.md laid down
+// beside it leaves those two out rather than asking for them a second time.
 function skeletonLines(target, file, lines) {
-    if (file !== "MEMORY.md" || !fs.existsSync(path.join(target, "INTENT.md"))) return lines;
-    const facts = lines.filter(l => !/^- \*\*(?:Name|Purpose):\*\*/.test(l));
-    const first = facts.findIndex(l => l.startsWith("- **"));
-    return [...facts.slice(0, first), "The name and purpose are in `INTENT.md`, under `## Product`.", "", ...facts.slice(first)];
+    if (file !== projectFacts.MEMORY) return lines;
+    return [...lines, ...projectFacts.skeleton(fs.existsSync(path.join(target, projectFacts.INTENT))), ""];
 }
 
 function skeletons(target) {

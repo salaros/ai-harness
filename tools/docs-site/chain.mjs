@@ -9,32 +9,20 @@
 // is given REPO and leaves the working directory alone, so Astro's own root stays where Astro put it.
 // Run it directly for a summary of what the portal will render:
 //   node tools/docs-site/chain.mjs
-import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
-const { readDocs, readIntent } = require("../../scripts/docs-check.js");
+const { readDocs } = require("../../scripts/docs-check.js");
+const { readFactsAt } = require("../../scripts/project-facts.js");
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const DOCS = path.join(REPO, "docs");
 
-// One fact out of MEMORY.md ("- **Name:** Acme Billing"), or "" while the template is unconfigured.
-// A project with an INTENT.md names itself and its purpose there, in "## Product", so those two are
-// read from it first.
-function memoryFact(name) {
-    const intentFile = path.join(REPO, "INTENT.md");
-    if (["Name", "Purpose"].includes(name) && fs.existsSync(intentFile)) {
-        const { product } = readIntent(fs.readFileSync(intentFile, "utf8"));
-        if (product && product[name.toLowerCase()]) return product[name.toLowerCase()];
-    }
-    const file = path.join(REPO, "MEMORY.md");
-    if (!fs.existsSync(file)) return "";
-    const re = new RegExp(`^\\s*[-*]?\\s*\\**${name}:?\\**:?`, "i");
-    const line = fs.readFileSync(file, "utf8").split(/\r?\n/).find(l => re.test(l));
-    return line ? line.replace(re, "").trim() : "";
-}
+// One project fact, read as the initialisation gate reads it, or "" while it is unanswered. With an
+// INTENT.md the name and purpose are its "## Product"'s alone.
+const memoryFact = name => readFactsAt(REPO)[name] || "";
 
 // The chain as the portal renders it: the model, with the documents as an array in stage order and
 // then file order, and the problems as notes for the loader to log. A document the validator refuses

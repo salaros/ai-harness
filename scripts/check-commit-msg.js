@@ -18,6 +18,7 @@
 const fs = require("fs");
 const path = require("path");
 const lib = require("./lib");
+const projectFacts = require("./project-facts");
 
 const TYPES = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"];
 const HEADER = new RegExp(`^(${TYPES.join("|")})(\\([^()\\s][^()]*\\))?(!)?: (.+)$`);
@@ -36,8 +37,7 @@ const GENERATED = /^(?:Merge |Revert "|fixup! |squash! |amend! )/;
 // a key on every commit would be asking for something it has already said it does not have.
 function noTracker(root) {
     try {
-        const m = fs.readFileSync(path.join(root, "MEMORY.md"), "utf8").match(/^\s*-\s*\*\*Issue tracker:\*\*\s*(.*)$/mi);
-        return !!m && /^none\b/i.test(m[1].trim());
+        return /^none\b/i.test(projectFacts.readFactsAt(root)["Issue tracker"] || "");
     } catch { return false; }
 }
 

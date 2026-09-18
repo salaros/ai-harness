@@ -14,6 +14,7 @@ const commitMsg = require("../../../scripts/check-commit-msg");
 const todo = require("../../../scripts/check-todo");
 const docsCheck = require("../../../scripts/docs-check");
 const stagedDocs = require("../../../scripts/check-staged-docs");
+const facts = require("../../../scripts/project-facts");
 
 // A temp repo holding `files` (repo-relative path -> content), handed to `use`, and removed after.
 function withRoot(files, use) {
@@ -181,7 +182,66 @@ function chainMembership(t) {
         "the pre-commit hook's staged filter is inChain", stagedDocs.chainFiles(staged).join(" "));
 }
 
+// What every reader of project facts sees, from the texts of MEMORY.md and INTENT.md (null: no such
+// file). A label reads null when nothing gives it, "" when it is unanswered, and its value otherwise.
+function projectFactDecisions(t) {
+    const INTENT = text("# INTENT.md", "", "## Product", "", "**Acme Billing** invoices small firms monthly.", "", "## MVP stories", "");
+    const rows = [
+        // memory, intent, label, expected, why
+        [text("- **Language:** C#"), null, "Language", "C#", "a dash bullet with the colon inside the bold"],
+        [text("* **Language**: C#"), null, "Language", "C#", "a star bullet with the colon after the bold"],
+        [text("-**Language:** C#"), null, "Language", "C#", "no space after the bullet"],
+        [text("- **language:** C#"), null, "Language", "C#", "the label in another case"],
+        [text("- **Language:**   C#  "), null, "Language", "C#", "the value is trimmed"],
+        ["- **Language:** C#\r\n- **Unit type:** service\r\n", null, "Unit type", "service", "CRLF line endings"],
+        [text("Language: C#"), null, "Language", null, "an unbolded line is prose, not a fact"],
+        [text("- Language: C#"), null, "Language", null, "an unbolded bullet is prose too"],
+        [text("**Language:** C#"), null, "Language", null, "a bold label with no bullet is not a fact line"],
+        [text("- **Languages:** C#"), null, "Language", null, "a longer label is another fact"],
+        [text("- **Runtime / package manager:** Node 22 / pnpm"), null, "Runtime / package manager", "Node 22 / pnpm",
+            "a label holding a slash"],
+        [null, null, "Language", null, "no MEMORY.md at all"],
+        [text("- **Language:**"), null, "Language", "", "an empty value is unanswered"],
+        [text("- **Language:** <language>"), null, "Language", "", "a placeholder is unanswered"],
+        [text("- **Language:** <language> <version>"), null, "Language", "", "several placeholders and nothing else are unanswered"],
+        [text("- **Issue tracker:** <tracker> at <url>"), null, "Issue tracker", "<tracker> at <url>",
+            "words beside placeholders make an answer, kept whole"],
+        [text("- **Issue tracker:** none"), null, "Issue tracker", "none", "an optional fact reads like any other"],
+        // INTENT.md owns the name and purpose outright; the configuration stays MEMORY.md's.
+        [text("- **Name:** Old Name"), INTENT, "Name", "Acme Billing", "INTENT.md's bold name wins over MEMORY.md"],
+        [text("- **Purpose:** old"), INTENT, "Purpose", "invoices small firms monthly.", "the purpose is INTENT.md's prose"],
+        [text("- **Name:** Old Name"), INTENT.replace("**Acme Billing** ", ""), "Name", "",
+            "an INTENT.md naming no product leaves Name unanswered, with no fallback"],
+        [text("- **Name:** Old Name"), text("# INTENT.md", "", "## MVP stories"), "Name", null,
+            "an INTENT.md with no Product gives no name, with no fallback"],
+        [null, text("# INTENT.md", "", "## Product", "", "**<name>** <purpose>"), "Name", "", "a template INTENT.md is unanswered"],
+        [text("- **Language:** C#"), INTENT, "Language", "C#", "INTENT.md does not stand in for configuration"],
+        [text("- **Name:** Acme"), null, "Name", "Acme", "without INTENT.md the name is MEMORY.md's"],
+    ];
+    for (const [memory, intent, label, want, why] of rows) {
+        const got = facts.readFacts({ memory, intent })[label];
+        t.ok(got === want, `project facts: ${why}`, `${label} -> ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`);
+    }
+
+    const all = text(...facts.FACTS.map(f => `- **${f.label}:** x`));
+    t.ok(facts.unanswered(facts.readFacts({ memory: all })).length === 0, "project facts: nothing unanswered when every line has a value");
+    t.ok(facts.unanswered(facts.readFacts({ memory: text("- **Issue tracker:** Jira") })).join() === facts.FACTS.filter(f => f.required).map(f => f.label).join(),
+        "project facts: unanswered lists the required facts only, in order", facts.unanswered(facts.readFacts({})).join());
+
+    const parsed = facts.readIntent(INTENT);
+    t.ok(parsed.title && parsed.stories && parsed.product.name === "Acme Billing" && parsed.product.purpose === "invoices small firms monthly.",
+        "project facts: readIntent separates the bold name from the purpose", JSON.stringify(parsed));
+
+    // readFactsAt reads the files a root holds, or the paths it is given instead.
+    withRoot({ "MEMORY.md": text("- **Language:** C#"), "staged/memory.md": text("- **Language:** F#") }, root => {
+        t.ok(facts.readFactsAt(root).Language === "C#", "project facts: readFactsAt reads MEMORY.md at the root");
+        t.ok(facts.readFactsAt(root, path.join(root, "staged/memory.md")).Language === "F#",
+            "project facts: readFactsAt reads another path when given one");
+    });
+}
+
 module.exports = [
+    projectFactDecisions,
     commitMessageDecisions,
     todoDecisions,
     sourceDecisions,
