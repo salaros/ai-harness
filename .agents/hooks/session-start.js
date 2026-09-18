@@ -13,10 +13,12 @@ const git = args => { const r = lib.run("git", args); return r.status === 0 ? r.
 say(`branch: ${git(["rev-parse", "--abbrev-ref", "HEAD"]) || "not a git checkout"}`);
 if (git(["config", "--get", "core.hooksPath"]) !== ".githooks") say("git hooks: not installed. Run: node scripts/githooks-init.js");
 
-if (fs.existsSync("scripts/skills.js")) {
-    const missing = lib.node(["scripts/skills.js", "missing"]).output.split(/\r?\n/).filter(Boolean).join(" ");
+// The brief never fails a session: a roster it cannot read -- no scripts/skills.js, a lock file that
+// is not JSON -- is left for check-harness to report.
+try {
+    const missing = require("../../scripts/skills").readRoster(process.cwd()).missing.join(" ");
     if (missing) say(`skills in skills-lock.json but missing from .agents/skills: ${missing}. Run: node scripts/skills.js install`);
-}
+} catch { /* nothing to say */ }
 
 say(fs.existsSync("MEMORY.md") ? "project: facts in MEMORY.md" : "project: not initialised (no MEMORY.md). Run the project-init skill first");
 if (fs.existsSync("INTENT.md")) say("intent: product and MVP stories in INTENT.md");

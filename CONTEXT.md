@@ -20,6 +20,10 @@ _Avoid_: self check, sanity check
 Everything one install or update will do to a target, path by path, decided before anything is written: what each path gets, its mode, and the outcome the run reports. A dry run prints it, and a real run applies it.
 _Avoid_: changeset, diff, manifest
 
+**Skill roster**:
+What a repo's harness knows about its skills at one moment: every entry under `.agents/skills`, each skill's frontmatter and source, which agents route it, the skills the lock records but the disk lacks, and whether the licence notice is current. Read in one pass and never written; relinking and writing the notice are separate acts.
+_Avoid_: skill registry, skill index, skill list
+
 **Project memory**:
 What a target records about itself that no file in it derives, such as its name, where its requirements live and its runtime. It is kept in `MEMORY.md`.
 _Avoid_: project config, settings, metadata

@@ -15,6 +15,7 @@ const todo = require("../../../scripts/check-todo");
 const docsCheck = require("../../../scripts/docs-check");
 const stagedDocs = require("../../../scripts/check-staged-docs");
 const facts = require("../../../scripts/project-facts");
+const skills = require("../../../scripts/skills");
 
 // A temp repo holding `files` (repo-relative path -> content), handed to `use`, and removed after.
 function withRoot(files, use) {
@@ -240,7 +241,91 @@ function projectFactDecisions(t) {
     });
 }
 
+// The skill roster of a repo built for it: what the lock records against what the disk holds, who
+// routes each skill and through which file, and whether the licence notice is current. The
+// upstream's own roster only ever shows the healthy case, so every odd shape lives here.
+function skillRosterDecisions(t) {
+    const skill = (name, extra = "") => text("---", `name: ${name}`, "description: Does one thing.", ...(extra ? [extra] : []), "---", "Body");
+    const lock = names => JSON.stringify({ version: 1, skills: Object.fromEntries(Object.entries(names).map(([n, source]) => [n, { source }])) });
+    const ACME = "acme/skills\tMIT\tCopyright (c) Acme\thttps://example.com/LICENSE\t-\n";
+    const files = {
+        ".agents/skills/local-one/SKILL.md": skill("local-one", "disable-model-invocation: true"),
+        ".agents/skills/vendored-one/SKILL.md": skill("vendored-one"),
+        ".agents/skills/vendored-two/SKILL.md": skill("vendored-two"),
+        ".agents/skills/no-skill-md/notes.md": "not a skill\n",
+        ".agents/skills/stray.txt": "a file, not a folder\n",
+        "skills-lock.json": lock({ "vendored-one": "acme/skills", "vendored-two": "other/skills", "gone-one": "acme/skills" }),
+        "scripts/skill-licences.tsv": text("# comment", ACME.trim()),
+        ".agents/routing.md": text("# Routing", "", "Preamble naming `local-one`.", "", "## Shared rows", "", "Read by `alpha`.", "", "| `vendored-one` | ... |"),
+        ".agents/agents/alpha.md": text("---", "name: alpha", "---", "Route through `local-one`, then routing.md, \"Shared rows\"."),
+        ".agents/agents/beta.md": text("---", "name: beta", "---", "Mentions \"Shared rows\" but never the routing file."),
+        ".agents/agents/not-an-agent.md": text("Names `vendored-two` with no frontmatter."),
+        "AGENTS.md": text("Every session may run `vendored-two`."),
+    };
+    withRoot(files, root => {
+        const r = skills.readRoster(root);
+        const entry = name => r.entries.find(e => e.name === name) || {};
+        const s = name => r.skills.find(x => x.name === name) || {};
+        t.ok(r.entries.map(e => e.name).join() === "local-one,no-skill-md,stray.txt,vendored-one,vendored-two",
+            "skill roster: every entry under .agents/skills is listed, sorted", r.entries.map(e => e.name).join());
+        t.ok(entry("no-skill-md").dir && !entry("no-skill-md").hasSkillMd && entry("no-skill-md").frontmatter === null,
+            "skill roster: a folder with no SKILL.md is an entry marked as such, and not a skill");
+        t.ok(!entry("stray.txt").dir && !entry("stray.txt").hasSkillMd, "skill roster: a stray file is an entry marked not a folder");
+        t.ok(r.skills.map(x => x.name).join() === "local-one,vendored-one,vendored-two", "skill roster: skills are the entries holding a SKILL.md",
+            r.skills.map(x => x.name).join());
+        t.ok(r.missing.join() === "gone-one", "skill roster: a skill the lock records and the disk lacks is missing", r.missing.join());
+        t.ok(s("local-one").source === "local" && !s("local-one").vendored && s("vendored-one").source === "acme/skills" && s("vendored-one").vendored,
+            "skill roster: the source is the lock's, or local when the lock does not record the skill");
+        t.ok(s("local-one").invoke === "`/local-one`" && s("vendored-one").invoke === "by description",
+            "skill roster: disable-model-invocation makes a skill invoked by name");
+        t.ok(s("local-one").agents.join() === "alpha", "skill roster: an agent routes a skill its own body names", s("local-one").agents.join());
+        t.ok(s("vendored-one").agents.join() === "alpha",
+            "skill roster: a routing.md section credits its skills to the agents naming the file and the section, and no other",
+            s("vendored-one").agents.join());
+        t.ok(!r.routing.agents["not-an-agent"], "skill roster: a file with no frontmatter name is not an agent");
+        t.ok(s("vendored-two").everywhere && !s("vendored-two").agents.length && !s("vendored-one").everywhere,
+            "skill roster: a skill AGENTS.md names is reached everywhere, apart from any agent");
+        const [section] = r.routing.sections;
+        t.ok(r.routing.sections.length === 1 && section.title === "Shared rows" && section.readBy.join() === "alpha" && !section.skills.has("local-one"),
+            "skill roster: routing.md's sections exclude its preamble and carry their Read by line", JSON.stringify(r.routing.sections.map(x => x.title)));
+
+        t.ok(r.notices.orphans.join() === "vendored-two (other/skills)" && !r.notices.current,
+            "skill roster: a vendored skill no licence row covers is an orphan", r.notices.orphans.join());
+        t.ok(!skills.writeNotices(root).written && !fs.existsSync(path.join(root, skills.NOTICES)),
+            "skill roster: the notice is not written while there is an orphan");
+        fs.appendFileSync(path.join(root, skills.LICENCES), "other/skills\tApache-2.0\t-\thttps://example.com/APACHE\tKeep the NOTICE file.\n");
+        t.ok(skills.writeNotices(root).written && skills.readRoster(root).notices.current,
+            "skill roster: once every upstream has a row the notice is written, and then current");
+        const notice = fs.readFileSync(path.join(root, skills.NOTICES), "utf8");
+        t.ok(/`vendored-one`/.test(notice) && /not stated upstream/.test(notice) && /Keep the NOTICE file/.test(notice) && /`local-one`/.test(notice),
+            "skill roster: the notice lists each upstream's skills, a missing holder, the notes and the local skills", notice);
+        t.ok(!skills.writeNotices(root).written, "skill roster: a current notice is not rewritten");
+
+        let linked = true;
+        try { fs.symlinkSync("local-one", path.join(root, ".agents/skills/alias"), "dir"); } catch { linked = false; }
+        if (!linked) t.skip("skill roster: this OS refuses symlinks, so the linked entry goes unchecked");
+        else t.ok(skills.readRoster(root).entries.find(e => e.name === "alias").link, "skill roster: a link under .agents/skills is an entry marked as a link");
+    });
+
+    withRoot({}, root => {
+        const r = skills.readRoster(root);
+        t.ok(r.lock === null && !r.entries.length && !r.skills.length && !r.missing.length && !r.routing.sections.length,
+            "skill roster: a repo with no harness files has an empty roster and no lock");
+    });
+
+    withRoot({ ".agents/skills/one/SKILL.md": skill("one"), ".cursor/skills/.keep": "" }, root => {
+        let first;
+        try { first = skills.relink(root); } catch (e) { t.skip(`skill roster: this OS refuses symlinks, so relink goes unchecked (${e.code})`); return; }
+        const link = path.join(root, ".cursor/skills/one");
+        t.ok(first.added === 1 && fs.readlinkSync(link).split(path.sep).join("/") === "../../.agents/skills/one",
+            "skill roster: relink links an unlinked skill into a per-skill folder, relative", JSON.stringify(first));
+        const again = skills.relink(root);
+        t.ok(again.added === 0 && again.kept === 1, "skill roster: relink leaves a relative link alone", JSON.stringify(again));
+    });
+}
+
 module.exports = [
+    skillRosterDecisions,
     projectFactDecisions,
     commitMessageDecisions,
     todoDecisions,

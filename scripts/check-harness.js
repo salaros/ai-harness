@@ -19,6 +19,7 @@ const path = require("path");
 const lib = require("./lib");
 const docsCheck = require("./docs-check");
 const { HOOKS } = require("./githook");
+const skills = require("./skills");
 
 // What the invariants below read, as the path a harness reports for an edit: an exact file, or a
 // prefix ending in / for everything under it. check-edit.js runs this script for an edit to any of
@@ -29,9 +30,11 @@ const PATHS = [
 ];
 const reads = file => PATHS.some(p => p.endsWith("/") ? file.startsWith(p) : file === p);
 
-// scripts/skills.js knows the roster and the licence table, so two invariants ask it rather than
-// reading them a second time. It runs from beside this file and is pointed at `root`.
-const skills = (root, ...args) => lib.node([path.join(__dirname, "skills.js"), ...args, `${lib.ROOT_FLAG}${root}`], { cwd: root });
+// The skill roster is scripts/skills.js's: the entries under .agents/skills, the lock, the routing
+// and the licence notice, read in one pass. check() reads it once and hands the same read to every
+// invariant; an invariant called on its own reads its own.
+const once = read => { let r; return () => r || (r = read()); };
+const rosterOf = root => once(() => skills.readRoster(root));
 
 // Git's view of a folder, as [mode, path] rows, or null outside a git checkout.
 function indexed(root, dir) {
@@ -109,10 +112,10 @@ function claudeSkillLinksAreSymlinks(t, root) {
 // per-skill links shows what someone linked and nothing else -- `npx skills` links what it
 // vendored -- so there the count is the check. Reading a name through the whole-folder link would
 // compare .agents/skills with itself and pass whatever the state.
-function everyInstalledSkillIsLinked(t, root) {
+function everyInstalledSkillIsLinked(t, root, roster = rosterOf(root)) {
     const skillsDir = path.join(root, ".agents/skills"), links = path.join(root, ".claude/skills");
     if (!fs.existsSync(skillsDir) || !fs.existsSync(links)) { t.skip("skill link check: no skills directories"); return; }
-    const installed = fs.readdirSync(skillsDir).filter(n => fs.existsSync(path.join(skillsDir, n, "SKILL.md")));
+    const installed = roster().skills.map(s => s.name);
     t.ok(installed.length > 0, "skills are installed under .agents/skills/");
     if (fs.lstatSync(links).isSymbolicLink()) {
         const target = fs.readlinkSync(links);
@@ -132,10 +135,9 @@ function everyInstalledSkillIsLinked(t, root) {
 // harness ever creates one, so an entry here that is not a directory is that, and it is worth
 // catching: the roster reads this folder, and a skill that is really a link to another skill counts
 // twice and vendors as neither.
-function skillsFolderHoldsSkillsNotLinks(t, root) {
-    const dir = path.join(root, ".agents/skills");
-    if (!fs.existsSync(dir)) { t.skip("skills folder check: no skills directory"); return; }
-    const links = fs.readdirSync(dir).filter(n => fs.lstatSync(path.join(dir, n)).isSymbolicLink());
+function skillsFolderHoldsSkillsNotLinks(t, root, roster = rosterOf(root)) {
+    if (!fs.existsSync(path.join(root, ".agents/skills"))) { t.skip("skills folder check: no skills directory"); return; }
+    const links = roster().entries.filter(e => e.link).map(e => e.name);
     t.ok(!links.length,
         "every entry under .agents/skills/ is a skill, not a link to one",
         links.slice(0, 10).join(", "));
@@ -150,38 +152,13 @@ function skillsFolderHoldsSkillsNotLinks(t, root) {
 // rules, because a broken one is just as invisible; the fix goes upstream.
 const SKILL_NAME = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
-// The two keys this check needs, from YAML frontmatter: a plain or quoted scalar, or a `>` / `|`
-// block scalar, whose indented lines are the value. Not a YAML parser, and nothing else needs one.
-function skillFrontmatter(text) {
-    const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/);
-    if (!m) return null;
-    const lines = m[1].split(/\r?\n/), fm = {};
-    for (let i = 0; i < lines.length; i++) {
-        const k = lines[i].match(/^([\w-]+):\s*(.*)$/);
-        if (!k) continue;
-        let value = k[2].trim();
-        if (/^[>|][-+]?$/.test(value)) {
-            const block = [];
-            while (i + 1 < lines.length && /^(\s+\S|\s*$)/.test(lines[i + 1])) block.push(lines[++i].trim());
-            value = block.join(" ").trim();
-        } else if (/^(".*"|'.*')$/.test(value)) {
-            value = value.slice(1, -1);
-        }
-        fm[k[1]] = value;
-    }
-    return fm;
-}
-
-function everySkillHasValidFrontmatter(t, root) {
-    const dir = path.join(root, ".agents/skills");
-    if (!fs.existsSync(dir)) { t.skip("skill frontmatter check: no skills directory"); return; }
+function everySkillHasValidFrontmatter(t, root, roster = rosterOf(root)) {
+    if (!fs.existsSync(path.join(root, ".agents/skills"))) { t.skip("skill frontmatter check: no skills directory"); return; }
     const problems = [];
-    for (const name of fs.readdirSync(dir).sort()) {
-        const folder = path.join(dir, name);
-        if (fs.lstatSync(folder).isSymbolicLink() || !fs.statSync(folder).isDirectory()) continue;
-        const file = path.join(folder, "SKILL.md");
-        if (!fs.existsSync(file)) { problems.push(`${name}: no SKILL.md`); continue; }
-        const fm = skillFrontmatter(fs.readFileSync(file, "utf8"));
+    // A link is skillsFolderHoldsSkillsNotLinks's to report, and a stray file is nobody's skill.
+    for (const { name, link, dir, hasSkillMd, frontmatter: fm } of roster().entries) {
+        if (link || !dir) continue;
+        if (!hasSkillMd) { problems.push(`${name}: no SKILL.md`); continue; }
         if (!fm) { problems.push(`${name}: SKILL.md does not start with --- frontmatter`); continue; }
         if (!fm.name) problems.push(`${name}: no name`);
         else if (fm.name !== name) problems.push(`${name}: name is '${fm.name}', not the folder name`);
@@ -195,9 +172,9 @@ function everySkillHasValidFrontmatter(t, root) {
 // The lock file and .agents/skills must agree. This is breakage, not bookkeeping: a skill recorded
 // in the lock but absent from disk means a damaged or partial checkout, and `skills.js install`
 // fixes it. Nothing here requires a project to route, document or tabulate the skills it installs.
-function noSkillIsMissingFromDisk(t, root) {
-    const r = skills(root, "missing");
-    t.ok(r.status === 0, "node scripts/skills.js missing", r.output);
+function noSkillIsMissingFromDisk(t, root, roster = rosterOf(root)) {
+    const { missing } = roster();
+    t.ok(!missing.length, "every skill in skills-lock.json is on disk (node scripts/skills.js install)", missing.join("\n"));
 }
 
 // Vendoring a skill copies someone else's work into this repo, and MIT and Apache-2.0 both ask that
@@ -206,40 +183,36 @@ function noSkillIsMissingFromDisk(t, root) {
 // the notice has to be written here. Nothing about adding a skill prompts anyone to do that, which
 // is what this check is for: THIRD-PARTY-NOTICES.md is generated, so a new upstream with no row in
 // scripts/skill-licences.tsv fails rather than shipping unattributed.
-function vendoredSkillsAreAttributed(t, root) {
-    if (!fs.existsSync(path.join(root, "skills-lock.json"))) { t.skip("licence notice check: no skills-lock.json, so nothing is vendored"); return; }
-    const r = skills(root, "notices", "--check");
-    t.ok(r.status === 0,
-        "THIRD-PARTY-NOTICES.md covers every vendored skill (node scripts/skills.js notices)",
-        r.output);
+function vendoredSkillsAreAttributed(t, root, roster = rosterOf(root)) {
+    const { lock, notices } = roster();
+    if (!lock) { t.skip("licence notice check: no skills-lock.json, so nothing is vendored"); return; }
+    const why = notices.orphans.length
+        ? `no row in ${skills.LICENCES} covers:\n  ${notices.orphans.join("\n  ")}`
+        : !notices.current
+            ? `${skills.NOTICES} is ${fs.existsSync(path.join(root, skills.NOTICES)) ? "out of date with " + skills.LOCK + " and " + skills.LICENCES : "missing"}`
+            : "";
+    t.ok(!why, "THIRD-PARTY-NOTICES.md covers every vendored skill (node scripts/skills.js notices)", why);
 }
 
 // .agents/routing.md holds the rows more than one agent routes through, in a section per audience:
 // each section names its agents, each agent names its sections, and the two must agree. Either half
 // is a silent failure otherwise. A section nobody names is dead rows; an agent naming a section that
 // does not exist routes nothing, and neither shows up as a broken link or a bad exit code anywhere
-// else. `scripts/skills.js list` reads the same pairing to credit a moved row to the agents that
-// still route it, so this also pins that attribution.
+// else. The roster credits a moved row to the agents that read its section, so this also pins what
+// `scripts/skills.js list` reports.
 // The file lives above .agents/agents/ on purpose: .claude/agents is a symlink to that folder, and a
 // harness reads everything in there as an agent definition.
-function agentRoutingSectionsAgreeOnTheirAudience(t, root) {
-    const dir = path.join(root, ".agents/agents"), shared = "routing.md";
-    const file = path.join(root, ".agents", shared);
-    if (!fs.existsSync(file) || !fs.existsSync(dir)) { t.skip("routing section check: no routing.md"); return; }
-    const bodies = {};
-    for (const f of fs.readdirSync(dir).filter(n => n.endsWith(".md"))) {
-        const text = fs.readFileSync(path.join(dir, f), "utf8");
-        const name = (text.match(/^name:\s*(.+)$/m) || [])[1];
-        if (name && text.includes(shared)) bodies[name.trim()] = text;
+function agentRoutingSectionsAgreeOnTheirAudience(t, root, roster = rosterOf(root)) {
+    const shared = "routing.md";
+    if (!fs.existsSync(path.join(root, ".agents", shared)) || !fs.existsSync(path.join(root, ".agents/agents"))) {
+        t.skip("routing section check: no routing.md"); return;
     }
-    const sections = fs.readFileSync(file, "utf8").split(/^## /m).slice(1);
-    t.ok(sections.length > 0 && Object.keys(bodies).length > 0,
-        `${shared} has sections and agents point at it`, `${sections.length} section(s), ${Object.keys(bodies).length} agent(s)`);
-    for (const s of sections) {
-        const title = s.split(/\r?\n/)[0].trim();
-        const line = s.match(/^Read by .*$/m);
-        const stated = line ? [...line[0].matchAll(/`([a-z-]+)`/g)].map(m => m[1]).sort() : [];
-        const actual = Object.keys(bodies).filter(n => bodies[n].includes(title)).sort();
+    const { sections, agents } = roster().routing;
+    const readers = Object.keys(agents).filter(n => agents[n].readsShared);
+    t.ok(sections.length > 0 && readers.length > 0,
+        `${shared} has sections and agents point at it`, `${sections.length} section(s), ${readers.length} agent(s)`);
+    for (const { title, readBy: stated } of sections) {
+        const actual = readers.filter(n => agents[n].sections.includes(title)).sort();
         t.ok(stated.length > 0, `"${title}" says which agents read it, on a "Read by" line`);
         t.ok(stated.join(",") === actual.join(","),
             `"${title}" is read by exactly the agents it names`,
@@ -277,7 +250,13 @@ function check(root) {
         ok: (condition, title, detail) => { if (condition) result.passed++; else result.failed.push({ title, detail: detail || "" }); },
         skip: why => result.skipped.push(why),
     };
-    for (const invariant of INVARIANTS) invariant(t, root);
+    const roster = rosterOf(root);
+    for (const invariant of INVARIANTS) {
+        // A roster that cannot be read at all -- a lock file that is not JSON -- fails the invariant
+        // asking, rather than the whole check.
+        try { invariant(t, root, roster); }
+        catch (e) { result.failed.push({ title: `${invariant.name} could not run`, detail: e.message }); }
+    }
     const skips = result.skipped.length ? `, ${result.skipped.length} skipped` : "";
     result.summary = `harness invariants: ${result.passed} passed, ${result.failed.length} failed${skips}`;
     return result;
@@ -291,7 +270,7 @@ const format = r => [
     r.summary,
 ].join("\n");
 
-module.exports = { check, format, reads, skillFrontmatter, PATHS, INVARIANTS };
+module.exports = { check, format, reads, PATHS, INVARIANTS };
 
 if (require.main === module) {
     const r = check(lib.root());

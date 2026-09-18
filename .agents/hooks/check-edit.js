@@ -14,16 +14,21 @@ const fs = require("fs");
 const lib = require("./lib");
 const docsCheck = require("../../scripts/docs-check");
 const harness = require("../../scripts/check-harness");
+const skills = require("../../scripts/skills");
 
 // Resolved before the rules, because one of them hands it to docs-check: the chain to validate is
 // the one in the repo the harness is editing, which is what root() answers, and not whichever
 // checkout this file happens to sit in.
 const root = lib.root();
 
+// A lock that is not JSON vouches for nothing, so the skill is treated as local; the invariants
+// report the lock itself.
+const vendored = name => { try { return !!(skills.readRoster(root).lock || {})[name]; } catch { return false; } };
+
 const rules = [
     {   // Vendored skills (recorded in skills-lock.json) must not be edited in place; local skills may be.
         when: /^(?:\.agents|\.claude)\/skills\/([^/]+)\/./,
-        check: (file, m) => lib.node(["scripts/skills.js", "vendored", m[1]]).status === 0
+        check: (file, m) => vendored(m[1])
             && `${file} belongs to the vendored skill '${m[1]}': npx skills update will overwrite it. Change it upstream, or copy it to a new local skill under .agents/skills/<other-name>/.`,
     },
     {
