@@ -6,20 +6,18 @@
 // INTENT.md, whose required sections docs-check verifies when a project has one).
 // It checks the *index*, not the working tree: the commit records the staged content, so a document
 // half-fixed on disk must not pass and a break staged without saving must not slip through. The
-// staged chain is materialised into a temp directory with git checkout-index and thrown away after.
+// chain is read through a staged view (scripts/repo-view.js), which answers the chain's paths from
+// the index and everything else, the sources a document cites, from the working tree.
 // Exit 1 with the problems listed blocks the commit; `git commit --no-verify` skips the hook.
 // check(root, staged) is the decision, exported the way check-initialised.js and docs-check.js
 // export theirs: the staged paths in, the problems out, nothing printed and nothing exited. Git
-// runs in `root`, and the temp tree is created and removed inside the call.
+// runs in `root`, and nothing is written.
 // Called by .githooks/pre-commit. To try the decision by hand:
 //   printf 'docs/brd/0001-x.md\n' | node scripts/check-staged-docs.js --dry-run
 // Usage: node scripts/check-staged-docs.js [--dry-run]
-const fs = require("fs");
-const os = require("os");
-const path = require("path");
-const { spawnSync } = require("child_process");
 const lib = require("./lib");
 const docsCheck = require("./docs-check");
+const repoView = require("./repo-view");
 
 // Which of the staged paths the chain covers, by docs-check's membership rule, the one the edit hook
 // asks too. Exported because the pre-commit hook's whole reason for piping a list in is this filter,
@@ -30,39 +28,17 @@ const chainFiles = staged => staged.filter(docsCheck.inChain);
 // problem: a hook that blocks a commit because it could not read the index is worse than one that
 // lets the working-tree check downstream have the last word.
 function check(root, staged) {
-    const git = (args, opts) => spawnSync("git", args, { encoding: "utf8", cwd: root, ...opts });
     const touched = chainFiles(staged);
     const warnings = [];
     if (!touched.length) return { touched, problems: [], warnings, summary: "nothing staged from the documentation chain" };
-
-    // ls-files gives the index's paths, checkout-index writes their staged blobs; both are -z, so a
-    // path with a space or a quote survives.
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "staged-docs-"));
-    const prefix = tmp.split(path.sep).join("/") + "/";
+    let problems;
     try {
-        const list = git(["ls-files", "-z", "--cached", "--", ...docsCheck.CHAIN_PATHS]);
-        if (list.status !== 0) { warnings.push(`git ls-files failed: ${list.stderr || ""}`); return { touched, problems: [], warnings, summary: "" }; }
-        if (list.stdout) {
-            const out = git(["checkout-index", "-z", "--stdin", `--prefix=${prefix}`], { input: list.stdout });
-            if (out.status !== 0) { warnings.push(`git checkout-index failed: ${out.stderr || ""}`); return { touched, problems: [], warnings, summary: "" }; }
-        }
-        // Anything the commit does not carry is read from the checkout, so a repo that keeps AGENTS.md
-        // or MEMORY.md untracked still gets a meaningful check rather than a confusing one.
-        const staged_ = rel => fs.existsSync(path.join(tmp, rel)) ? path.join(tmp, rel) : path.join(root, rel);
-        // The root stays the checkout even though the three paths point into the temp tree: a
-        // "Derived from:" naming a repo-relative path means a path in the working tree, which the
-        // staged blobs of docs/, AGENTS.md, MEMORY.md and INTENT.md say nothing about.
-        const { problems } = docsCheck.check(root, staged_("docs"), staged_("AGENTS.md"), staged_("MEMORY.md"), staged_("INTENT.md"));
-        return {
-            touched,
-            // The temp tree is an implementation detail, so a problem names the repo-relative path.
-            problems: problems.map(p => p.split(prefix).join("")),
-            warnings,
-            summary: `documentation chain: ${touched.length} staged file(s), no problems`,
-        };
-    } finally {
-        fs.rmSync(tmp, { recursive: true, force: true });
+        ({ problems } = docsCheck.check(root, repoView.staged(root, docsCheck.CHAIN_PATHS)));
+    } catch (e) {
+        warnings.push(`could not read the staged documentation chain: ${e.message}`);
+        return { touched, problems: [], warnings, summary: "" };
     }
+    return { touched, problems, warnings, summary: `documentation chain: ${touched.length} staged file(s), no problems` };
 }
 
 module.exports = { check, chainFiles };

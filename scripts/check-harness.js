@@ -20,6 +20,7 @@ const lib = require("./lib");
 const docsCheck = require("./docs-check");
 const { HOOKS } = require("./githook");
 const skills = require("./skills");
+const repoView = require("./repo-view");
 
 // What the invariants below read, as the path a harness reports for an edit: an exact file, or a
 // prefix ending in / for everything under it. check-edit.js runs this script for an edit to any of
@@ -36,11 +37,10 @@ const reads = file => PATHS.some(p => p.endsWith("/") ? file.startsWith(p) : fil
 const once = read => { let r; return () => r || (r = read()); };
 const rosterOf = root => once(() => skills.readRoster(root));
 
-// Git's view of a folder, as [mode, path] rows, or null outside a git checkout.
+// Git's view of a folder, as repo-view's index rows, or null outside a git checkout.
 function indexed(root, dir) {
-    const r = lib.run("git", ["ls-files", "-s", "--", dir], { cwd: root });
-    if (r.status !== 0) return null;
-    return { rows: r.output.split(/\r?\n/).filter(Boolean).map(l => l.split(/\s+/)), output: r.output };
+    const rows = repoView.indexModes(root, [dir]);
+    return rows && { rows, output: rows.map(r => `${r.mode} ${r.file}`).join("\n") };
 }
 
 // A harness installed by scripts/update-harness.js has its files on disk and nothing in the index
@@ -58,7 +58,7 @@ function gitHooksAreExecutable(t, root) {
     if (!git) { t.skip(".githooks mode check: not a git checkout"); return; }
     if (uncommitted(root, ".githooks", git)) { t.skip(".githooks mode check: present on disk, not committed yet"); return; }
     t.ok(git.rows.length > 0, "git tracks files under .githooks/", git.output);
-    const notExecutable = git.rows.filter(([mode]) => mode !== "100755").map(row => row[row.length - 1]);
+    const notExecutable = git.rows.filter(r => !r.exec).map(r => r.file);
     t.ok(!notExecutable.length,
         "every .githooks/ hook is committed executable (git update-index --chmod=+x <file>)",
         notExecutable.join(", "));
@@ -100,7 +100,7 @@ function claudeSkillLinksAreSymlinks(t, root) {
     if (!git) { t.skip(".claude/skills mode check: not a git checkout"); return; }
     if (uncommitted(root, ".claude/skills", git)) { t.skip(".claude/skills mode check: present on disk, not committed yet"); return; }
     t.ok(git.rows.length > 0, "git tracks entries under .claude/skills/", git.output);
-    const notLinks = git.rows.filter(([mode]) => mode !== "120000").map(row => row[row.length - 1]);
+    const notLinks = git.rows.filter(r => !r.link).map(r => r.file);
     t.ok(!notLinks.length,
         "every .claude/skills/ entry is committed as a symlink (node scripts/skills.js relink, then stage)",
         notLinks.slice(0, 10).join(", "));

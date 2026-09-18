@@ -9,6 +9,7 @@
     "scripts/update-harness.js",
     "scripts/lib.js",
     "scripts/project-facts.js",
+    "scripts/repo-view.js",
     "README.md",
     "LICENSE"
   ],

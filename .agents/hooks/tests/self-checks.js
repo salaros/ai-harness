@@ -15,6 +15,7 @@ const os = require("os");
 const path = require("path");
 const lib = require("../lib");
 const docsCheck = require("../../../scripts/docs-check");
+const repoView = require("../../../scripts/repo-view");
 const harness = require("../../../scripts/check-harness");
 const projectFacts = require("../../../scripts/project-facts");
 
@@ -102,7 +103,6 @@ function initialisationGateAnswersEveryState(t) {
 // INTENT.md is optional, and when present docs-check holds it to the sections its specification
 // requires. Each broken shape gets its own message; a well-formed file and an absent one get none.
 function docsCheckIntentShape(t) {
-    const tree = docTree();
     const good = ["# INTENT.md", "", "_Written by hand._", "", "## Product", "", "**Acme Billing** invoices small firms monthly.",
         "", "## Personas", "", "### Dana, bookkeeper", "", "## MVP stories — build these first", "", "### Send an invoice", "",
         "*Done when:*", "- the customer receives a PDF", "", "## Release 2 — reminders", ""];
@@ -114,16 +114,13 @@ function docsCheckIntentShape(t) {
         ["a Product with a name and nothing else", good.map(l => l.replace(" invoices small firms monthly.", "")), "does not say what the product does"],
         ["no MVP stories section", good.map(l => l.replace("## MVP stories — build these first", "## Stories")), 'no "## MVP stories" section'],
     ];
-    const at = name => path.join(tree.dir, name);
-    const problemsFor = (file) => docsCheck.check(lib.checkout, tree.dir, "AGENTS.md", at("no-memory-here.md"), file).problems;
-    t.ok(problemsFor(at("absent-intent.md")).length === 0, "docs-check: a project with no INTENT.md is not asked for one", problemsFor(at("absent-intent.md")).join("\n"));
+    const problemsFor = lines => docsCheck.check(lib.checkout, chainView(lines ? { "INTENT.md": lines } : {})).problems;
+    t.ok(problemsFor(null).length === 0, "docs-check: a project with no INTENT.md is not asked for one", problemsFor(null).join("\n"));
     for (const [title, lines, needle] of cases) {
-        tree.write("intent.md", ...lines);
-        const problems = problemsFor(at("intent.md"));
+        const problems = problemsFor(lines);
         const detail = problems.join("\n") || "(none)";
         t.ok(needle ? problems.some(p => p.includes(needle)) : problems.length === 0, `docs-check: INTENT.md, ${title}`, detail);
     }
-    tree.clean();
 }
 
 // The installer lays down MEMORY.md's facts from the table the gate reads, every one a placeholder:
@@ -162,54 +159,46 @@ function projectInitTemplateMatchesFacts(t) {
         `template: ${labels.join(", ")}\nfacts:    ${facts.join(", ")}`);
 }
 
-// docs-check's citation logic, exercised directly against a throwaway doc tree (real stage folder
-// names, so it uses the real AGENTS.md chain) rather than through a fixture: a duplicate document
-// number, a citation to an item that does not exist in its target, and a citation that jumps
-// forward in the chain. A unique OS-temp directory, not a fixed path under the repo, so two runs
-// (a manual one and one the edit hook triggers) can never collide on the same files.
+// docs-check's citation logic, exercised directly rather than through a fixture: a duplicate
+// document number, a citation to an item that does not exist in its target, and a citation that
+// jumps forward in the chain.
 function docsCheckCitationEdgeCases(t) {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-docs-check-"));
-    const write = (rel, ...lines) => {
-        const file = path.join(tmp, rel);
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, lines.join("\n") + "\n");
-    };
-    write("brd/9001-alpha.md", "# BRD-9001: Alpha");
-    write("brd/9001-beta.md", "# BRD-9001: Beta");
-    write("brd/9002-source.md", "# BRD-9002: Source", "", "- BR-1: Something real");
-    write("prd/9002-citer.md", "# PRD-9002: Citer", "", "**Derived from:** BRD-9002", "", "Refines BRD-9002/BR-2, which does not exist.");
-    write("brd/9003-support.md", "# BRD-9003: Support");
-    write("ears/9003-late.md", "# EARS-9003: Late");
-    write("prd/9003-early.md", "# PRD-9003: Early", "", "**Derived from:** BRD-9003", "", "See EARS-9003 for details.");
-    const { problems } = docsCheck.check(lib.checkout, tmp, "AGENTS.md");
-    fs.rmSync(tmp, { recursive: true, force: true });
-    const has = needle => problems.some(p => p.includes(needle));
-    const detail = problems.join("\n") || "(none)";
+    const r = checkDocs({
+        "brd/9001-alpha.md": ["# BRD-9001: Alpha"],
+        "brd/9001-beta.md": ["# BRD-9001: Beta"],
+        "brd/9002-source.md": ["# BRD-9002: Source", "", "- BR-1: Something real"],
+        "prd/9002-citer.md": ["# PRD-9002: Citer", "", "**Derived from:** BRD-9002", "", "Refines BRD-9002/BR-2, which does not exist."],
+        "brd/9003-support.md": ["# BRD-9003: Support"],
+        "ears/9003-late.md": ["# EARS-9003: Late"],
+        "prd/9003-early.md": ["# PRD-9003: Early", "", "**Derived from:** BRD-9003", "", "See EARS-9003 for details."],
+    });
+    const has = needle => r.all.includes(needle);
+    const detail = r.all;
     t.ok(has("already used by"), "docs-check: duplicate document number", detail);
     t.ok(has("has no item BR-2"), "docs-check: citation to a missing item", detail);
     t.ok(has("later in the chain"), "docs-check: citation later in the chain", detail);
 }
 
-// A throwaway doc tree: real stage folder names, so check() uses the real AGENTS.md chain, and a
-// unique OS-temp directory so two runs (a manual one and one the edit hook triggers) never collide.
-// Returns { write, run, clean }; run() gives back a helper that filters problems by file.
-function docTree() {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "harness-docs-check-"));
+// A repo as docs-check reads it, held in memory (scripts/repo-view.js): this checkout's AGENTS.md,
+// so the real stage table decides, an empty SKILL.md for each skill it names, and `files`
+// (repo-relative path -> lines) and nothing else. A case names every file it depends on, a source
+// it cites included, and nothing touches the disk.
+function chainView(files = {}) {
+    const map = { "AGENTS.md": fs.readFileSync(path.join(lib.checkout, "AGENTS.md"), "utf8") };
+    for (const s of docsCheck.readChain(lib.checkout).stages)
+        for (const skill of s.skills) map[`.agents/skills/${skill}/SKILL.md`] = "";
+    for (const [rel, lines] of Object.entries(files)) map[rel] = [].concat(lines).join("\n") + "\n";
+    return repoView.fromMap(map);
+}
+
+// check() over the documents in `docs` (keyed under docs/) and the other `files`, with a helper that
+// filters the problems by document.
+function checkDocs(docs, files = {}) {
+    const entries = Object.entries(docs).map(([rel, lines]) => [`docs/${rel}`, lines]);
+    const { problems } = docsCheck.check(lib.checkout, chainView({ ...Object.fromEntries(entries), ...files }));
     return {
-        dir,
-        write(rel, ...lines) {
-            const file = path.join(dir, rel);
-            fs.mkdirSync(path.dirname(file), { recursive: true });
-            fs.writeFileSync(file, lines.join("\n") + "\n");
-        },
-        run(memoryFile) {
-            const { problems } = docsCheck.check(lib.checkout, dir, "AGENTS.md", memoryFile || path.join(dir, "no-memory-here.md"));
-            return {
-                all: problems.join("\n") || "(none)",
-                for: rel => problems.filter(p => p.startsWith(path.join(dir, rel).split(path.sep).join("/"))),
-            };
-        },
-        clean: () => fs.rmSync(dir, { recursive: true, force: true }),
+        all: problems.join("\n") || "(none)",
+        for: rel => problems.filter(p => p.startsWith(`docs/${rel}:`)),
     };
 }
 
@@ -217,20 +206,21 @@ function docTree() {
 // a URL, an existing repo-relative path, or a Jira key. A missing line, a line naming nothing, and
 // a path that does not exist are each their own message.
 function docsCheckDerivedFromShapes(t) {
-    const tree = docTree();
-    tree.write("brd/9100-url.md", "# BRD-9100: Url", "", "**Derived from:** https://example.com/brief");
-    tree.write("brd/9101-jira.md", "# BRD-9101: Jira", "", "**Derived from:** jira:ABC-123");
-    tree.write("brd/9102-path.md", "# BRD-9102: Path", "", "**Derived from:** .scratch/README.md");
-    tree.write("brd/9103-absent.md", "# BRD-9103: Absent");
-    tree.write("brd/9104-words.md", "# BRD-9104: Words", "", "**Derived from:** the whiteboard");
-    tree.write("brd/9105-gone.md", "# BRD-9105: Gone", "", "**Derived from:** docs/nowhere/missing.md");
-    // A bare file name is a path at the root, which is how INTENT.md is cited. AGENTS.md stands in
-    // for it, since the upstream ships no INTENT.md for the checkout to resolve against.
-    tree.write("brd/9106-root.md", "# BRD-9106: Root", "", "**Derived from:** the product intent in AGENTS.md");
-    tree.write("brd/9107-root-gone.md", "# BRD-9107: Root gone", "", "**Derived from:** NO-SUCH-INTENT.md");
-    tree.write("brd/9108-dotted.md", "# BRD-9108: Dotted", "", "**Derived from:** a talk about Node.js");
-    const r = tree.run();
-    tree.clean();
+    const r = checkDocs({
+        "brd/9100-url.md": ["# BRD-9100: Url", "", "**Derived from:** https://example.com/brief"],
+        "brd/9101-jira.md": ["# BRD-9101: Jira", "", "**Derived from:** jira:ABC-123"],
+        "brd/9102-path.md": ["# BRD-9102: Path", "", "**Derived from:** .scratch/interview.md"],
+        "brd/9103-absent.md": ["# BRD-9103: Absent"],
+        "brd/9104-words.md": ["# BRD-9104: Words", "", "**Derived from:** the whiteboard"],
+        "brd/9105-gone.md": ["# BRD-9105: Gone", "", "**Derived from:** docs/nowhere/missing.md"],
+        // A bare file name is a path at the root, which is how INTENT.md is cited.
+        "brd/9106-root.md": ["# BRD-9106: Root", "", "**Derived from:** the product intent in INTENT.md"],
+        "brd/9107-root-gone.md": ["# BRD-9107: Root gone", "", "**Derived from:** NO-SUCH-INTENT.md"],
+        "brd/9108-dotted.md": ["# BRD-9108: Dotted", "", "**Derived from:** a talk about Node.js"],
+    }, {
+        ".scratch/interview.md": ["# Interview"],
+        "INTENT.md": ["# INTENT.md", "", "## Product", "", "**Acme** bills people.", "", "## MVP stories", "", "### Bill", ""],
+    });
     for (const ok of ["brd/9100-url.md", "brd/9101-jira.md", "brd/9102-path.md", "brd/9106-root.md"])
         t.ok(r.for(ok).length === 0, `docs-check: ${ok} derives from a valid source`, r.all);
     t.ok(r.for("brd/9107-root-gone.md").some(p => p.includes("NO-SUCH-INTENT.md does not exist")),
@@ -245,15 +235,14 @@ function docsCheckDerivedFromShapes(t) {
 // A source stands in for an upstream document only while nothing earlier exists. Once it does, the
 // line must cite it — except on an ADR, which is cross-cutting and cites in either direction.
 function docsCheckSourceAndAdrExemption(t) {
-    const tree = docTree();
-    tree.write("brd/9200-real.md", "# BRD-9200: Real", "", "**Derived from:** https://example.com/brief");
-    tree.write("prd/9200-stale.md", "# PRD-9200: Stale", "", "**Derived from:** https://example.com/brief");
-    tree.write("adr/9200-forced.md", "# ADR-9200: Forced", "", "**Derived from:** https://example.com/rfc");
-    tree.write("spec/9200-design.md", "# SPEC-9200: Design", "", "**Derived from:** BRD-9200");
-    tree.write("adr/9201-late.md", "# ADR-9201: Late", "", "**Derived from:** SPEC-9200");
-    tree.write("prd/9201-decided.md", "# PRD-9201: Decided", "", "**Derived from:** BRD-9200", "", "Constrained by ADR-9200.");
-    const r = tree.run();
-    tree.clean();
+    const r = checkDocs({
+        "brd/9200-real.md": ["# BRD-9200: Real", "", "**Derived from:** https://example.com/brief"],
+        "prd/9200-stale.md": ["# PRD-9200: Stale", "", "**Derived from:** https://example.com/brief"],
+        "adr/9200-forced.md": ["# ADR-9200: Forced", "", "**Derived from:** https://example.com/rfc"],
+        "spec/9200-design.md": ["# SPEC-9200: Design", "", "**Derived from:** BRD-9200"],
+        "adr/9201-late.md": ["# ADR-9201: Late", "", "**Derived from:** SPEC-9200"],
+        "prd/9201-decided.md": ["# PRD-9201: Decided", "", "**Derived from:** BRD-9200", "", "Constrained by ADR-9200."],
+    });
     t.ok(r.for("prd/9200-stale.md").some(p => p.includes("cite the upstream document instead")),
         "docs-check: source-only line once an upstream document exists", r.all);
     t.ok(r.for("adr/9200-forced.md").length === 0, "docs-check: an ADR may derive from a source at any time", r.all);
@@ -263,13 +252,12 @@ function docsCheckSourceAndAdrExemption(t) {
 
 // MEMORY.md's Requirements takes part in traceability, so it follows the same reference rule.
 function docsCheckMemoryRequirements(t) {
-    const tree = docTree();
-    tree.write("brd/9300-real.md", "# BRD-9300: Real", "", "**Derived from:** https://example.com/brief");
-    const memory = (name, ...lines) => {
-        const file = path.join(tree.dir, name);
-        fs.writeFileSync(file, lines.join("\n") + "\n");
-        const { problems } = docsCheck.check(lib.checkout, tree.dir, "AGENTS.md", file);
-        return problems.filter(p => p.startsWith(file.split(path.sep).join("/")) || p.startsWith(file));
+    const memory = lines => {
+        const { problems } = docsCheck.check(lib.checkout, chainView({
+            "docs/brd/9300-real.md": ["# BRD-9300: Real", "", "**Derived from:** https://example.com/brief"],
+            "MEMORY.md": lines,
+        }));
+        return problems.filter(p => p.startsWith("MEMORY.md:"));
     };
     const cases = [
         ["none yet", ["# Project", "", "- **Requirements:** none yet"], 0, ""],
@@ -289,12 +277,11 @@ function docsCheckMemoryRequirements(t) {
         ["a placeholder project-init has not filled in", ["- **Requirements:** <requirements>"], 0, ""],
     ];
     for (const [title, lines, want, needle] of cases) {
-        const problems = memory("memory.md", ...lines);
+        const problems = memory(lines);
         const detail = problems.join("\n") || "(none)";
         t.ok(want === 0 ? problems.length === 0 : problems.some(p => p.includes(needle)),
             `docs-check: MEMORY.md Requirements, ${title}`, detail);
     }
-    tree.clean();
 }
 
 // root() must actually follow a harness's project-dir variable, not just fall back to this
@@ -724,17 +711,12 @@ function chainIsParsedInPipelineOrder(t) {
 // rule rejects is a problem and not a document, so a second reader cannot render a file nothing
 // checked, which is what happened while the portal carried its own looser rule.
 function oneModelForValidatorAndPortal(t) {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "harness-docs-model-"));
-    const write = (rel, ...lines) => {
-        const file = path.join(tmp, rel);
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.writeFileSync(file, lines.join("\n") + "\n");
-    };
-    write("brd/9401-billing.md", "# BRD-9401: Billing", "", "**Derived from:** jira:AB-42", "", "- BR-1: Bill monthly.");
-    write("prd/9401-биллинг.md", "# PRD-9401: Billing", "", "**Derived from:** BRD-9401");
-    const model = docsCheck.readDocs(lib.checkout, tmp, "AGENTS.md");
-    const { problems } = docsCheck.check(lib.checkout, tmp, "AGENTS.md");
-    fs.rmSync(tmp, { recursive: true, force: true });
+    const view = chainView({
+        "docs/brd/9401-billing.md": ["# BRD-9401: Billing", "", "**Derived from:** jira:AB-42", "", "- BR-1: Bill monthly."],
+        "docs/prd/9401-биллинг.md": ["# PRD-9401: Billing", "", "**Derived from:** BRD-9401"],
+    });
+    const model = docsCheck.readDocs(lib.checkout, view);
+    const { problems } = docsCheck.check(lib.checkout, view);
 
     const ids = [...model.docs.keys()].join(",");
     const rejected = model.problems.filter(p => p.includes("9401-биллинг"));

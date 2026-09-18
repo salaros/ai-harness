@@ -90,14 +90,14 @@ function readFacts({ memory = null, intent = null } = {}) {
     return facts;
 }
 
-// readFacts() for the files under a root. Either file may be given as another path, relative to the
-// root or absolute, which is how check-staged-docs points docs-check at staged copies.
-function readFactsAt(root, memoryFile = MEMORY, intentFile = INTENT) {
+// readFacts() for the files on disk under a root. A reader holding the texts some other way, such as
+// docs-check through a repo view, calls readFacts() with them instead.
+function readFactsAt(root) {
     const read = file => {
         const at = path.resolve(root, file);
         return fs.existsSync(at) ? fs.readFileSync(at, "utf8") : null;
     };
-    return readFacts({ memory: read(memoryFile), intent: read(intentFile) });
+    return readFacts({ memory: read(MEMORY), intent: read(INTENT) });
 }
 
 // The required labels readFacts() found no answer for, in FACTS order.

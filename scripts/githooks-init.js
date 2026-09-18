@@ -12,15 +12,14 @@
 const fs = require("fs");
 const { spawnSync } = require("child_process");
 const lib = require("./lib");
+const repoView = require("./repo-view");
 
 lib.chdirRoot();
 const r = spawnSync("git", ["config", "core.hooksPath", ".githooks"], { stdio: "inherit" });
 if (r.status !== 0) process.exit(r.status === null ? 1 : r.status);
 
 const hooks = fs.readdirSync(".githooks");
-const tracked = lib.run("git", ["ls-files", "-s", "--", ".githooks"]).output
-    .split(/\r?\n/).filter(Boolean).map(l => l.split(/\s+/));
-const wrong = tracked.filter(([mode]) => mode !== "100755").map(row => row[row.length - 1]);
+const wrong = (repoView.indexModes(process.cwd(), [".githooks"]) || []).filter(r => !r.exec).map(r => r.file);
 for (const file of wrong) {
     try { fs.chmodSync(file, 0o755); } catch { /* the filesystem does not do modes */ }
     lib.run("git", ["update-index", "--chmod=+x", "--", file]);

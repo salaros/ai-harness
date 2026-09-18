@@ -21,18 +21,21 @@
 // docs/ there means two file-name rules, two citation expressions, and a document the validator
 // rejects while the portal happily renders it. readChain() is the table alone, for a caller that
 // wants the pipeline without reading a single document.
-// Both take the repo root as their first argument and resolve everything relative against it; an
-// absolute argument is used as it stands, which is how check-staged-docs.js points the docs, table
-// and memory file at a temp tree of staged blobs while sources still resolve in the checkout.
-// Neither changes the working directory: chdir is process-wide, so a library that moves it moves it
+// Each takes the repo root and a view of it (scripts/repo-view.js), and reads nothing but the view:
+// the working tree by default, what the commit will record when check-staged-docs.js passes a
+// staged view, or a map of files in a test.
+// None changes the working directory: chdir is process-wide, so a library that moves it moves it
 // for its caller. The caller decides where the root is -- a hook honours the harness's project-dir
 // variable, a command uses its own location -- and says so here.
-// Usage: node scripts/docs-check.js [docs-dir] [agents-file] [memory-file] [intent-file]
-//        (defaults: docs, AGENTS.md, MEMORY.md, INTENT.md, each relative to the repo root)
-const fs = require("fs");
+// Usage: node scripts/docs-check.js
 const path = require("path");
 const lib = require("./lib");
-const { readFactsAt, readIntent } = require("./project-facts");
+const repoView = require("./repo-view");
+const { readFacts, readIntent } = require("./project-facts");
+
+const DOCS = "docs", AGENTS = "AGENTS.md", MEMORY = "MEMORY.md", INTENT = "INTENT.md";
+// isSource is also called with a bare root, by check-todo.js.
+const viewOf = at => typeof at === "string" ? repoView.worktree(at) : at;
 
 // What a source is, for every checker that accepts one: the chain's "Derived from:" lines, MEMORY.md's
 // Requirements and TODO.md's entries all call isSource, so the rule and its help text live here once.
@@ -45,24 +48,24 @@ const withoutLine = token => token.replace(/:\d+(?:-\d+)?$/, "");
 const looksLikePath = token => (/^[\w.][\w./-]*$/.test(withoutLine(token)) && token.includes("/")) || /^[\w-][\w.-]*\.md$/i.test(withoutLine(token));
 // A bare file name counts as a source only when that file is at the root, so prose that happens to
 // contain a dot never passes for a reference.
-const isRootFile = (file, at) => /^[\w-][\w.-]*\.\w+$/.test(file) && fs.existsSync(at(file)) && fs.statSync(at(file)).isFile();
+const isRootFile = (file, view) => /^[\w-][\w.-]*\.\w+$/.test(file) && view.isFile(file);
 // A source is the non-chain thing a document derives from. Only a path can be verified here; a URL
 // and a Jira key are checked for shape, since neither can be followed. A Jira key is upper case, as
-// Jira issues them. `root` is the repo a path resolves in.
-function isSource(token, root) {
-    const at = p => path.resolve(root, p);
+// Jira issues them. `at` is the repo a path resolves in: a view of it, or its root.
+function isSource(token, at) {
+    const view = viewOf(at);
     const file = withoutLine(token);
     return /^https?:\/\/\S+$/i.test(token)
         || /^jira:[A-Z][A-Z0-9_]*-\d+$/.test(token)
-        || (looksLikePath(token) && fs.existsSync(at(file)))
-        || isRootFile(file, at);
+        || (looksLikePath(token) && view.exists(file))
+        || isRootFile(file, view);
 }
 // Which repo-relative paths belong to the chain: Markdown under docs/, the AGENTS.md table that
 // defines the stages, MEMORY.md whose Requirements line enters it, and INTENT.md. The edit hook and
 // the pre-commit hook both ask inChain, so an edit and a commit never disagree about what to check;
 // CHAIN_PATHS is the same set as git pathspecs.
-const CHAIN_FILES = ["AGENTS.md", "MEMORY.md", "INTENT.md"];
-const CHAIN_PATHS = ["docs", ...CHAIN_FILES];
+const CHAIN_FILES = [AGENTS, MEMORY, INTENT];
+const CHAIN_PATHS = [DOCS, ...CHAIN_FILES];
 const inChain = file => CHAIN_FILES.includes(file) || /^docs\/.+\.md$/.test(file);
 // "x, y (z)" -> ["x", "y", "z"], with surrounding punctuation stripped.
 const tokensOf = text => text.split(/[\s,;]+/).filter(Boolean)
@@ -89,12 +92,11 @@ const citationRe = folders =>
 // is set only on the rows that are document stages (tests/, .scratch/ and src/ have none). This is
 // the only parser of that table: check() below goes through it, as does the optional
 // tools/docs-site portal.
-function readChain(root, agentsFile = "AGENTS.md") {
-    const at = p => path.resolve(root, p);
+function readChain(root, view = repoView.worktree(root)) {
     const problems = [];
-    const say = msg => problems.push(`${agentsFile}: ${msg}`);
+    const say = msg => problems.push(`${AGENTS}: ${msg}`);
     const stages = [];
-    const text = fs.existsSync(at(agentsFile)) ? fs.readFileSync(at(agentsFile), "utf8") : "";
+    const text = view.read(AGENTS) || "";
     const lines = text.split(/\r?\n/);
     const cells = l => l.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
     const header = lines.findIndex(l => /^\|/.test(l) && cells(l).includes("Stage") && cells(l).includes("Lives in"));
@@ -110,7 +112,7 @@ function readChain(root, agentsFile = "AGENTS.md") {
         const lives = (col(row, "Lives in").match(/`([^`]+)`/) || [])[1] || "";
         const skills = [...col(row, "Skill").matchAll(/`([^`]+)`/g)].map(m => m[1]);
         for (const skill of skills)
-            if (!fs.existsSync(at(path.join(".agents/skills", skill, "SKILL.md"))))
+            if (!view.isFile(`.agents/skills/${skill}/SKILL.md`))
                 say(`stage ${stage} names skill \`${skill}\`, which is not under .agents/skills/`);
         const m = lives.match(/^docs\/([a-z0-9-]+)\/$/);   // tests/, .scratch/, src/: not a document stage
         if (m && m[1].toUpperCase() !== stage) say(`stage ${stage} lives in ${lives}; the folder must be docs/${stage.toLowerCase()}/`);
@@ -124,27 +126,26 @@ function readChain(root, agentsFile = "AGENTS.md") {
 // table it was read against and the expressions that recognise a citation and an item in it. What
 // check() validates and what the portal renders is this one model, so a document either takes part
 // in the chain in both or in neither.
-// `file` is the path as the caller wrote it, for a message a reader can act on; `path` is the same
-// file resolved against the root, for reading it. A file name the rule rejects is a problem here
+// `file` is the repo-relative path, for a message a reader can act on; `path` is the same file
+// resolved against the root, for a reader outside the view. A file name the rule rejects is a problem here
 // rather than a document, so no reader has to decide what to do with one.
-function readDocs(root, docsDir = "docs", agentsFile = "AGENTS.md") {
-    const at = p => path.resolve(root, p);
-    const { stages, problems } = readChain(root, agentsFile);
+function readDocs(root, view = repoView.worktree(root)) {
+    const { stages, problems } = readChain(root, view);
     const docStages = stages.filter(s => s.folder);
     const docs = new Map();
 
     for (const s of docStages) {
-        const dir = path.join(docsDir, s.folder);
-        if (!fs.existsSync(at(dir))) continue;
+        const dir = `${DOCS}/${s.folder}`;
         const seen = new Map();
-        for (const name of fs.readdirSync(at(dir)).filter(n => n.endsWith(".md") && n !== "README.md").sort()) {
-            const file = path.join(dir, name).split(path.sep).join("/");
+        for (const name of view.list(dir).filter(n => n.endsWith(".md") && n !== "README.md")) {
+            const file = `${dir}/${name}`;
             const m = name.match(FILE_RE);
             if (!m) { problems.push(`${file}: file name must be NNNN-<kebab-slug>.md`); continue; }
             const id = `${s.folder.toUpperCase()}-${m[1]}`;
             if (seen.has(m[1])) problems.push(`${file}: number ${m[1]} already used by ${seen.get(m[1])}`);
             seen.set(m[1], name);
-            const text = fs.readFileSync(at(file), "utf8");
+            const text = view.read(file);
+            if (text === null) continue;                    // a folder named like a document
             const lines = text.split(/\r?\n/);
             const h1 = lines.find(l => l.startsWith("# ")) || null;
             const slug = name.replace(/\.md$/, "");
@@ -155,7 +156,7 @@ function readDocs(root, docsDir = "docs", agentsFile = "AGENTS.md") {
             }
             docs.set(id, {
                 id, stage: s.stage, folder: s.folder, number: Number(m[1]),
-                file, path: at(file), entryId: `${s.folder}/${slug}`, link: `/${s.folder}/${slug}/`,
+                file, path: path.resolve(root, file), entryId: `${s.folder}/${slug}`, link: `/${s.folder}/${slug}/`,
                 title: h1 ? h1.replace(/^#\s+/, "").trim() : id,
                 h1, text, lines, items,
             });
@@ -165,12 +166,11 @@ function readDocs(root, docsDir = "docs", agentsFile = "AGENTS.md") {
     return { stages, docStages, docs, problems, refRe: citationRe(docStages.map(s => s.folder)), itemRe: ITEM_RE };
 }
 
-function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "MEMORY.md", intentFile = "INTENT.md") {
-    const at = p => path.resolve(root, p);
+function check(root, view = repoView.worktree(root)) {
     const say = (file, msg) => problems.push(`${file}: ${msg}`);
 
     // 1. The chain and its documents
-    const { docStages, docs, problems, refRe } = readDocs(root, docsDir, agentsFile);
+    const { docStages, docs, problems, refRe } = readDocs(root, view);
     const chain = docStages.map(s => s.folder);   // folder names in stage order
     const rank = Object.fromEntries(chain.map((s, i) => [s, i]));
     const prefixes = chain.map(s => s.toUpperCase());
@@ -187,8 +187,8 @@ function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "M
         else {
             const tokens = referenceTokens(derived);
             const cites = [...derived.matchAll(refRe)].map(m => `${m[1]}-${m[2]}`).filter(c => c !== id);
-            const sources = tokens.filter(t => isSource(t, root));
-            const brokenPath = tokens.find(t => looksLikePath(t) && !fs.existsSync(at(withoutLine(t))));
+            const sources = tokens.filter(t => isSource(t, view));
+            const brokenPath = tokens.find(t => looksLikePath(t) && !view.exists(withoutLine(t)));
             if (!cites.length && !sources.length) {
                 const why = brokenPath ? `; ${brokenPath} does not exist` : "";
                 say(d.file, `"Derived from:" names no reference: cite an upstream document, or a source (${SOURCE_HELP})${why}`);
@@ -215,10 +215,11 @@ function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "M
 
     // 4. MEMORY.md's Requirements takes part in traceability once a BRD exists, so it follows the
     // same reference rule: sources, document IDs, or "none yet".
-    if (fs.existsSync(at(memoryFile))) {
+    const memory = view.read(MEMORY), intentText = view.read(INTENT);
+    if (memory !== null) {
         // Read as every other reader of project facts reads it, through scripts/project-facts.js.
-        const value = readFactsAt(root, memoryFile, intentFile).Requirements;
-        if (value === null) say(memoryFile, "no Requirements line (the project-init skill writes one)");
+        const value = readFacts({ memory, intent: intentText }).Requirements;
+        if (value === null) say(MEMORY, "no Requirements line (the project-init skill writes one)");
         else {
             // An unanswered `<placeholder>` means project-init has not run. check-initialised.js
             // already blocks every commit and push until it does, and says so in those words; repeating
@@ -232,11 +233,11 @@ function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "M
                 const tokens = tokensOf(value);
                 const named = tokens.filter(t => new RegExp(`^(${prefixes.join("|") || "NONE"})-\\d{4}$`).test(t));
                 for (const token of named) {
-                    if (!docs.has(token)) say(memoryFile, `Requirements names ${token}, which does not exist`);
+                    if (!docs.has(token)) say(MEMORY, `Requirements names ${token}, which does not exist`);
                 }
-                if (!named.length && !tokens.some(t => isSource(t, root))) {
-                    const broken = tokens.find(t => looksLikePath(t) && !fs.existsSync(at(withoutLine(t))));
-                    say(memoryFile, `Requirements names no reference: cite a document ID, a source (${SOURCE_HELP}), or "none yet"`
+                if (!named.length && !tokens.some(t => isSource(t, view))) {
+                    const broken = tokens.find(t => looksLikePath(t) && !view.exists(withoutLine(t)));
+                    say(MEMORY, `Requirements names no reference: cite a document ID, a source (${SOURCE_HELP}), or "none yet"`
                         + (broken ? `; ${broken} does not exist` : ""));
                 }
             }
@@ -245,25 +246,25 @@ function check(root, docsDir = "docs", agentsFile = "AGENTS.md", memoryFile = "M
 
     // 5. INTENT.md, only when there is one: the sections its specification requires. The stories
     // themselves are the product owner's, so their shape is not checked.
-    if (fs.existsSync(at(intentFile))) {
-        const intent = readIntent(fs.readFileSync(at(intentFile), "utf8"));
+    if (intentText !== null) {
+        const intent = readIntent(intentText);
         const spec = "see https://www.intentdocs.com/intent-md";
-        if (!intent.title) say(intentFile, `first heading must be "# INTENT.md" (${spec})`);
-        if (!intent.product) say(intentFile, `no "## Product" section (${spec})`);
+        if (!intent.title) say(INTENT, `first heading must be "# INTENT.md" (${spec})`);
+        if (!intent.product) say(INTENT, `no "## Product" section (${spec})`);
         else {
-            if (!intent.product.name) say(intentFile, `"## Product" names no product in bold, as in "**Acme Billing** invoices …" (${spec})`);
-            if (!intent.product.purpose) say(intentFile, `"## Product" does not say what the product does, for whom and why (${spec})`);
+            if (!intent.product.name) say(INTENT, `"## Product" names no product in bold, as in "**Acme Billing** invoices …" (${spec})`);
+            if (!intent.product.purpose) say(INTENT, `"## Product" does not say what the product does, for whom and why (${spec})`);
         }
-        if (!intent.stories) say(intentFile, `no "## MVP stories" section (${spec})`);
+        if (!intent.stories) say(INTENT, `no "## MVP stories" section (${spec})`);
     }
 
-    return { problems, summary: `docs-check: ${chain.length} stage(s) in ${agentsFile}, ${docs.size} document(s) under ${docsDir}/, no problems` };
+    return { problems, summary: `docs-check: ${chain.length} stage(s) in ${AGENTS}, ${docs.size} document(s) under ${DOCS}/, no problems` };
 }
 
 module.exports = { check, readChain, readDocs, isSource, SOURCE_HELP, inChain, CHAIN_PATHS };
 
 if (require.main === module) {
-    const { problems, summary } = check(lib.root(), ...lib.args());
+    const { problems, summary } = check(lib.root());
     console.log(problems.length ? problems.join("\n") : summary);
     process.exit(problems.length ? 1 : 0);
 }

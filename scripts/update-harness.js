@@ -33,6 +33,7 @@ const os = require("os");
 const path = require("path");
 const lib = require("./lib");
 const projectFacts = require("./project-facts");
+const repoView = require("./repo-view");
 const { spawnSync } = require("child_process");
 
 const TEMPLATE = "https://github.com/salaros/ai-harness.git";
@@ -230,12 +231,9 @@ function gitUpstream(dir, head) {
         // under .claude/skills. Written as ordinary files they become text files holding a path,
         // which is how a harness ends up looking installed while the agent sees no skills at all.
         files() {
-            const r = at(dir, ["ls-files", "-s"]);
-            if (r.status !== 0) fail(`could not list the upstream's files\n${r.output}`);
-            return r.output.split(/\r?\n/).filter(Boolean).map(line => {
-                const [meta, file] = line.split("\t");
-                return { file, link: meta.startsWith("120000"), exec: meta.startsWith("100755") };
-            });
+            const rows = repoView.indexModes(dir);
+            if (!rows) fail(`could not list the upstream's files in ${dir}`);
+            return rows.map(({ file, link, exec }) => ({ file, link, exec }));
         },
         // The head is read whole on first use; any other commit, which only a base or a base search
         // asks for, one path at a time.

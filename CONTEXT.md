@@ -24,6 +24,10 @@ _Avoid_: changeset, diff, manifest
 What a repo's harness knows about its skills at one moment: every entry under `.agents/skills`, each skill's frontmatter and source, which agents route it, the skills the lock records but the disk lacks, and whether the licence notice is current. Read in one pass and never written; relinking and writing the notice are separate acts.
 _Avoid_: skill registry, skill index, skill list
 
+**Repo view**:
+A repo as a check reads it, by repo-relative path: whether a path exists, whether it is a file, its text, and what a folder holds. The working tree, Git's index and a set of files a test names each give one. The staged view is what a commit will record: the documentation chain from the index, and everything else from the working tree.
+_Avoid_: filesystem, snapshot, tree
+
 **Project memory**:
 What a target records about itself that no file in it derives, such as its name, where its requirements live and its runtime. It is kept in `MEMORY.md`.
 _Avoid_: project config, settings, metadata

@@ -23,6 +23,7 @@ const initialised = require("./check-initialised");
 const commitMsg = require("./check-commit-msg");
 const todo = require("./check-todo");
 const stagedDocs = require("./check-staged-docs");
+const repoView = require("./repo-view");
 
 const TODO = "TODO.md";
 
@@ -36,12 +37,10 @@ function report(root, { problems = [], warnings = [], summary = "" }, help) {
     return 1;
 }
 
-// The blob Git holds for a path, or null when the index has none. `git show :<path>` writes the
-// staged content to stdout and fails when the path is not in the index, which is the distinction
-// the shell threw away by sending both down the same pipe.
+// The blob Git holds for a path, or null when the index has none. An index nobody can read counts as
+// one without the path: the TODO.md on disk is then checked and warned about, not blocked on.
 function staged(root, file) {
-    const r = lib.run("git", ["show", `:${file}`], { cwd: root });
-    return r.status === 0 ? r.output : null;
+    try { return repoView.index(root, [file]).read(file); } catch { return null; }
 }
 
 const lines = text => text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
