@@ -132,20 +132,16 @@ function docsCheckIntentShape(t) {
 function memorySkeletonDefersToIntent(t) {
     const inst = installer();
     if (!inst) { t.skip("memory skeleton: no scripts/update-harness.js"); return; }
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "harness-skeleton-"));
-    try {
-        const header = ["# Project memory", ""];
-        const labels = projectFacts.FACTS.map(f => f.label);
-        const plain = inst.skeletonLines(dir, "MEMORY.md", header).join("\n");
-        const plainFacts = projectFacts.readFacts({ memory: plain });
-        t.ok(labels.every(l => plainFacts[l] === ""), "memory skeleton: every fact, as a placeholder, without an INTENT.md", plain);
-        fs.writeFileSync(path.join(dir, "INTENT.md"), "# INTENT.md\n");
-        const beside = inst.skeletonLines(dir, "MEMORY.md", header).join("\n");
-        const besideFacts = projectFacts.readFacts({ memory: beside });
-        t.ok(besideFacts.Name === null && besideFacts.Purpose === null && besideFacts.Language === "" && beside.includes("INTENT.md"),
-            "memory skeleton: no name or purpose beside an INTENT.md", beside);
-        t.ok(inst.skeletonLines(dir, "TODO.md", header) === header, "memory skeleton: other skeletons are left as written", "");
-    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    const header = ["# Project memory", ""];
+    const labels = projectFacts.FACTS.map(f => f.label);
+    const plain = inst.skeletonLines("MEMORY.md", header, false).join("\n");
+    const plainFacts = projectFacts.readFacts({ memory: plain });
+    t.ok(labels.every(l => plainFacts[l] === ""), "memory skeleton: every fact, as a placeholder, without an INTENT.md", plain);
+    const beside = inst.skeletonLines("MEMORY.md", header, true).join("\n");
+    const besideFacts = projectFacts.readFacts({ memory: beside });
+    t.ok(besideFacts.Name === null && besideFacts.Purpose === null && besideFacts.Language === "" && beside.includes("INTENT.md"),
+        "memory skeleton: no name or purpose beside an INTENT.md", beside);
+    t.ok(inst.skeletonLines("TODO.md", header, false) === header, "memory skeleton: other skeletons are left as written", "");
 }
 
 // The project-init skill writes MEMORY.md from a template of its own, which the installer's skeleton
@@ -529,6 +525,180 @@ function installDecisionCoversEveryOutcome(t) {
         t.ok(got.outcome === outcome, `decideBinary: ${why}`, `got ${got.outcome}, expected ${outcome}`);
 }
 
+// The install plan, from an upstream and a target held in memory: the upstream as a list of commits,
+// oldest first, each mapping a path to its text or to { text, exec } or { link }; the target as a
+// map from path to text or { link }. Everything plan() reads crosses those two adapters, so a whole
+// install is a row here rather than a clone and a temp tree.
+function memoryUpstream(commits) {
+    const at = new Map(commits);
+    const head = commits[commits.length - 1][0];
+    const entry = (commit, file) => {
+        const e = (at.get(commit) || {})[file];
+        return e === undefined ? null : typeof e === "string" ? { text: e } : e;
+    };
+    return {
+        files: () => Object.keys(at.get(head)).map(file => ({ file, link: !!entry(head, file).link, exec: !!entry(head, file).exec })),
+        blob: (commit, file) => { const e = entry(commit, file); return e ? e.link || e.text : null; },
+        hasCommit: commit => at.has(commit),
+        history: file => commits.filter(([c]) => entry(c, file)).map(([c]) => c).reverse(),
+    };
+}
+function memoryTarget(files) {
+    const has = file => file in files || Object.keys(files).some(k => k.startsWith(`${file}/`));
+    return {
+        exists: has,
+        read: (file, binary) => binary ? Buffer.from(files[file]) : files[file],
+        lstat: file => !has(file) ? null : { link: typeof files[file] === "object" ? files[file].link : null },
+    };
+}
+
+function installPlanCoversEveryCase(t) {
+    const harness = installer();
+    if (!harness) { t.skip("the install plan: the installer is the upstream's own, not installed here"); return; }
+    const up = memoryUpstream([
+        ["c1", {
+            ".githooks/pre-commit": { text: "hook v1\n", exec: true },
+            "AGENTS.md": "# Agents\nold rule\n",
+            "notes.md": "one\ntwo\nthree\n",
+            ".claude/agents": { link: ".agents/agents" },
+        }],
+        ["c2", {
+            ".githooks/pre-commit": { text: "hook v2\n", exec: true },
+            "AGENTS.md": "# Agents\nnew rule\n",
+            "notes.md": "one\ntwo\nthree upstream\n",
+            ".claude/agents": { link: ".agents/agents" },
+            ".claude/skills/a": { link: "../../.agents/skills/a" },
+            ".agents/skills/a/SKILL.md": "skill a\n",
+            ".agents/skills/a/run.sh": { text: "run\n", exec: true },
+            ".agents/skills/mine/SKILL.md": "the upstream's mine\n",
+            "skills-lock.json": JSON.stringify({ skills: { a: { source: "up" }, shared: { source: "up" } } }),
+            "src/README.md": "src\n",
+            "README.md": "readme\n",
+            "tests/fixtures/x.md": "x\n",
+            "tools/docs-site/astro.mjs": "astro\n",
+        }],
+    ]);
+    const rows = [
+        { path: "tests/fixtures/", policy: "template" },
+        { path: "tools/docs-site/", policy: "optional:astro-docs" },
+        { path: "README.md", policy: "skip" },
+        { path: "src/", policy: "seed" },
+        { path: "AGENTS.md", policy: "reconcile" },
+        { path: "skills-lock.json", policy: "skills" },
+        { path: ".agents/skills/", policy: "skills" },
+        { path: ".claude/skills/", policy: "skills" },
+    ];
+    const run = (files, previous, options = {}) => harness.plan({
+        upstream: up, target: memoryTarget(files), rows, head: "c2", ref: "master", previous,
+        options: { dryRun: false, adopt: false, quiet: true, check: true, wants: () => false, ...options },
+        stamp: { installer: "test" },
+    });
+    const pick = (p, file) => p.entries.find(e => e.file === file) || {};
+    const show = e => JSON.stringify({ ...e, write: typeof e.write === "string" ? e.write : e.write && "<bytes>" });
+    const is = (e, want, why) => {
+        const ok = Object.entries(want).every(([k, v]) => e[k] === v);
+        t.ok(ok, `install plan: ${why}`, `got ${show(e)}\nexpected ${JSON.stringify(want)}`);
+    };
+
+    const fresh = run({}, null);
+    is(pick(fresh, ".githooks/pre-commit"), { outcome: "written", bucket: "written", write: "hook v2\n", exec: true }, "a first install writes a hook, executable");
+    is(pick(fresh, "src/README.md"), { outcome: "created", bucket: "seeded", write: "src\n" }, "a seed file is created when absent");
+    is(pick(fresh, "README.md"), { outcome: "absent", bucket: null, write: undefined }, "a skipped file the target lacks is named, not written");
+    is(pick(fresh, "tests/fixtures/x.md"), { outcome: "template", bucket: "template", silent: true, write: undefined }, "the upstream's own files are never installed");
+    is(pick(fresh, "tools/docs-site/astro.mjs"), { outcome: "template", write: undefined }, "an optional part nobody asked for is not installed");
+    is(pick(fresh, ".claude/agents"), { outcome: "written", link: ".agents/agents", replace: undefined }, "a link is planned as a link");
+    is(pick(fresh, ".claude/skills/a"), { mkdir: true, link: undefined }, "a per-skill link is left to relink, its folder made");
+    is(pick(fresh, ".agents/skills/a/SKILL.md"), { bucket: "written", write: "skill a\n", silent: true }, "a skill's files are written without a line each");
+    is(pick(fresh, ".agents/skills/a/run.sh"), { exec: true }, "a skill's script lands executable");
+    is(pick(fresh, ".agents/skills/a  (2 file(s))"), { outcome: "added", policy: "skills" }, "a skill is reported once, by name");
+    is(pick(fresh, "MEMORY.md"), { outcome: "created", bucket: "seeded" }, "a first install lays down the skeletons");
+    t.ok((pick(fresh, "MEMORY.md").write || "").includes("- **Language:** <language>"), "install plan: the MEMORY.md skeleton carries the facts", pick(fresh, "MEMORY.md").write);
+    const receipt = JSON.parse(pick(fresh, "harness-lock.json").write || "{}");
+    t.ok(receipt.commit === "c2" && receipt.ref === "master" && receipt.installer === "test", "install plan: the receipt records the upstream commit and the run", JSON.stringify(receipt));
+    t.ok(fresh.base === null && fresh.notices.length === 0, "install plan: a first install has no base and nothing to warn about", fresh.notices.join("\n"));
+
+    const target = {
+        ".githooks/pre-commit": "hook v1\n",
+        "notes.md": "zero\none\ntwo\nthree\n",
+        "AGENTS.md": "# Agents\r\nold rule\r\n",
+        "MEMORY.md": "# Project memory\n",
+        ".claude/agents": { link: ".agents/agents" },
+        "skills-lock.json": JSON.stringify({ skills: { mine: { source: "me" }, shared: { source: "me" } } }),
+    };
+    const update = run(target, { commit: "c1", ref: "master" });
+    is(pick(update, ".githooks/pre-commit"), { outcome: "written", write: "hook v2\n", exec: true }, "an untouched file takes the upstream's");
+    is(pick(update, "notes.md"), { outcome: "merged", bucket: "merged", write: "zero\none\ntwo\nthree upstream\n" }, "an edited file keeps its edit and gains the upstream's");
+    is(pick(update, "AGENTS.md"), { outcome: "written", write: "# Agents\r\nnew rule\r\n" }, "a CRLF copy nobody edited is updated in its own endings");
+    is(pick(update, "MEMORY.md"), { outcome: "yours", bucket: null, write: undefined }, "an existing skeleton is left alone");
+    is(pick(update, ".claude/agents"), { outcome: "unchanged", link: undefined }, "a link already in place is left alone");
+    is(pick(update, ".agents/skills/mine  (1 file(s))"), { outcome: "yours" }, "a skill the project vendored under the same name stays the project's");
+    const lock = JSON.parse(pick(update, "skills-lock.json").write || "{}").skills || {};
+    t.ok(lock.shared.source === "me" && lock.a.source === "up" && lock.mine.source === "me", "install plan: skills-lock.json is the union, the project's entry winning", JSON.stringify(lock));
+
+    const stale = run({ ".githooks/pre-commit": "hook mine\n", "AGENTS.md": "# Agents\nold rule\n", ".claude/agents": ".agents/agents" }, null);
+    t.ok(stale.notices.some(n => n.includes("predates the receipt")), "install plan: a harness with no receipt is named", stale.notices.join("\n"));
+    is(pick(stale, ".githooks/pre-commit"), { outcome: "yours, no base", bucket: "kept", write: undefined, exec: true }, "with no base an edited hook is kept, and still made executable");
+    is(pick(stale, "AGENTS.md"), { outcome: "written", write: "# Agents\nnew rule\n" }, "a reconcile file finds its base in the upstream's history");
+    is(pick(stale, ".claude/agents"), { outcome: "yours", bucket: "kept", link: undefined }, "a link checked out as a file is kept without --adopt");
+
+    const adopted = run({ ".githooks/pre-commit": "hook mine\n", ".claude/agents": ".agents/agents" }, null, { adopt: true });
+    t.ok(adopted.notices.some(n => n.includes("--adopt was given")), "install plan: --adopt says what it replaces", adopted.notices.join("\n"));
+    is(pick(adopted, ".githooks/pre-commit"), { outcome: "adopted", write: "hook v2\n" }, "--adopt takes the upstream's copy over an edit");
+    is(pick(adopted, ".claude/agents"), { outcome: "merged", link: ".agents/agents", replace: true }, "--adopt replaces a link checked out as a file");
+
+    const moved = run({ ".claude/agents": { link: "elsewhere" } }, { commit: "c1" });
+    is(pick(moved, ".claude/agents"), { outcome: "merged", link: ".agents/agents", replace: true }, "a link pointing elsewhere is repointed");
+    const gone = run({}, { commit: "rewritten" });
+    t.ok(gone.base === null && gone.notices.some(n => n.includes("is not in")), "install plan: a recorded commit the upstream lost leaves no base", gone.notices.join("\n"));
+    const again = run({}, { commit: "c2" }, { adopt: true });
+    t.ok(again.notices.some(n => n.includes("already at")), "install plan: --adopt at the recorded commit runs anyway, and says so", again.notices.join("\n"));
+    const docs = run({}, null, { wants: name => name === "astro-docs" });
+    is(pick(docs, "tools/docs-site/astro.mjs"), { outcome: "created", bucket: "seeded", write: "astro\n" }, "an optional part the run asked for is seeded");
+
+    // A dry run prints the plan's lines and touches nothing: apply is pointed at a root that does not
+    // exist, and still has to come back with every entry.
+    const nowhere = path.join(os.tmpdir(), `harness-dry-run-${process.pid}-${Date.now()}`);
+    const printed = [];
+    const log = console.log;
+    console.log = m => printed.push(m);
+    let done;
+    try { done = harness.apply(fresh.entries, nowhere, { dryRun: true, quiet: false }); }
+    finally { console.log = log; }
+    const out = printed.join("\n");
+    t.ok(/merge\s+100755\s+written\s+\.githooks\/pre-commit/.test(out) && !out.includes("harness-lock.json"),
+        "install plan: a dry run prints each path's line, and nothing silent", out);
+    t.ok(!fs.existsSync(nowhere) && done.length === fresh.entries.filter(e => !e.phase).length,
+        "install plan: a dry run writes nothing", `${done.length} entries; ${nowhere} exists: ${fs.existsSync(nowhere)}`);
+}
+
+// One real install, end to end, from this checkout into an empty repository: the plan and the table
+// above can agree with each other and still disagree with the disk. A dry run first, which must
+// leave the repository as it found it, then the install, then a second run with nothing to do.
+function installerInstallsIntoAnEmptyRepo(t) {
+    if (!installer()) { t.skip("a real install: the installer is the upstream's own, not installed here"); return; }
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "harness-install-"));
+    const node = args => require("child_process").spawnSync(process.execPath, [INSTALLER, "--from", lib.checkout, "--target", dir, "--quiet", ...args], { encoding: "utf8" });
+    try {
+        lib.run("git", ["-C", dir, "init", "--quiet"]);
+        const dry = node(["--dry-run"]);
+        t.ok(dry.status === 0 && !fs.existsSync(path.join(dir, "harness-lock.json")) && !fs.existsSync(path.join(dir, "AGENTS.md")),
+            "a real install: --dry-run exits 0 and writes nothing", `exit ${dry.status}\n${dry.stdout}${dry.stderr}`);
+        const real = node([]);
+        const head = lib.run("git", ["-C", lib.checkout, "rev-parse", "HEAD"]).output.trim();
+        const lock = fs.existsSync(path.join(dir, "harness-lock.json")) ? JSON.parse(fs.readFileSync(path.join(dir, "harness-lock.json"), "utf8")) : {};
+        t.ok(real.status === 0 && lock.commit === head, "a real install: exits 0 and records the upstream commit", `exit ${real.status}\n${real.stdout}${real.stderr}`);
+        t.ok(fs.existsSync(path.join(dir, "MEMORY.md")) && fs.existsSync(path.join(dir, "AGENTS.md")), "a real install: the harness and its skeletons are on disk", dir);
+        const staged = lib.run("git", ["-C", dir, "ls-files", "-s", "--", ".githooks/pre-commit"]).output;
+        t.ok(staged.startsWith("100755"), "a real install: a hook is staged executable", staged || "(not staged)");
+        let link = null;
+        try { link = fs.lstatSync(path.join(dir, ".claude", "agents")); } catch { /* absent */ }
+        if (link && link.isSymbolicLink()) t.ok(true, "a real install: .claude/agents is a symlink", "");
+        else t.skip("a real install: this OS refused the symlink, so .claude/agents is not checked");
+        const second = node([]);
+        t.ok(second.status === 0 && second.stdout.includes("nothing to update"), "a real install: a second run has nothing to do", `exit ${second.status}\n${second.stdout}${second.stderr}`);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
 // The stage table in AGENTS.md has one parser, readChain(), and anything that needs the pipeline
 // builds on it rather than reading the table again. Pin what it promises those callers: every row
 // in table order, document stages carrying the folder their name implies.
@@ -757,4 +927,6 @@ module.exports = [
     manifestPoliciesAreReadInOrder,
     installerRejectsUnknownArguments,
     installDecisionCoversEveryOutcome,
+    installPlanCoversEveryCase,
+    installerInstallsIntoAnEmptyRepo,
 ];
