@@ -11,7 +11,8 @@
 // seeded with the two files the scripts read from any root (AGENTS.md for the chain table,
 // scripts/stacks.tsv for the stacks) plus whatever it plants, and removed afterwards: a plant written
 // into this checkout would, in an installed repo, overwrite the project's own TODO.md or lock file.
-// A hook finds that root through CLAUDE_PROJECT_DIR, a script under scripts/ through --root.
+// Every entry point is pointed at that root the same way, with --root: scripts and hooks share one
+// resolver, so the runner no longer has to know which rule the script it is running follows.
 // A self check is handed `t`, which has two methods: t.ok(condition, title, detail) for a verdict,
 // and t.skip(why) for a check this repo cannot run -- an optional folder it did not install, a
 // tarball that is not a git checkout. Prints one FAIL line per mismatch and one SKIP line per
@@ -57,7 +58,7 @@ const t = {
 
 for (const [script, fixture, expect, setup, want, note] of lib.readTsv(".agents/hooks/tests/cases.tsv")) {
     const args = script.split(" ");
-    let caseRoot = root, caseEnv = env;
+    let caseRoot = root;
     if (setup !== "-") {
         caseRoot = tempRoot();
         const [kind, file, ...firstLine] = setup.split(" ");
@@ -71,11 +72,10 @@ for (const [script, fixture, expect, setup, want, note] of lib.readTsv(".agents/
             cleanup();
             continue;
         }
-        if (args[0].startsWith("scripts/")) args.push(`${scriptsLib.ROOT_FLAG}${caseRoot}`);
-        else caseEnv = { ...env, CLAUDE_PROJECT_DIR: caseRoot };
+        args.push(`${scriptsLib.ROOT_FLAG}${caseRoot}`);
     }
     const input = fs.readFileSync(path.join(".agents/hooks/tests", fixture), "utf8").split("__ROOT__").join(slashes(caseRoot));
-    const { status, output } = lib.node(args, { input, env: caseEnv });
+    const { status, output } = lib.node(args, { input, env });
     cleanup();
     const ok = String(status) === expect && (want === "-" || output.includes(want));
     if (ok) pass++;

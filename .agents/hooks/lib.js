@@ -10,46 +10,17 @@
 //   const cmd = lib.commandText(payload)     // the shell command text, or "" if the shape is unknown
 //   lib.node(["scripts/skills.js", "missing"]) // run a script with this node; { status, output }
 //   lib.readTsv("scripts/stacks.tsv")        // rows as arrays of cells; blank and # lines skipped
-// Root: CLAUDE_PROJECT_DIR, CURSOR_PROJECT_DIR or GEMINI_PROJECT_DIR when set, else the checkout
-// these hooks live in; a variable naming another checkout is used and reported on stderr.
+// Root: scripts/lib.js's root(), the one precedence every entry point follows -- --root=<dir>, then
+// the harness's project-dir variable, then the checkout these hooks live in.
 // Paths: tool_input.file_path (Claude Code, Gemini CLI), file_path at the top level (Cursor
 // afterFileEdit) or toolArgs.path with toolArgs a JSON string (Copilot). A path outside the root
 // is dropped. Fails open: an unreadable payload yields null and says why on stderr.
-const fs = require("fs");
 const path = require("path");
 const scripts = require("../../scripts/lib");
 
-const win = process.platform === "win32";
-const checkout = path.resolve(__dirname, "..", "..");
+const { fix } = scripts;
+const checkout = scripts.CHECKOUT;
 const warn = msg => process.stderr.write(`hook: ${msg}\n`);
-const same = (a, b) => win ? a.toLowerCase() === b.toLowerCase() : a === b;
-
-// Git Bash reports C:\x as /c/x; Windows APIs may prefix \\?\. Bring both to a form path can resolve.
-const fix = p => {
-    let s = String(p).replace(/^\\\\\?\\/, "");
-    if (win) { const m = s.match(/^\/([a-zA-Z])(?:\/(.*))?$/); if (m) s = `${m[1].toUpperCase()}:/${m[2] || ""}`; }
-    return s;
-};
-const real = p => { try { return fs.realpathSync(p); } catch { return p; } };
-
-// The project-dir variables a harness may set to say where the repo root is. root() checks these,
-// in order; test.js clears them before running a fixture, so a variable set on the developer's own
-// machine can't leak into a case that expects the checkout's own root.
-const ROOT_ENV_VARS = ["CLAUDE_PROJECT_DIR", "CURSOR_PROJECT_DIR", "GEMINI_PROJECT_DIR"];
-
-function root() {
-    const here = real(checkout);
-    for (const v of ROOT_ENV_VARS) {
-        const val = process.env[v];
-        if (!val) continue;
-        const dir = path.resolve(fix(val));
-        let st; try { st = fs.statSync(dir); } catch { }
-        if (!st || !st.isDirectory()) { warn(`${v} is not a directory; using the checkout these hooks live in`); break; }
-        if (!same(real(dir), here)) warn(`${v} (${dir}) is not the checkout these hooks live in (${here}); using ${v}`);
-        return dir;
-    }
-    return here;
-}
 
 function payload() {
     const raw = scripts.stdin();
@@ -98,7 +69,6 @@ function commandText(j) {
     return found.join("\n");
 }
 
-// scripts/lib.js first, so what this file defines wins where the two names meet: scripts/lib.js
-// resolves the root from its own location, and a hook must honour the harness's project-dir
-// variable instead.
-module.exports = { ...scripts, checkout, warn, fix, root, ROOT_ENV_VARS, payload, filePaths, commandText };
+// scripts/lib.js first, so what this file defines wins where the two names meet. root() is not one
+// of them any more: one resolver answers for scripts and hooks alike, and it lives there.
+module.exports = { ...scripts, checkout, warn, payload, filePaths, commandText };

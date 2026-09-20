@@ -17,11 +17,13 @@ part of the product.
 
 - One task per script, named after what it does (`githooks-init.js`,
   `build.js`, `release.js`); Node, so they run the same on every OS.
-- Scripts are safe to run from any working directory — each resolves the
-  repository root from its own location, or from `--root=<dir>` when given
-  (`lib.root()`; `lib.args()` is the arguments without that flag). The
-  suite uses the flag to run a script against a temporary repo, and a script
-  that calls another passes its own root along.
+- Scripts are safe to run from any working directory — every script and hook
+  asks `lib.root()` which repo it is about, and gets one answer: `--root=<dir>`
+  when given, then the harness's project-dir variable
+  (`CLAUDE_PROJECT_DIR` and its Cursor and Gemini equivalents), then the
+  checkout the file sits in (`lib.args()` is the arguments without the flag).
+  The suite uses the flag to run a script against a temporary repo, and a
+  script that calls another passes its own root along.
 - A script run as a command may `chdir` there (`lib.chdirRoot()`). A script
   another script requires takes the root as its first argument and resolves
   against it (`lib.root()` at the entry point, `path.resolve(root, …)`

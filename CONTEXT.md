@@ -28,6 +28,14 @@ _Avoid_: skill registry, skill index, skill list
 A repo as a check reads it, by repo-relative path: whether a path exists, whether it is a file, its text, and what a folder holds. The working tree, Git's index and a set of files a test names each give one. The staged view is what a commit will record: the documentation chain from the index, and everything else from the working tree.
 _Avoid_: filesystem, snapshot, tree
 
+**Repo root**:
+The repo an entry point acts on, which is not always the checkout the file sits in: a hook checks the project its harness was installed into, and a check can be pointed at a throwaway repo. One rule answers for every script and hook: `--root=<dir>`, then the harness's project-dir variable, then the checkout.
+_Avoid_: project dir, working directory, cwd
+
+**Hook launcher**:
+The command text a harness runs to start a hook: node, asking Git for the repo root, requiring the script under `.agents/hooks/`. It is written once, and the harness invariants hold `.claude/settings.json` to it, so an update that mangles an entry is caught instead of leaving the session unchecked.
+_Avoid_: hook config, hook wiring, hook registration
+
 **Project memory**:
 What a target records about itself that no file in it derives, such as its name, where its requirements live and its runtime. It is kept in `MEMORY.md`.
 _Avoid_: project config, settings, metadata

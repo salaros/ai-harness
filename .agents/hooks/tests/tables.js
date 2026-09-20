@@ -17,6 +17,8 @@ const stagedDocs = require("../../../scripts/check-staged-docs");
 const facts = require("../../../scripts/project-facts");
 const skills = require("../../../scripts/skills");
 const repoView = require("../../../scripts/repo-view");
+const scriptsLib = require("../../../scripts/lib");
+const checkHarness = require("../../../scripts/check-harness");
 const { spawnSync } = require("child_process");
 
 // A temp repo holding `files` (repo-relative path -> content), handed to `use`, and removed after.
@@ -403,7 +405,96 @@ function stagedChainDecisions(t) {
     });
 }
 
+// Which repo an entry point is about. Six places used to answer that differently -- a script read
+// --root and ignored the variables, a hook read the variables and ignored --root -- so a check run
+// one way saw a different repo from the same check run the other. One resolver answers now, and
+// this is its precedence: the flag, then the first project-dir variable that is set, then the
+// checkout the file lives in. root() reads argv and the environment, so each row is a real child
+// process; the probe sits in a throwaway directory and requires the checkout's copy of the library.
+function rootDecisions(t) {
+    const LIB = path.resolve(__dirname, "../../../scripts/lib");
+    const probe = `const lib = require(${JSON.stringify(LIB)});\n`
+        + "process.stdout.write(JSON.stringify({ root: lib.root(), args: lib.args() }));\n";
+    const real = p => { try { return fs.realpathSync(p); } catch { return p; } };
+    const CHECKOUT = real(scriptsLib.CHECKOUT);
+    const flag = dir => `${scriptsLib.ROOT_FLAG}${dir}`;
+    withRoot({ "probe.js": probe, "not-a-dir.txt": "x\n" }, dir => {
+        const elsewhere = real(os.tmpdir());
+        const run = (args, vars) => {
+            const env = { ...process.env };
+            for (const v of scriptsLib.ROOT_ENV_VARS) delete env[v];
+            const r = spawnSync(process.execPath, [path.join(dir, "probe.js"), ...args],
+                { encoding: "utf8", env: { ...env, ...vars } });
+            return { ...JSON.parse(r.stdout), warning: (r.stderr || "").trim() };
+        };
+        const rows = [
+            // args, environment, the root it must return, the warning it must carry, why
+            [[], {}, CHECKOUT, null, "nothing said: the checkout the file lives in"],
+            [[flag(dir)], {}, dir, null, "the flag is the explicit answer"],
+            [[flag(dir)], { CLAUDE_PROJECT_DIR: elsewhere }, dir, null, "the flag beats the harness's variable"],
+            [[], { CLAUDE_PROJECT_DIR: dir }, dir, "is not the checkout this file lives in",
+                "a hook follows the harness's variable, and says it is another checkout"],
+            [[], { CURSOR_PROJECT_DIR: dir }, dir, "is not the checkout this file lives in", "every harness's variable, not just Claude's"],
+            [[], { GEMINI_PROJECT_DIR: dir }, dir, "is not the checkout this file lives in", "Gemini's too"],
+            [[], { CURSOR_PROJECT_DIR: elsewhere, CLAUDE_PROJECT_DIR: dir }, dir, "CLAUDE_PROJECT_DIR", "the first variable in the list wins"],
+            [[], { CLAUDE_PROJECT_DIR: path.join(dir, "not-a-dir.txt") }, CHECKOUT, "is not a directory",
+                "a variable naming no directory is ignored, and said so"],
+            [[], { CLAUDE_PROJECT_DIR: path.join(dir, "gone") }, CHECKOUT, "is not a directory", "so is one naming nothing at all"],
+        ];
+        for (const [args, vars, want, warns, why] of rows) {
+            const r = run(args, vars);
+            t.ok(r.root === want && (warns === null ? !r.warning : r.warning.includes(warns)),
+                `root: ${why}`, `${r.root}\n${r.warning || "(no warning)"}`);
+        }
+        const r = run([flag(dir), "--dry-run", "install"], {});
+        t.ok(r.args.join(" ") === "--dry-run install", "root: args() hands on the command line without the flag", r.args.join(" "));
+    });
+}
+
+// .claude/settings.json wires the three hooks, and nothing read it back after an update merged it.
+// Each row is a settings file and the failure claudeHookLaunchersAreWired must report about it, run
+// through check() against a root holding nothing else, so every other invariant stands down.
+function hookLauncherDecisions(t) {
+    const entry = (script, matcher) => ({
+        ...(matcher ? { matcher } : {}),
+        hooks: [{ type: "command", command: checkHarness.launcher(script), timeout: 20 }],
+    });
+    const wired = () => ({
+        hooks: Object.fromEntries(checkHarness.CLAUDE_HOOKS.map(h => [h.event, [entry(h.script, h.matcher)]])),
+    });
+    const mine = { type: "command", command: "npm run lint" };
+    const rows = [
+        // the settings file, the failure it must produce (null: none), why
+        [wired(), null, "the launcher table's own wiring passes"],
+        [{ hooks: { ...wired().hooks, PreToolUse: [{ matcher: "Bash", hooks: [mine] }, ...wired().hooks.PreToolUse] } },
+            null, "a hook the project added beside ours is not ours to judge"],
+        [{ ...wired(), permissions: { allow: ["Bash(git status)"] } }, null, "a setting that is not a hook is left alone"],
+        [{ hooks: { ...wired().hooks, SessionStart: undefined } }, "launches session-start.js on SessionStart, once",
+            "an event whose entry a merge dropped"],
+        [{ hooks: { ...wired().hooks, PostToolUse: [...wired().hooks.PostToolUse, ...wired().hooks.PostToolUse] } },
+            "launches check-edit.js on PostToolUse, once", "the same script wired twice"],
+        [{ hooks: { ...wired().hooks, PreToolUse: [entry("guard-command.js", "Bash|Edit")] } },
+            "matches Bash", "a matcher that widened"],
+        [{ hooks: { ...wired().hooks, SessionStart: [entry("session-start.js", "Bash")] } },
+            "matches every tool", "a matcher on the entry that must have none"],
+        [{ hooks: { ...wired().hooks, PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.agents/hooks/guard-command.js"' }] }] }},
+            "is the launcher every shell runs", "a command built on a variable only Claude Code sets"],
+    ];
+    for (const [settings, wants, why] of rows) {
+        withRoot({ ".claude/settings.json": JSON.stringify(settings, null, 2) }, dir => {
+            const said = checkHarness.check(dir).failed.map(f => `${f.title}\n${f.detail}`).join("\n");
+            t.ok(wants === null ? !said : said.includes(wants), `hook launcher: ${why}`, said || "(nothing reported)");
+        });
+    }
+    withRoot({ ".claude/settings.json": "{ not json" }, dir => {
+        const said = checkHarness.check(dir).failed.map(f => f.title).join("\n");
+        t.ok(said.includes("readable JSON"), "hook launcher: a settings file that is not JSON fails rather than passing quietly", said);
+    });
+}
+
 module.exports = [
+    rootDecisions,
+    hookLauncherDecisions,
     repoViewDecisions,
     stagedChainDecisions,
     skillRosterDecisions,

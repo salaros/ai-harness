@@ -28,6 +28,7 @@ const repoView = require("./repo-view");
 const PATHS = [
     ".agents/skills/", ".claude/skills", ".agents/agents/", ".agents/routing.md", ".githooks/",
     "skills-lock.json", "scripts/skill-licences.tsv", "THIRD-PARTY-NOTICES.md", "AGENTS.md",
+    ".claude/settings.json",
 ];
 const reads = file => PATHS.some(p => p.endsWith("/") ? file.startsWith(p) : file === p);
 
@@ -85,6 +86,51 @@ function noGitHookDecidesAnything(t, root) {
         ];
         t.ok(body.length === want.length && body.every((l, i) => l === want[i]),
             `.githooks/${name} decides nothing; it calls githook.js ${name}`, body.join("\n"));
+    }
+}
+
+// The three events the harness hooks into, and the script each one launches. A matcher of null is an
+// entry that runs on every tool call. Claude Code reads this table's file; so do Copilot's CLI and
+// VS Code extension, which is why the launcher below names no harness-specific variable.
+const CLAUDE_HOOKS = [
+    { event: "SessionStart", matcher: null, script: "session-start.js" },
+    { event: "PreToolUse", matcher: "Bash", script: "guard-command.js" },
+    { event: "PostToolUse", matcher: "Edit|Write|MultiEdit", script: "check-edit.js" },
+];
+
+// The one command text that launches a hook, written once here rather than three times in a settings
+// file nobody re-reads. node asks git for the root instead of reading $CLAUDE_PROJECT_DIR, because
+// Copilot reads the same file without setting that variable and denies a tool whose pre-tool hook
+// errors. The trailing `; exit $LASTEXITCODE` is for PowerShell, which reports a native exit 2 as 1:
+// bash exits with the last status when the variable is empty, and cmd.exe hands the two words to
+// `node -e`, which ignores them. .agents/README.md explains the same thing to a person.
+const launcher = script =>
+    `node -e "require(require('child_process').execFileSync('git',['rev-parse','--show-toplevel'],`
+    + `{encoding:'utf8',stdio:['ignore','pipe','inherit']}).trim()+'/.agents/hooks/${script}')"`
+    + "; exit $LASTEXITCODE";
+
+// Nothing reads .claude/settings.json back after an update merges it, and a hook that stopped being
+// wired fails the way every harness failure does: in silence, with the session simply not checking
+// anything any more. So the file is held to the table above -- each of our three scripts launched
+// once, on its event, behind its matcher, by the launcher text every shell runs. Only those three
+// entries are ours; a hook or a permission the project added is its own business and is not read.
+function claudeHookLaunchersAreWired(t, root) {
+    const file = path.join(root, ".claude/settings.json");
+    if (!fs.existsSync(file)) { t.skip("hook launcher check: no .claude/settings.json"); return; }
+    let hooks;
+    try { hooks = JSON.parse(fs.readFileSync(file, "utf8")).hooks; }
+    catch (e) { t.ok(false, ".claude/settings.json is readable JSON", e.message); return; }
+    for (const { event, matcher, script } of CLAUDE_HOOKS) {
+        const groups = (hooks && hooks[event]) || [];
+        const ours = groups.flatMap(g => (g.hooks || [])
+            .filter(h => typeof h.command === "string" && h.command.includes(`/${script}`))
+            .map(h => ({ matcher: g.matcher === undefined ? null : g.matcher, command: h.command })));
+        t.ok(ours.length === 1, `.claude/settings.json launches ${script} on ${event}, once`, `${ours.length} entries`);
+        if (ours.length !== 1) continue;
+        t.ok(ours[0].matcher === matcher,
+            `the ${event} entry for ${script} matches ${matcher || "every tool"}`, `matcher ${JSON.stringify(ours[0].matcher)}`);
+        t.ok(ours[0].command === launcher(script),
+            `the ${event} command for ${script} is the launcher every shell runs`, ours[0].command);
     }
 }
 
@@ -232,6 +278,7 @@ function chainTableIsReadable(t, root) {
 const INVARIANTS = [
     gitHooksAreExecutable,
     noGitHookDecidesAnything,
+    claudeHookLaunchersAreWired,
     claudeSkillLinksAreSymlinks,
     everyInstalledSkillIsLinked,
     skillsFolderHoldsSkillsNotLinks,
@@ -270,7 +317,7 @@ const format = r => [
     r.summary,
 ].join("\n");
 
-module.exports = { check, format, reads, PATHS, INVARIANTS };
+module.exports = { check, format, reads, PATHS, INVARIANTS, CLAUDE_HOOKS, launcher };
 
 if (require.main === module) {
     const r = check(lib.root());
