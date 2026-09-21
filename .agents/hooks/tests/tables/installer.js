@@ -277,6 +277,8 @@ function installPlanCoversEveryCase(t) {
     const older = run(target, { commit: "c1", ref: "master", skeletons: ["MEMORY.md", "CONTEXT.md"] });
     is(pick(older, "TODO.md"), { outcome: "created", bucket: "seeded" }, "a skeleton newer than the receipt is laid down");
     t.ok(JSON.parse(pick(update, "harness-lock.json").write).skeletons.includes("TODO.md"), "install plan: the receipt lists the skeletons it knew", pick(update, "harness-lock.json").write);
+    t.ok(pick(update, "harness-lock.json").write.includes('  "skeletons": ["MEMORY.md", "CONTEXT.md", "TODO.md"]\n'),
+        "install plan: the receipt writes the list on one line, as Prettier does", pick(update, "harness-lock.json").write);
 
     // settleDropped on its own: a --diff3 conflict whose project side shares no line with the base is
     // a section the project dropped or replaced, and stays so.

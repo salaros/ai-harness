@@ -670,7 +670,11 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
     add({ phase: "skills, merged by name" });
     entries.push(...planSkills(upstream, target, head, skills));
 
-    add({ file: LOCK, silent: true, write: JSON.stringify({ template: TEMPLATE, ref, commit: head, ...stamp, skeletons: Object.keys(SKELETONS) }, null, 2) + "\n" });
+    // A list of strings on one line, as Prettier writes it: a project formatting its JSON with it
+    // would otherwise reject the receipt at every push, and the next update would undo the fix.
+    const receipt = JSON.stringify({ template: TEMPLATE, ref, commit: head, ...stamp, skeletons: Object.keys(SKELETONS) }, null, 2)
+        .replace(/\[\n\s+("[^"\n]*"(?:,\n\s+"[^"\n]*")*)\n\s*\]/g, (all, items) => `[${items.split(/,\n\s+/).join(", ")}]`);
+    add({ file: LOCK, silent: true, write: receipt + "\n" });
     return { entries, notices, base };
 }
 
