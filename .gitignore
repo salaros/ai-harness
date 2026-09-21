@@ -632,10 +632,6 @@ tools/.store
 # Ignore the harness's own skill directories, which are not part of the project
 .agents/skills/**/.github/
 .agents/skills/**/scripts/
-# ...except these two, whose SKILL.md tells the agent to run them, so a clone without them
-# gets commands that fail.
-!.agents/skills/confluence-expert/scripts/
-!.agents/skills/jira-expert/scripts/
 .agents/skills/**/LICENSE
 
 # The project-init gate (.githooks/pre-commit, pre-push): create this empty file in a clone
