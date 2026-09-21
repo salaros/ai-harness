@@ -311,10 +311,33 @@ function memorySkeletonDefersToIntent(t) {
     t.ok(inst.skeletonLines("TODO.md", header, false) === header, "memory skeleton: other skeletons are left as written", "");
 }
 
+// The receipt names the released tool that wrote the tree. package.json says 0.0.0 everywhere but
+// inside the published package, so a checkout goes by its release tag, and a checkout on no tag, or
+// on a tag that is not a release, names no package at all.
+function installerStampNamesOnlyAReleasedVersion(t) {
+    const inst = installer();
+    if (!inst) { t.skip("installer stamp: no scripts/update-harness.js"); return; }
+    const name = "@salaros/ai-harness";
+    const cases = [
+        [{ name, version: "0.3.0", tag: null }, `${name}@0.3.0`, "the published package names the version the release wrote into it"],
+        [{ name, version: "0.3.0", tag: "0.2.9" }, `${name}@0.3.0`, "the package's own version wins over a tag"],
+        [{ name, version: "0.0.0", tag: "0.3.0" }, `${name}@0.3.0`, "a checkout on a release tag names that tag"],
+        [{ name, version: "0.0.0", tag: null }, undefined, "a checkout on no tag names no package"],
+        [{ name, version: "0.0.0", tag: "v0.2.3" }, undefined, "a v-prefixed tag is not a release and names nothing"],
+        [{ name, version: undefined, tag: null }, undefined, "a package without a version names nothing"],
+        [{ name: undefined, version: "0.3.0", tag: null }, undefined, "a package without a name names nothing"],
+    ];
+    for (const [input, want, why] of cases) {
+        const got = inst.installerStamp(input);
+        t.ok(got.installer === want && (want !== undefined || !("installer" in got)), `installer stamp: ${why}`, JSON.stringify({ input, got }));
+    }
+}
+
 module.exports = [
     manifestPoliciesAreReadInOrder,
     installerRejectsUnknownArguments,
     installDecisionCoversEveryOutcome,
     installPlanCoversEveryCase,
     memorySkeletonDefersToIntent,
+    installerStampNamesOnlyAReleasedVersion,
 ];
