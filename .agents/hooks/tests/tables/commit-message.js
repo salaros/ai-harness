@@ -48,6 +48,20 @@ function commitMessageDecisions(t) {
             null, "#\\d+", "conventional", "a configured key format replaces the example"],
         [{ [TRACKER]: "**Key format:** `#\\d+`\n" }, text("feat(billing): add a monthly invoice run (#42)", "", "Invoices were cut by hand every month."),
             null, null, "conventional", "a reference matching the configured format counts"],
+        // Smart commits read the key bare and a # word after it as a command, one per line, so a hashed
+        // key never links and a command belongs on a trailer, not in the subject.
+        [{}, text("fix(hooks): cite the ticket this change came from (#AB-42)", "", "The key ties the commit back to the work item that asked for it."),
+            null, '"AB-42" not "#AB-42"', "conventional", "a hashed key warns, since smart commits read # as a command"],
+        [{ [TRACKER]: "**Project key:** `AB`\n" }, text("feat(billing): add a monthly invoice run", "", "Invoices were cut by hand every month.", "", "Refs: #AB-42"),
+            null, '"AB-42" not "#AB-42"', "conventional", "a hashed key in a trailer warns too"],
+        [{}, text("fix(hooks): cite the ticket AB-42 #time 1h", "", "The key ties the commit back to the work item that asked for it."),
+            null, '"Refs: AB-42 #time"', "conventional", "a smart-commit command in the subject warns"],
+        [{}, text("feat(billing): add a monthly invoice run", "", "Invoices were cut by hand every month.", "", "Refs: AB-42 #time 1h 30m", "Refs: AB-42 #comment ready for review", "Refs: AB-42 #start-progress"),
+            null, null, "conventional", "smart-commit commands on trailer lines after a bare key pass"],
+        [{}, text("fix(lexer): keep #include lines out of the token stream", "", "The lexer read the directive as an identifier."),
+            null, "no issue key", "conventional", "a # word in a subject with no key is prose, not a command"],
+        [{ [TRACKER]: "**Key format:** `#\\d+`\n" }, text("feat(billing): add a monthly invoice run (#42)", "", "Invoices were cut by hand every month.", "", "Refs: #AB-42"),
+            null, null, "conventional", "a configured format owns the hash, so nothing reads as a hashed key"],
         // A project that plans in docs/ has already answered the question, so asking again on every
         // commit is asking for something it said it does not have.
         [{ "MEMORY.md": "- **Issue tracker:** none\n" }, text("feat(billing): add a monthly invoice run", "", "Invoices were cut by hand every month."),

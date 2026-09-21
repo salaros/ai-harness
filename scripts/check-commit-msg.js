@@ -47,18 +47,21 @@ function noTracker(root) {
 // no format set the project key scopes the check, and with no key either, anything Jira-shaped
 // counts. A commit with no reference is warned about, never blocked: the point is to encourage the
 // habit, and a change can be legitimate before anyone has raised a ticket for it.
+// A key-shaped reference comes with its hashed form too: Jira and Bitbucket smart commits read the
+// key bare and give `#` to commands, so `#AB-42` is a mistake there. A configured format has none,
+// because on GitHub Issues the hash is the reference.
 function reference(root) {
     let cfg = "";
     try { cfg = fs.readFileSync(path.join(root, "docs/agents/issue-tracker.md"), "utf8"); } catch { /* unconfigured */ }
     const format = cfg.match(/^\*\*Key format:\*\*\s*`([^`]+)`/m);
     // A hand-written regular expression: unusable ones fall through to the key rather than throwing.
     // A configured format has no sample to show, so the advice names the shape instead of an example.
-    if (format) { try { return { re: new RegExp(format[1]), format: format[1] }; } catch { /* fall through */ } }
+    if (format) { try { return { re: new RegExp(format[1]), format: format[1], hashed: null }; } catch { /* fall through */ } }
     const k = cfg.match(/^\*\*Project key:\*\*\s*`([^`]+)`/m);
     const key = k && k[1] !== "TODO-PROJECT-KEY" ? k[1] : null;
     return key
-        ? { re: new RegExp(`\\b${key}-\\d+\\b`), example: `${key}-123` }
-        : { re: /\b[A-Z][A-Z0-9]+-\d+\b/, example: "PROJ-123" };
+        ? { re: new RegExp(`\\b${key}-\\d+\\b`), example: `${key}-123`, hashed: new RegExp(`#${key}-\\d+\\b`) }
+        : { re: /\b[A-Z][A-Z0-9]+-\d+\b/, example: "PROJ-123", hashed: /#[A-Z][A-Z0-9]+-\d+\b/ };
 }
 
 // The whole decision: `raw` is the message as Git wrote it, `root` the repo it is being committed
@@ -116,13 +119,30 @@ function check(raw, root) {
     // The key counts only where it means "this commit is that work": the subject, or a trailer. A key
     // named in passing in the body is prose about a ticket, not a reference to one, and a message that
     // merely quotes an example would otherwise read as compliant.
-    const { re: issue, example, format } = reference(root);
-    if (!noTracker(root) && !issue.test(header) && !trailers.some(t => issue.test(t))) {
-        warnings.push(example
-            ? `commit message: no issue key (${example}). Add one so the change can be traced to its ticket, ` +
-              `in the subject or as a trailing "Refs: ${example}" line.`
-            : `commit message: no issue reference matching ${format}. Add one so the change can be traced to its ` +
-              `ticket, in the subject or as a trailing "Refs:" line.`);
+    const { re: issue, example, format, hashed } = reference(root);
+    if (!noTracker(root)) {
+        if (!issue.test(header) && !trailers.some(t => issue.test(t))) {
+            warnings.push(example
+                ? `commit message: no issue key (${example}). Add one so the change can be traced to its ticket, ` +
+                  `in the subject or as a trailing "Refs: ${example}" line.`
+                : `commit message: no issue reference matching ${format}. Add one so the change can be traced to its ` +
+                  `ticket, in the subject or as a trailing "Refs:" line.`);
+        }
+        // Smart commits: the key is written bare, and a `#` word after it is a command, one line each
+        // (`Refs: AB-42 #comment ...`, `#time 1h`, `#<transition>`). A hashed key is not a key there,
+        // and a command in the subject spends its 72 characters on instructions to the tracker. Commands
+        // only fire after a key, so a subject with none (`#include`) is prose.
+        const hashedKey = hashed && body.map(l => l.match(hashed)).find(Boolean);
+        if (hashedKey) {
+            warnings.push(`commit message: write the issue key bare, "${hashedKey[0].slice(1)}" not "${hashedKey[0]}". ` +
+                `Smart commits read a # word as a command, so the hashed key is never linked to its ticket.`);
+        }
+        const command = hashed ? header.replace(new RegExp(hashed.source, "g"), "").match(/(?:^|\s)(#[A-Za-z][\w-]*)/) : null;
+        const cited = header.match(issue);
+        if (command && cited) {
+            warnings.push(`commit message: "${command[1]}" in the subject is a smart-commit command. Keep the subject ` +
+                `for what changed, and put the command on a trailing line after the key: "Refs: ${cited[0]} ${command[1]}".`);
+        }
     }
 
     return { problems, warnings, summary: `commit message: conventional, ${header.length} character subject` };

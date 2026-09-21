@@ -8,6 +8,8 @@ Every commit carries a body, separated from the subject by a blank line: the sub
 
 Cite the issue key in the subject or a trailing `Refs: AB-42` line. Leaving it out is a warning, not a rejection, and a project whose `MEMORY.md` records `Issue tracker: none` is not warned at all.
 
+Keys follow Jira's [smart commits](https://support.atlassian.com/bitbucket-cloud/docs/use-smart-commits/): write the key bare, `AB-42`, never `#AB-42`, because a `#` word is a command. Commands are optional and go on trailing lines after the key, one line each, never in the subject: `Refs: AB-42 #comment ready for review`, `Refs: AB-42 #time 1h 30m`, `Refs: AB-42 #start-progress` for a transition, hyphenating a name of several words. The hook warns about a hashed key and about a command in a subject that cites a key. A project whose `Key format:` is `#\d+`, as on GitHub Issues, keeps its hash.
+
 The `git-commit` skill writes these messages, the `commit-msg` Git hook rejects anything else, and `git commit --no-verify` overrides it.
 
 ## Prose
