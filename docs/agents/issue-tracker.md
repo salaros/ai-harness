@@ -1,6 +1,37 @@
-# Issue tracker: Jira (Atlassian MCP)
+# Issue tracker: local Markdown, until a project has one
 
-A tracker is optional. When `MEMORY.md` records `Jira: none` this file does not apply: work items live in `docs/` and under `.scratch/`, and a skill that needs a tracker says so instead of guessing at one. The rest of this file describes the tracker a project has when it has one.
+A tracker is optional, and a clone starts without one: `MEMORY.md` records `Issue tracker: none`, and issues, drafts and work items live as Markdown under `.scratch/`, committed with the code. Documents in the BRD → SPEC chain live under `docs/<stage>/` (see `docs/README.md`) either way. A skill that needs a tracker says so instead of guessing at one.
+
+The conventions below are the ones every clone follows. The Jira section at the end is what `setup-matt-pocock-skills` writes over them when the project does have a tracker, and the shape to adapt for a tracker that is not Jira.
+
+## Conventions
+
+- One feature per directory: `.scratch/<feature-slug>/`
+- The spec is `docs/spec/NNNN-<slug>.md`, like every SPEC in the chain in `AGENTS.md`; the feature folder links to it rather than holding a copy
+- Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`, never a single combined tickets file
+- Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
+- Comments and conversation history append to the bottom of the file under a `## Comments` heading
+
+## When a skill says "publish to the issue tracker"
+
+Create a new file under `.scratch/<feature-slug>/` (creating the directory if needed).
+
+## When a skill says "fetch the relevant ticket"
+
+Read the file at the referenced path. The user will normally pass the path or the issue number directly.
+
+## Wayfinding operations
+
+Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
+
+- **Map**: `.scratch/<effort>/map.md` (the Notes / Decisions-so-far / Fog body).
+- **Child ticket**: `.scratch/<effort>/issues/NN-<slug>.md`, numbered from `01`, with the question in the body. A `Type:` line records the ticket type (`research`/`prototype`/`grilling`/`task`); a `Status:` line records `claimed`/`resolved`.
+- **Blocking**: a `Blocked by: NN, NN` line near the top. A ticket is unblocked when every file it lists is `resolved`.
+- **Frontier**: scan `.scratch/<effort>/issues/` for files that are open, unblocked, and unclaimed; first by number wins.
+- **Claim**: set `Status: claimed` and save before any work.
+- **Resolve**: append the answer under an `## Answer` heading, set `Status: resolved`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.
+
+## When the project has a tracker: Jira (Atlassian MCP)
 
 Issues and specs for this repo live in Jira. Agents reach Jira through the **Atlassian Rovo MCP server** (`https://mcp.atlassian.com/v2/mcp`), registered in `.mcp.json` (Claude Code, Cursor) and `opencode.json` (OpenCode) at the repo root; the server must be authorised once per tool (OAuth in the tool's MCP settings). Tool names below are the v2 names. If the project uses Jira and no Jira tools are available in your session, tell the user to authorise the Atlassian connector rather than falling back to another tracker.
 

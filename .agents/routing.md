@@ -17,21 +17,6 @@ There is a fifth, and it is not a matter of judgement: a skill whose frontmatter
 
 **The agent's own row wins.** Where an agent's table and a section here cover one trigger, follow the agent's table: that is the specific case and this is the general one.
 
-## The tracker and the wiki
-
-Read by `assistant`, `business-analyst`, `devops` and `engineer`.
-
-| The ask is… | Skill(s) |
-| --- | --- |
-| the tracker itself to set up, automate or report on: a project, workflow, custom field, saved search, dashboard or automation rule | the expert skill for the tracker `MEMORY.md` names |
-| a document to publish where the business reads it, or a space to structure: hierarchy, templates, macros, permissions, an audit | `confluence-expert` |
-
-`jira-expert` is the expert skill that ships, because the template ships configured for Jira. Another tracker needs its own skill installed and named on the row in the agent that uses it. Turning a settled plan into issues is `to-tickets`, not the expert skill.
-
-A document published to the wiki is a copy. The canonical one follows the chain in `AGENTS.md` and lives in `docs/`.
-
-Both skills name a canonical tool list that does not ship with them. `docs/agents/issue-tracker.md` is this repo's list for the tracker; for Confluence, the Atlassian server in `.mcp.json` surfaces its own tools, so read them from your tool list.
-
 ## Working the chain
 
 Read by `business-analyst`, `devops` and `engineer`.
