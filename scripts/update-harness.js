@@ -468,9 +468,12 @@ function decideText({ policy, raw, theirs, hasBase, adopt }, { baseText, recover
     let from = hasBase ? baseText() : null;
     if (from === null && policy === "reconcile") from = recoverBase(ours);
     if (from === null && policy === "reconcile") from = "";
+    // A union table merges by row whether or not there is a base, and even an untouched copy goes
+    // through that merge: it may hold a row the upstream dropped and the project still needs.
+    if (from === null && policy === "union") from = "";
     if (from === null) return keep;
 
-    if (ours === from) return { outcome: "written", bucket: "written", text: asFound(theirs, crlf) };
+    if (ours === from && policy !== "union") return { outcome: "written", bucket: "written", text: asFound(theirs, crlf) };
     const merged = merge(from, ours, theirs);
     if (merged.failed) return { outcome: "yours, merge failed", bucket: "kept", text: null };
     const result = asFound(merged.text, crlf);
@@ -480,6 +483,31 @@ function decideText({ policy, raw, theirs, hasBase, adopt }, { baseText, recover
     // nobody made, so what the run did is decided by the result, not the route.
     if (result === raw) return { outcome: "unchanged", bucket: null, text: null };
     return { outcome: "merged", bucket: "merged", text: result };
+}
+
+// A union table, merged row by row rather than line by line: a row is keyed by its first
+// tab-separated column, and the table is a set of them, so there is nothing to conflict over.
+// The upstream's comments and order come first. Each of its rows is the project's where only the
+// project changed it, or where both did, and the upstream's otherwise; a row the project deleted
+// stays deleted. Every row of the project's the upstream lacks follows, whether the project added it
+// or the upstream dropped it: the licence of a skill the upstream stopped shipping is still needed
+// here, because the skills merge keeps the skill. All three texts are LF; `base` is null without a
+// receipt, and then the project's copy of a row wins.
+function mergeRows(base, ours, theirs) {
+    const rows = text => new Map((text || "").split("\n").filter(l => l.trim() && !l.startsWith("#")).map(l => [l.split("\t")[0], l]));
+    const was = rows(base), mine = rows(ours), up = rows(theirs);
+    const out = [];
+    for (const line of theirs.split("\n")) {
+        const key = line.split("\t")[0];
+        if (!line.trim() || line.startsWith("#") || !up.has(key)) { out.push(line); continue; }
+        const o = mine.get(key), b = was.get(key);
+        if (o === undefined) { if (b === undefined) out.push(line); continue; }
+        out.push(o === b ? line : o);
+    }
+    const extra = [...mine].filter(([key]) => !up.has(key)).map(([, line]) => line);
+    if (!extra.length) return out.join("\n");
+    while (out.length && out[out.length - 1] === "") out.pop();
+    return [...out, ...extra, ""].join("\n");
 }
 
 // ---------------------------------------------------------------- the plan
@@ -516,8 +544,13 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
     }
     // --adopt is how a repo whose harness files are wrong gets them replaced, and the commonest way to
     // reach that state is an install that wrote the receipt and kept a stale harness. So the run stays
-    // open at the recorded commit, and main() answers "nothing to update" only without --adopt.
-    if (previous && base === head) notices.push(`harness is already at ${head.slice(0, 8)} (${ref}); --adopt takes every harness file again anyway`);
+    // open at the recorded commit, and main() answers "nothing to update" only without --adopt. An
+    // optional part asked for by its flag keeps it open too, and then only that part has anything to do.
+    if (previous && base === head) {
+        notices.push(options.adopt
+            ? `harness is already at ${head.slice(0, 8)} (${ref}); --adopt takes every harness file again anyway`
+            : `harness is already at ${head.slice(0, 8)} (${ref}); installing only the optional part(s) asked for`);
+    }
 
     // A repo carrying a harness from before harness-lock.json existed. Without a base the rule below
     // keeps every file that is already there, which protects the project's work and also preserves
@@ -589,7 +622,10 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
             : decideText({ policy, raw: held, theirs, hasBase, adopt: options.adopt }, {
                 baseText: () => upstream.blob(base, file),
                 recoverBase: ours => recoverBase(upstream, file, ours),
-                merge: threeWay,
+                // A union table has no lines to conflict over, and no base means the project's rows win.
+                merge: policy === "union"
+                    ? (from, ours, up) => ({ text: mergeRows(from, ours, up), conflicts: false, failed: false })
+                    : threeWay,
             });
         line(outcome, bucket, text === null ? {} : { write: text });
     }
@@ -800,6 +836,13 @@ function report({ entries, base, head, ref, target, check, options }) {
 
 // ---------------------------------------------------------------- the run
 
+// Whether the run has nothing to do: the receipt already names the upstream's head, and neither
+// --adopt nor the flag of an optional part asks for more. The first --astro-docs usually comes after
+// the harness is current, so an optional part is something to install even at the recorded commit.
+function upToDate(previous, head, options, optional) {
+    return !!previous && previous.commit === head && !options.adopt && !optional.some(name => options.wants(name));
+}
+
 // Returns the exit code, and throws Stop for a run that could not start.
 function main(args) {
     const options = parseOptions(args);
@@ -821,7 +864,7 @@ function main(args) {
         const unknown = unknownArgs(args, optional);
         if (unknown.length) fail(`unknown argument(s): ${unknown.join(" ")}. Nothing was written; run with --help for the options.`);
         const head = at(templateDir, ["rev-parse", "HEAD"]).output.trim();
-        if (previous && previous.commit === head && !options.adopt) {
+        if (upToDate(previous, head, options, optional)) {
             say(`harness is already at ${head.slice(0, 8)} (${ref}); nothing to update`);
             return 0;
         }
@@ -848,7 +891,7 @@ function main(args) {
 // The plan and the decisions under it, so the suite can put a case in and read the answer out rather
 // than building a git checkout to reach one branch. apply() is here for its dry run, which prints and
 // writes nothing; main() writes to somebody's repository and is reached through the command line.
-module.exports = { installerStamp, unknownArgs, mistypedArgs, usage, parseOptions, policyFor, plan, apply, decideText, decideBinary, lineCounts, overlap, NEAREST, skeletonLines };
+module.exports = { installerStamp, upToDate, mergeRows, unknownArgs, mistypedArgs, usage, parseOptions, policyFor, plan, apply, decideText, decideBinary, lineCounts, overlap, NEAREST, skeletonLines };
 
 if (require.main === module) {
     try { process.exitCode = main(process.argv.slice(2)); }

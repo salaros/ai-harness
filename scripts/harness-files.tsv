@@ -12,6 +12,9 @@
 #          recovered by finding the upstream commit whose copy matches this one, and failing that the
 #          file is written with conflict markers rather than left stale. For the few files nothing
 #          works without.
+#   union  a table merged as a set of rows keyed by their first column, never in conflict: the
+#          upstream's rows, the project's where it changed one, and every row of the project's the
+#          upstream lacks, including one it dropped. For a table the project may still need a row of.
 #   seed   written only when it is absent, and never touched again. Scaffolding the project grows into.
 #   skip   never written by an update, at all. The project's own, or generated from something else.
 #   skills the vendored skill tree, which merges by name rather than by content: see update-harness.js.
@@ -35,6 +38,7 @@ scripts/harness-files.tsv	template	This table. Read from the upstream checkout d
 .agents/hooks/test.js	template	The harness suite: fixtures that prove the harness scripts. check-edit.js skips it where it is absent; a target runs scripts/check-harness.js instead.
 .agents/hooks/tests/	template	Its fixtures.
 .github/	template	CI that runs the suite, which does not travel either. A project brings its own.
+scripts/skill-licences.tsv	union	One licence row per skill source. A skill the upstream drops stays here, so its row has to stay with it or the notices cannot be written.
 skills-lock.json	skills	Merged as a union, so a skill the project vendored itself survives.
 .agents/skills/	skills	Added and updated, never removed: the project may install its own.
 .claude/skills	merge	One link to .agents/skills, not a link per skill, so every skill a repo has is visible through it -- including one written by hand that nothing vendored.

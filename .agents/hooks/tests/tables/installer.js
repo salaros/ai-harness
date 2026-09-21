@@ -183,6 +183,7 @@ function installPlanCoversEveryCase(t) {
             "AGENTS.md": "# Agents\nold rule\n",
             "notes.md": "one\ntwo\nthree\n",
             ".claude/agents": { link: ".agents/agents" },
+            "licences.tsv": "# table\nup\tMIT\tv1\ngone\tMIT\tv1\n",
         }],
         ["c2", {
             ".githooks/pre-commit": { text: "hook v2\n", exec: true },
@@ -198,6 +199,7 @@ function installPlanCoversEveryCase(t) {
             "README.md": "readme\n",
             "tests/fixtures/x.md": "x\n",
             "tools/docs-site/astro.mjs": "astro\n",
+            "licences.tsv": "# table\nup\tMIT\tv2\n",
         }],
     ]);
     const rows = [
@@ -206,6 +208,7 @@ function installPlanCoversEveryCase(t) {
         { path: "README.md", policy: "skip" },
         { path: "src/", policy: "seed" },
         { path: "AGENTS.md", policy: "reconcile" },
+        { path: "licences.tsv", policy: "union" },
         { path: "skills-lock.json", policy: "skills" },
         { path: ".agents/skills/", policy: "skills" },
         { path: ".claude/skills/", policy: "skills" },
@@ -246,6 +249,7 @@ function installPlanCoversEveryCase(t) {
         "MEMORY.md": "# Project memory\n",
         ".claude/agents": { link: ".agents/agents" },
         "skills-lock.json": JSON.stringify({ skills: { mine: { source: "me" }, shared: { source: "me" } } }),
+        "licences.tsv": "# table\nup\tMIT\tv1\ngone\tMIT\tv1\n",
     };
     const update = run(target, { commit: "c1", ref: "master" });
     is(pick(update, ".githooks/pre-commit"), { outcome: "written", write: "hook v2\n", exec: true }, "an untouched file takes the upstream's");
@@ -256,6 +260,25 @@ function installPlanCoversEveryCase(t) {
     is(pick(update, ".agents/skills/mine  (1 file(s))"), { outcome: "yours" }, "a skill the project vendored under the same name stays the project's");
     const lock = JSON.parse(pick(update, "skills-lock.json").write || "{}").skills || {};
     t.ok(lock.shared.source === "me" && lock.a.source === "up" && lock.mine.source === "me", "install plan: skills-lock.json is the union, the project's entry winning", JSON.stringify(lock));
+
+    is(pick(update, "licences.tsv"), { outcome: "merged", write: "# table\nup\tMIT\tv2\ngone\tMIT\tv1\n" },
+        "a union table takes the upstream's rows and keeps the one it dropped, whose skill stays here");
+    const kept = run({ ...target, "licences.tsv": "# table\nup\tMIT\tv2\ngone\tMIT\tv1\n" }, { commit: "c1", ref: "master" });
+    is(pick(kept, "licences.tsv"), { outcome: "unchanged", bucket: null, write: undefined }, "a union table already holding the kept row is unchanged");
+
+    // mergeRows on its own: a keyed table merged as a set of rows, never in conflict.
+    const T = (...rows) => ["# t", ...rows, ""].join("\n");
+    for (const [base, ours, theirs, want, why] of [
+        [T("a\t1", "b\t1"), T("a\t1", "b\t1"), T("a\t2"), T("a\t2", "b\t1"), "a row the upstream dropped stays"],
+        [T("a\t1"), T("a\tmine"), T("a\t2"), T("a\tmine"), "a row both changed is the project's"],
+        [T("a\t1"), T("a\tmine"), T("a\t1"), T("a\tmine"), "a row only the project changed is the project's"],
+        [T("a\t1", "b\t1"), T("a\t1"), T("a\t1", "b\t2"), T("a\t1"), "a row the project deleted stays deleted"],
+        [T("a\t1"), T("a\t1", "m\t1"), T("n\t1", "a\t1"), T("n\t1", "a\t1", "m\t1"), "the upstream's order and new rows, then the project's own"],
+        [null, T("a\tmine"), T("a\t2", "c\t1"), T("a\tmine", "c\t1"), "with no base the project's copy of a row wins"],
+    ]) {
+        const got = harness.mergeRows(base, ours, theirs);
+        t.ok(got === want, `install plan: union table: ${why}`, JSON.stringify(got));
+    }
 
     const stale = run({ ".githooks/pre-commit": "hook mine\n", "AGENTS.md": "# Agents\nold rule\n", ".claude/agents": ".agents/agents" }, null);
     t.ok(stale.notices.some(n => n.includes("predates the receipt")), "install plan: a harness with no receipt is named", stale.notices.join("\n"));
@@ -276,6 +299,19 @@ function installPlanCoversEveryCase(t) {
     t.ok(again.notices.some(n => n.includes("already at")), "install plan: --adopt at the recorded commit runs anyway, and says so", again.notices.join("\n"));
     const docs = run({}, null, { wants: name => name === "astro-docs" });
     is(pick(docs, "tools/docs-site/astro.mjs"), { outcome: "created", bucket: "seeded", write: "astro\n" }, "an optional part the run asked for is seeded");
+    const late = run({}, { commit: "c2" }, { wants: name => name === "astro-docs" });
+    is(pick(late, "tools/docs-site/astro.mjs"), { outcome: "created", write: "astro\n" }, "an optional part asked for at the recorded commit is still seeded");
+    t.ok(late.notices.some(n => n.includes("only the optional part")), "install plan: a run at the recorded commit for an optional part says so", late.notices.join("\n"));
+
+    // Whether main() stops at "nothing to update": an optional part asked for is something to do.
+    const asks = flags => ({ adopt: false, wants: name => flags.includes(name) });
+    for (const [previous, options, want, why] of [
+        [{ commit: "c2" }, asks([]), true, "the recorded commit with nothing asked for has nothing to do"],
+        [{ commit: "c2" }, asks(["astro-docs"]), false, "--astro-docs at the recorded commit still runs"],
+        [{ commit: "c2" }, { ...asks([]), adopt: true }, false, "--adopt at the recorded commit still runs"],
+        [{ commit: "c1" }, asks([]), false, "an older recorded commit runs"],
+        [null, asks([]), false, "a first install runs"],
+    ]) t.ok(harness.upToDate(previous, "c2", options, ["astro-docs"]) === want, `install plan: ${why}`, JSON.stringify(previous));
 
     // A dry run prints the plan's lines and touches nothing: apply is pointed at a root that does not
     // exist, and still has to come back with every entry.
