@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // .agents/hooks/check-edit.js
-// Runs after the harness writes or edits a file. Gets the edited path from lib.js (repo-relative,
+// Runs after the harness writes or edits a file. Gets the edited paths from lib.event() (repo-relative,
 // whatever the harness sent) and applies the first matching rule below that objects: a refusal
 // when a vendored skill was edited in place, node --check for *.js, JSON validity for *.json, the
 // documentation chain for any file docs-check counts in it (Markdown under docs/, AGENTS.md, MEMORY.md
@@ -16,10 +16,10 @@ const docsCheck = require("../../scripts/docs-check");
 const harness = require("../../scripts/check-harness");
 const skills = require("../../scripts/skills");
 
-// Resolved before the rules, because one of them hands it to docs-check: the chain to validate is
-// the one in the repo the harness is editing, which is what root() answers, and not whichever
-// checkout this file happens to sit in.
-const root = lib.root();
+// Read before the rules, because one of them hands the root to docs-check: the chain to validate is
+// the one in the repo the harness is editing, which is what the event's root answers, and not
+// whichever checkout this file happens to sit in.
+const { root, paths } = lib.event();
 
 // A lock that is not JSON vouches for nothing, so the skill is treated as local; the invariants
 // report the lock itself.
@@ -63,9 +63,11 @@ const rules = [
     },
 ];
 
+// A shell call routed here by an over-wide matcher, or an edit outside the repo: nothing of ours.
+if (!paths.length) lib.warn("no path inside this repo in the payload; nothing to check");
 process.chdir(root);
 let status = 0;
-for (const file of lib.filePaths(lib.payload(), root)) {
+for (const file of paths) {
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) continue;
     for (const rule of rules) {
         const m = typeof rule.when === "function" ? rule.when(file) : file.match(rule.when);

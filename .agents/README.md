@@ -59,7 +59,7 @@ Three Node scripts in `.agents/hooks/`. Each reads the tool's JSON payload on st
 | `guard-command.js` | before a shell command | Blocks force pushes, `git reset --hard`, `git clean -f`, `git branch -D` and recursive deletes of `/`, `~`, `.git` or `*`, and tells the agent to ask you instead. |
 | `check-edit.js` | after a file edit | Syntax-checks `*.js`, validates `*.json`, runs `docs-check.js` after changes to `docs/` or `AGENTS.md`, runs `check-harness.js` after harness changes, and refuses edits to vendored skills. |
 
-`lib.js` reads the payload shape of each tool (Claude Code, Cursor, Copilot, Gemini CLI) and finds the repo root. Payloads it cannot read are skipped with a note, never blocked.
+`lib.js` turns whatever a tool sends (Claude Code, Cursor, Copilot, Gemini CLI) into one hook event: the repo root, the edited paths, the command text, and the raw input. A payload in no shape it knows is noted on stderr and never blocks an edit; for the command guard, every string in it counts as the command, so an unfamiliar tool is scanned rather than waved through.
 
 `node .agents/hooks/test.js` runs the fixtures in `.agents/hooks/tests/cases.tsv`, then a decision table per module under `tests/tables/`, then the checks in `tests/self-checks.js` that can only be made from outside a module: a real shell, a real install, this checkout itself. The harness invariants run there too, against this checkout, the same functions a target runs. The suite exists only in the upstream repository; an installed repo runs `node scripts/check-harness.js`.
 

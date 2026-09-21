@@ -7,7 +7,7 @@
 .agents/hooks/check-edit.js	copilot-vendored.json	2	-	vendored skill	Copilot sends toolArgs as a JSON string with a path key
 .agents/hooks/check-edit.js	claude-outside-repo.json	0	-	-	a file outside the repo is skipped
 .agents/hooks/check-edit.js	not-json.txt	0	-	not JSON	an unreadable payload fails open and says so
-.agents/hooks/check-edit.js	claude-no-path.json	0	-	no file path	a payload with no file path is ignored and says so
+.agents/hooks/check-edit.js	claude-no-path.json	0	-	nothing to check	a payload with no file path is ignored and says so
 .agents/hooks/check-edit.js	claude-bad-doc.json	2	plant docs/brd/9999-hook-test.md # Wrong heading	first heading must start with	a chain document with a wrong heading fails docs-check
 .agents/hooks/check-edit.js	claude-good-js.json	0	-	-	a valid JavaScript file passes
 .agents/hooks/check-edit.js	claude-agents-md.json	0	-	-	editing AGENTS.md runs docs-check, whose table it holds
@@ -17,6 +17,9 @@
 .agents/hooks/guard-command.js	guard-safe.json	0	-	-	force-with-lease is allowed
 .agents/hooks/guard-command.js	guard-metadata-not-command.json	0	-	-	dangerous text in an unrelated payload field (not the command) is ignored
 .agents/hooks/guard-command.js	guard-quoted-in-command.json	0	-	-	a dangerous phrase quoted as data inside another command's own arguments is not treated as an invocation
+.agents/hooks/guard-command.js	guard-quoted-branch.json	2	-	blocked this command	a force push after a quoted argument is still blocked
+.agents/hooks/guard-command.js	guard-flag-in-next-command.json	0	-	-	a flag in the command after && does not belong to the push
+.agents/hooks/guard-command.js	guard-unknown-shape.json	2	-	blocked this command	a payload in no known shape is scanned, not waved through
 .agents/hooks/session-start.js	empty.json	0	-	branch:	session brief always exits 0
 .agents/hooks/session-start.js	empty.json	0	plant INTENT.md # INTENT.md	intent: product and MVP stories in INTENT.md	the session brief points at INTENT.md when a project keeps one
 scripts/check-staged-docs.js --dry-run	staged-chain.txt	0	-	would check the staged chain	a staged chain document triggers the check

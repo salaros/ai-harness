@@ -8,7 +8,7 @@ module.exports = [
     ...require("./repo"),
     ...require("./project"),
     ...require("./docs-chain"),
-    ...require("./harness"),
+    ...require("./harness"), ...require("./hook-event"),
     ...require("./installer"),
     ...require("./commit-message"),
     ...require("./todo"),

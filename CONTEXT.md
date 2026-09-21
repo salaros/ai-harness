@@ -40,6 +40,10 @@ _Avoid_: project dir, working directory, cwd
 The command text a harness runs to start a hook: node, asking Git for the repo root, requiring the script under `.agents/hooks/`. It is written once, and the harness invariants hold `.claude/settings.json` to it, so an update that mangles an entry is caught instead of leaving the session unchecked.
 _Avoid_: hook config, hook wiring, hook registration
 
+**Hook event**:
+What a hook is told, whichever tool sent it: the repo root, the edited paths, the shell command text, and the payload, the raw input the tool sent. `.agents/hooks/lib.js` reads it once from stdin. A payload in no known shape still gives a command -- every string in it -- so a guard reading it fails safe.
+_Avoid_: hook input, tool input
+
 **Project memory**:
 What a target records about itself that no file in it derives, such as its name, where its requirements live and its runtime. It is kept in `MEMORY.md`.
 _Avoid_: project config, settings, metadata

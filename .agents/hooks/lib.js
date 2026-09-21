@@ -1,20 +1,22 @@
 // .agents/hooks/lib.js
 // The harness-specific layer on top of scripts/lib.js: the one place that knows how a harness
-// hands a hook its payload and where the repo root is. Process running and TSV reading are
-// general-purpose and live in scripts/lib.js instead, so scripts/ never has to reach into this
-// folder to get them.
+// hands a hook its payload. Process running and TSV reading are general-purpose and live in
+// scripts/lib.js instead, so scripts/ never has to reach into this folder to get them.
 //   const lib = require("./lib");
-//   const root = lib.root();                 // repo root (see below)
-//   const payload = lib.payload();           // stdin parsed as JSON, or null (warned on stderr)
-//   const files = lib.filePaths(payload, root); // edited file(s), repo-relative, forward slashes
-//   const cmd = lib.commandText(payload)     // the shell command text, or "" if the shape is unknown
-//   lib.node(["scripts/skills.js", "missing"]) // run a script with this node; { status, output }
-//   lib.readTsv("scripts/stacks.tsv")        // rows as arrays of cells; blank and # lines skipped
-// Root: scripts/lib.js's root(), the one precedence every entry point follows -- --root=<dir>, then
-// the harness's project-dir variable, then the checkout these hooks live in.
-// Paths: tool_input.file_path (Claude Code, Gemini CLI), file_path at the top level (Cursor
-// afterFileEdit) or toolArgs.path with toolArgs a JSON string (Copilot). A path outside the root
-// is dropped. Fails open: an unreadable payload yields null and says why on stderr.
+//   const { root, paths, command, raw } = lib.event();   // stdin, read once and normalised
+//   lib.root()                                          // the repo root, for a hook that reads no stdin
+//   lib.node(["scripts/skills.js", "missing"])          // run a script with this node; { status, output }
+// The event:
+//   root     scripts/lib.js's root(), the one precedence every entry point follows -- --root=<dir>,
+//            then the harness's project-dir variable, then the checkout these hooks live in.
+//   paths    the edited files, repo-relative with forward slashes; a path outside the root is dropped.
+//   command  the shell command text. When the payload is in no shape below, every string in it,
+//            one per line, so a guard scanning it fails safe rather than open; when it is not JSON
+//            at all, the raw text.
+//   raw      stdin as it arrived.
+// Shapes: tool_input.<key> (Claude Code, Gemini CLI), <key> at the top level (Cursor), or
+// toolArgs.<key> with toolArgs a JSON string (Copilot). An unreadable or unrecognised payload is
+// said on stderr and never thrown: a hook that cannot read its input fails open.
 const path = require("path");
 const scripts = require("../../scripts/lib");
 
@@ -22,53 +24,63 @@ const { fix } = scripts;
 const checkout = scripts.CHECKOUT;
 const warn = msg => process.stderr.write(`hook: ${msg}\n`);
 
-function payload() {
-    const raw = scripts.stdin();
-    let j;
-    try { j = JSON.parse(raw); } catch { warn(`payload is not JSON (${raw.length} bytes)`); return null; }
-    if (!j || typeof j !== "object") { warn("payload is not a JSON object"); return null; }
-    return j;
-}
+const parse = text => { try { return JSON.parse(text); } catch { return undefined; } };
 
-// The one place that knows the three shapes a harness nests a field in: tool_input (Claude Code,
-// Gemini CLI; tiKeys lists which keys under it count), the top level (Cursor) or toolArgs, a JSON
-// string, under taKey (Copilot). Returns the values found, in that priority order; a caller with
-// nothing decides for itself what "nothing" means and how to say so.
-function payloadField(j, { tiKeys, topKey, taKey }) {
+// Where each field sits in the three shapes: the keys under tool_input that count, the key at the
+// top level, and the key inside toolArgs.
+const FIELDS = {
+    command: { tiKeys: ["command"], topKey: "command", taKey: "command" },
+    path: { tiKeys: ["file_path", "notebook_path", "path", "filePath"], topKey: "file_path", taKey: "path" },
+};
+
+// The values of one field, in the order the shapes are listed above.
+function field(j, { tiKeys, topKey, taKey }) {
     const found = [];
     const ti = j.tool_input;
     if (ti && typeof ti === "object") for (const k of tiKeys) if (typeof ti[k] === "string") found.push(ti[k]);
     if (typeof j[topKey] === "string") found.push(j[topKey]);
-    let ta = j.toolArgs;
-    if (typeof ta === "string") { try { ta = JSON.parse(ta); } catch { ta = null; } }
+    const ta = typeof j.toolArgs === "string" ? parse(j.toolArgs) : j.toolArgs;
     if (ta && typeof ta === "object" && typeof ta[taKey] === "string") found.push(ta[taKey]);
     return found;
 }
 
-function filePaths(j, rootDir) {
-    if (!j) return [];
-    const found = payloadField(j, { tiKeys: ["file_path", "notebook_path", "path", "filePath"], topKey: "file_path", taKey: "path" });
-    if (!found.length) { warn(`no file path in payload (keys: ${Object.keys(j).join(", ") || "none"})`); return []; }
-    const out = new Set();
-    for (const p of found) {
-        const rel = path.relative(rootDir, path.resolve(rootDir, fix(p)));
-        if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) continue;   // outside the repo
-        out.add(rel.split(path.sep).join("/"));
+// Every string in a value, depth first. A string that is itself a JSON object or array, the way
+// Copilot sends toolArgs, is walked rather than taken whole, so what comes back is text a command
+// could be, never JSON syntax around it.
+function strings(v, out = []) {
+    if (typeof v === "string") {
+        const nested = /^\s*[[{]/.test(v) ? parse(v) : undefined;
+        if (nested && typeof nested === "object") strings(nested, out); else out.push(v);
+    } else if (v && typeof v === "object") for (const x of Object.values(v)) strings(x, out);
+    return out;
+}
+
+// The event a payload describes, against the repo at `root`. `say` receives each note an event
+// read the hard way leaves; event() hands it warn, and a test hands it a list.
+function readEvent(raw, root, say = warn) {
+    const j = parse(raw);
+    if (j === undefined) {
+        say(`payload is not JSON (${raw.length} bytes); scanning it as text`);
+        return { root, paths: [], command: raw, raw };
     }
-    return [...out];
+    const obj = j && typeof j === "object" && !Array.isArray(j) ? j : {};
+    const commands = field(obj, FIELDS.command), found = field(obj, FIELDS.path);
+    if (!commands.length && !found.length) {
+        const what = obj === j ? `keys: ${Object.keys(j).join(", ") || "none"}` : `a JSON ${Array.isArray(j) ? "array" : j === null ? "null" : typeof j}`;
+        say(`payload is in no shape this harness knows (${what}); scanning every string in it`);
+        return { root, paths: [], command: strings(j).join("\n"), raw };
+    }
+    const paths = new Set();
+    for (const p of found) {
+        const rel = path.relative(root, path.resolve(root, fix(p)));
+        if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) continue;   // outside the repo
+        paths.add(rel.split(path.sep).join("/"));
+    }
+    return { root, paths: [...paths], command: commands.join("\n"), raw };
 }
 
-// The shell command text a pre-tool-use payload carries: tool_input.command (Claude Code, Gemini
-// CLI), command at the top level (Cursor beforeShellExecution) or toolArgs.command where toolArgs
-// is a JSON string (Copilot). Returns "" (and warns) when the shape is unrecognised, so a caller
-// that only wants to inspect the real command text can fall back to the raw payload for safety.
-function commandText(j) {
-    if (!j) return "";
-    const found = payloadField(j, { tiKeys: ["command"], topKey: "command", taKey: "command" });
-    if (!found.length) { warn(`no command text in payload (keys: ${Object.keys(j).join(", ") || "none"})`); return ""; }
-    return found.join("\n");
-}
+// stdin is a pipe and reads once, so a hook asks for its event once.
+const event = () => readEvent(scripts.stdin(), scripts.root());
 
-// scripts/lib.js first, so what this file defines wins where the two names meet. root() is not one
-// of them any more: one resolver answers for scripts and hooks alike, and it lives there.
-module.exports = { ...scripts, checkout, warn, payload, filePaths, commandText };
+// scripts/lib.js first, so what this file defines wins where the two names meet.
+module.exports = { ...scripts, checkout, warn, event, readEvent };
