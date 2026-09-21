@@ -767,7 +767,7 @@ function report({ entries, base, head, ref, target, check, options }) {
     say("");
     say(options.dryRun ? `dry run against ${ref} at ${head.slice(0, 8)}` : `harness updated to ${ref} at ${head.slice(0, 8)}`);
     if (!base) say("no merge base: this was an install, so nothing that already existed was changed");
-    list("added", notes.written);
+    list("written", notes.written);
     list("merged", notes.merged);
     list("created for the first time", notes.seeded);
     list("left alone, yours", notes.kept.concat(notes.skipped));
