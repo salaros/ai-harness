@@ -184,6 +184,7 @@ function installPlanCoversEveryCase(t) {
             "notes.md": "one\ntwo\nthree\n",
             ".claude/agents": { link: ".agents/agents" },
             "licences.tsv": "# table\nup\tMIT\tv1\ngone\tMIT\tv1\n",
+            "src/old.md": "old\n",
         }],
         ["c2", {
             ".githooks/pre-commit": { text: "hook v2\n", exec: true },
@@ -200,6 +201,7 @@ function installPlanCoversEveryCase(t) {
             "tests/fixtures/x.md": "x\n",
             "tools/docs-site/astro.mjs": "astro\n",
             "licences.tsv": "# table\nup\tMIT\tv2\n",
+            "src/old.md": "old\n",
         }],
     ]);
     const rows = [
@@ -265,6 +267,29 @@ function installPlanCoversEveryCase(t) {
         "a union table takes the upstream's rows and keeps the one it dropped, whose skill stays here");
     const kept = run({ ...target, "licences.tsv": "# table\nup\tMIT\tv2\ngone\tMIT\tv1\n" }, { commit: "c1", ref: "master" });
     is(pick(kept, "licences.tsv"), { outcome: "unchanged", bucket: null, write: undefined }, "a union table already holding the kept row is unchanged");
+
+    // What the project deleted stays deleted: a seed file the recorded commit shipped, and a skeleton
+    // the receipt knew. A first install, and a skeleton newer than the receipt, still lay them down.
+    is(pick(fresh, "src/old.md"), { outcome: "created", write: "old\n" }, "a first install seeds every seed file");
+    is(pick(update, "src/old.md"), { outcome: "deleted here", bucket: null, write: undefined }, "a seed file the recorded commit shipped and the project deleted stays deleted");
+    is(pick(update, "src/README.md"), { outcome: "created", write: "src\n" }, "a seed file new since the recorded commit is seeded");
+    is(pick(update, "TODO.md"), { outcome: "deleted here", write: undefined }, "a skeleton the project deleted stays deleted");
+    const older = run(target, { commit: "c1", ref: "master", skeletons: ["MEMORY.md", "CONTEXT.md"] });
+    is(pick(older, "TODO.md"), { outcome: "created", bucket: "seeded" }, "a skeleton newer than the receipt is laid down");
+    t.ok(JSON.parse(pick(update, "harness-lock.json").write).skeletons.includes("TODO.md"), "install plan: the receipt lists the skeletons it knew", pick(update, "harness-lock.json").write);
+
+    // settleDropped on its own: a --diff3 conflict whose project side shares no line with the base is
+    // a section the project dropped or replaced, and stays so.
+    const H = (ours, base, theirs) => `top\n<<<<<<< yours\n${ours}||||||| upstream (base)\n${base}=======\n${theirs}>>>>>>> upstream (new)\nend\n`;
+    for (const [merged, text, conflicts, why] of [
+        [H("dist/\n", "harness a\nharness b\n", "harness a\n"), "top\ndist/\nend\n", false, "a section the project replaced keeps the project's lines"],
+        [H("", "harness a\nharness b\n", "harness a\n"), "top\nend\n", false, "a section the project deleted stays deleted"],
+        [H("harness a\nmine\n", "harness a\n", "harness a\ntheirs\n"), "top\n<<<<<<< yours\nharness a\nmine\n=======\nharness a\ntheirs\n>>>>>>> upstream (new)\nend\n", true, "a section both edited stays a conflict, without the base"],
+        [H("mine\n", "", "theirs\n"), "top\n<<<<<<< yours\nmine\n=======\ntheirs\n>>>>>>> upstream (new)\nend\n", true, "both adding at one place stays a conflict"],
+    ]) {
+        const got = harness.settleDropped(merged);
+        t.ok(got.text === text && got.conflicts === conflicts, `install plan: merge: ${why}`, JSON.stringify(got));
+    }
 
     // mergeRows on its own: a keyed table merged as a set of rows, never in conflict.
     const T = (...rows) => ["# t", ...rows, ""].join("\n");

@@ -340,8 +340,9 @@ function policies(templateDir) {
 // the docs site is the case, useful to some projects and dead weight in the rest.
 // `wants` answers whether the run asked for an optional part, so the table's meaning does not depend
 // on the process's own argv and a test can ask what a repo would get either way.
+const rowFor = (rows, file) => rows.find(r => r.path.endsWith("/") ? file.startsWith(r.path) : file === r.path);
 function policyFor(rows, file, wants) {
-    const row = rows.find(r => r.path.endsWith("/") ? file.startsWith(r.path) : file === r.path);
+    const row = rowFor(rows, file);
     if (!row) return "merge";               // anything the upstream ships and nobody classified is harness
     if (!row.policy.startsWith("optional:")) return row.policy;
     return wants(row.policy.slice("optional:".length)) ? "seed" : "template";
@@ -402,10 +403,29 @@ function threeWay(base, ours, theirs) {
         fs.writeFileSync(f("base"), base);
         fs.writeFileSync(f("ours"), ours);
         fs.writeFileSync(f("theirs"), theirs);
-        const r = lib.run("git", ["merge-file", "-L", "yours", "-L", "upstream (base)", "-L", "upstream (new)",
+        const r = lib.run("git", ["merge-file", "--diff3", "-L", "yours", "-L", "upstream (base)", "-L", "upstream (new)",
             f("ours"), f("base"), f("theirs")]);
-        return { text: fs.readFileSync(f("ours"), "utf8"), conflicts: r.status > 0, failed: r.status < 0 };
+        if (r.status < 0) return { text: "", conflicts: false, failed: true };
+        return settleDropped(fs.readFileSync(f("ours"), "utf8"));
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
+
+// The conflicts of a --diff3 merge, each settled or written the way this script always has: the
+// project's side and the upstream's, no base. A conflict whose project side shares no line with the
+// base is a section the project dropped or replaced with its own, as a project does with the harness's
+// part of .gitignore, and it stays dropped: the upstream's edit is to text the project no longer has.
+// A conflict with an empty base is both sides adding at one place, and stays a conflict.
+function settleDropped(text) {
+    const HUNK = /^<{7} yours\n([\s\S]*?)^\|{7} upstream \(base\)\n([\s\S]*?)^={7}\n([\s\S]*?)^>{7} upstream \(new\)\n/gm;
+    const lines = s => s.split("\n").map(l => l.trim()).filter(Boolean);
+    let conflicts = 0;
+    const out = text.replace(HUNK, (all, ours, base, theirs) => {
+        const was = new Set(lines(base));
+        if (was.size && !lines(ours).some(l => was.has(l))) return ours;
+        conflicts++;
+        return `<<<<<<< yours\n${ours}=======\n${theirs}>>>>>>> upstream (new)\n`;
+    });
+    return { text: out, conflicts: conflicts > 0, failed: false };
 }
 
 // Git checks a repo out with the platform's line endings, so a Windows working copy holds CRLF where
@@ -609,7 +629,12 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
         // does not have names something that was never there.
         if (policy === "skip") { line(exists ? "yours" : "absent", exists ? "skipped" : null); continue; }
         if (policy === "seed") {
+            // A seed file the recorded commit already shipped was laid down then, so its absence is
+            // the project deleting it, and it stays deleted. An optional part is the exception: its
+            // flag is the project asking for it now, whatever an earlier run left out.
+            const asked = (rowFor(rows, file) || { policy: "" }).policy.startsWith("optional:");
             if (exists) line("yours", "kept");
+            else if (!asked && base !== null && upstream.blob(base, file) !== null) line("deleted here", null);
             else line("created", "seeded", { write: theirs });
             continue;
         }
@@ -632,15 +657,20 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
 
     add({ phase: "skeletons a project starts with" });
     const hasIntent = target.exists(projectFacts.INTENT);
+    // The receipt lists the skeletons its run knew, so one missing on an update is one the project
+    // deleted, and it stays deleted; a skeleton added since still arrives. A receipt from before the
+    // list is taken to know them all, which every install since the skeletons began has laid down.
+    const known = new Set(previous && base !== null ? previous.skeletons || Object.keys(SKELETONS) : []);
     for (const [file, lines] of Object.entries(SKELETONS)) {
         if (target.exists(file)) add({ file, policy: "seed", mode: "100644", outcome: "yours", bucket: null });
+        else if (known.has(file)) add({ file, policy: "seed", mode: "100644", outcome: "deleted here", bucket: null });
         else add({ file, policy: "seed", mode: "100644", outcome: "created", bucket: "seeded", write: skeletonLines(file, lines, hasIntent).join("\n") });
     }
 
     add({ phase: "skills, merged by name" });
     entries.push(...planSkills(upstream, target, head, skills));
 
-    add({ file: LOCK, silent: true, write: JSON.stringify({ template: TEMPLATE, ref, commit: head, ...stamp }, null, 2) + "\n" });
+    add({ file: LOCK, silent: true, write: JSON.stringify({ template: TEMPLATE, ref, commit: head, ...stamp, skeletons: Object.keys(SKELETONS) }, null, 2) + "\n" });
     return { entries, notices, base };
 }
 
@@ -891,7 +921,7 @@ function main(args) {
 // The plan and the decisions under it, so the suite can put a case in and read the answer out rather
 // than building a git checkout to reach one branch. apply() is here for its dry run, which prints and
 // writes nothing; main() writes to somebody's repository and is reached through the command line.
-module.exports = { installerStamp, upToDate, mergeRows, unknownArgs, mistypedArgs, usage, parseOptions, policyFor, plan, apply, decideText, decideBinary, lineCounts, overlap, NEAREST, skeletonLines };
+module.exports = { installerStamp, upToDate, mergeRows, settleDropped, unknownArgs, mistypedArgs, usage, parseOptions, policyFor, plan, apply, decideText, decideBinary, lineCounts, overlap, NEAREST, skeletonLines };
 
 if (require.main === module) {
     try { process.exitCode = main(process.argv.slice(2)); }

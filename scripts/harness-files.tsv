@@ -7,7 +7,8 @@
 # Columns, tab-separated: path | policy | why
 #   merge  three-way merge against the upstream commit the receipt names. A file nobody touched takes
 #          the new version outright; an edited one keeps its edits and gains the changes around them;
-#          a real collision is written with conflict markers and reported. Created if absent.
+#          a section the project dropped or replaced stays so; a real collision is written with
+#          conflict markers and reported. Created if absent.
 #   reconcile as merge, and merged even when there is no receipt to take a base from: the base is
 #          recovered by finding the upstream commit whose copy matches this one, and failing that the
 #          file is written with conflict markers rather than left stale. For the few files nothing
@@ -15,7 +16,8 @@
 #   union  a table merged as a set of rows keyed by their first column, never in conflict: the
 #          upstream's rows, the project's where it changed one, and every row of the project's the
 #          upstream lacks, including one it dropped. For a table the project may still need a row of.
-#   seed   written only when it is absent, and never touched again. Scaffolding the project grows into.
+#   seed   written only when it is absent, and never touched again: deleted after an install, it stays
+#          deleted. Scaffolding the project grows into.
 #   skip   never written by an update, at all. The project's own, or generated from something else.
 #   skills the vendored skill tree, which merges by name rather than by content: see update-harness.js.
 #   optional:<flag> installed as seed, but only when update-harness.js is given --<flag>.
