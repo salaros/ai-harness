@@ -2,10 +2,12 @@
 // scripts/check-harness.js
 // Proves the harness in a repo still works: the harness invariants, facts about the harness files
 // that must hold whatever the project around them does. Every skill visible to the agent, the skill
-// links committed as links, every SKILL.md readable, the routing sections and the agents naming them in agreement, every Git
-// hook executable and still a two-line wrapper, every vendored skill attributed and on disk, the
-// chain table in AGENTS.md readable. Each one fails silently otherwise: nothing else in the harness
-// exits non-zero when a skill quietly vanishes from an agent's view.
+// links committed as links, every SKILL.md readable, the routing sections and the agents naming them
+// in agreement, every Git hook executable and still a two-line wrapper, each hook launcher in
+// .claude/settings.json the text this file writes, every vendored skill attributed and on disk, the
+// chain table in AGENTS.md readable, one reader for the stacks table, and the docs portal reading
+// the chain model rather than walking docs/ itself. Each one fails silently otherwise: nothing else
+// in the harness exits non-zero when a skill quietly vanishes from an agent's view.
 // It travels with the harness, so a project can run it after changing any of those files, and
 // check-edit.js does whenever one of PATHS is edited. The installer runs the upstream's copy against
 // the target it has just written, and the upstream's suite runs the same functions against itself.
@@ -27,8 +29,8 @@ const repoView = require("./repo-view");
 // them, so an invariant reading a new file adds it here and the trigger widens with it.
 const PATHS = [
     ".agents/skills/", ".claude/skills", ".agents/agents/", ".agents/routing.md", ".githooks/",
-    "skills-lock.json", "scripts/skill-licences.tsv", "THIRD-PARTY-NOTICES.md", "AGENTS.md",
-    ".claude/settings.json",
+    "skills-lock.json", "scripts/", "THIRD-PARTY-NOTICES.md", "AGENTS.md",
+    ".claude/settings.json", "tools/docs-site/",
 ];
 const reads = file => PATHS.some(p => p.endsWith("/") ? file.startsWith(p) : file === p);
 
@@ -275,6 +277,34 @@ function chainTableIsReadable(t, root) {
     t.ok(!problems.length && stages.length > 0, "the chain table in AGENTS.md is readable", problems.join("\n"));
 }
 
+// scripts/stacks.tsv has one reader, scripts/stacks.js, and every script that wants a stack asks it
+// by name. Two readers taking a row apart by position is how the second came to be written
+// `[stack, , needs, , , formats, format]`: correct, unreadable, and wrong the moment a column moved.
+// Code only: lib.js names the table in the usage comment at its top, which documents the helper
+// rather than reading the table. This file names it too, in the rule below rather than as a reader,
+// so it excuses itself by the name it is saved under -- the same name in the target it checks.
+function onlyTheStacksReaderNamesTheTable(t, root) {
+    const dir = path.join(root, "scripts");
+    if (!fs.existsSync(path.join(dir, "stacks.tsv")) || !fs.existsSync(path.join(dir, "stacks.js"))) {
+        t.skip("stacks table: no table or no reader here"); return;
+    }
+    const code = file => fs.readFileSync(file, "utf8").split(/\r?\n/).filter(l => !l.trim().startsWith("//")).join("\n");
+    const others = fs.readdirSync(dir)
+        .filter(n => n.endsWith(".js") && n !== "stacks.js" && n !== path.basename(__filename))
+        .filter(n => code(path.join(dir, n)).includes("stacks.tsv"));
+    t.ok(!others.length, "only scripts/stacks.js reads scripts/stacks.tsv itself", others.join(", "));
+}
+
+// The portal presents the chain model; it does not go looking for documents of its own. A directory
+// read in chain.mjs is a second walk of docs/, and a second walk grew a second file-name rule last
+// time. tools/docs-site is optional, so a repo that publishes straight to Jira owes nothing here.
+function theDocsPortalReadsTheChainModel(t, root) {
+    const entry = path.join(root, "tools", "docs-site", "chain.mjs");
+    if (!fs.existsSync(entry)) { t.skip("docs portal: the optional portal is not installed"); return; }
+    t.ok(!/readdirSync/.test(fs.readFileSync(entry, "utf8")),
+        "the docs portal reads the chain model rather than walking docs/ itself", entry);
+}
+
 const INVARIANTS = [
     gitHooksAreExecutable,
     noGitHookDecidesAnything,
@@ -287,6 +317,8 @@ const INVARIANTS = [
     vendoredSkillsAreAttributed,
     agentRoutingSectionsAgreeOnTheirAudience,
     chainTableIsReadable,
+    onlyTheStacksReaderNamesTheTable,
+    theDocsPortalReadsTheChainModel,
 ];
 
 // Every invariant against `root`. A failure carries its title and what was found; a skip is an

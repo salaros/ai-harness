@@ -61,7 +61,7 @@ Three Node scripts in `.agents/hooks/`. Each reads the tool's JSON payload on st
 
 `lib.js` reads the payload shape of each tool (Claude Code, Cursor, Copilot, Gemini CLI) and finds the repo root. Payloads it cannot read are skipped with a note, never blocked.
 
-`node .agents/hooks/test.js` runs the fixtures in `.agents/hooks/tests/` and the harness invariants. It exists only in the upstream repository; an installed repo runs `node scripts/check-harness.js`.
+`node .agents/hooks/test.js` runs the fixtures in `.agents/hooks/tests/cases.tsv`, then a decision table per module under `tests/tables/`, then the checks in `tests/self-checks.js` that can only be made from outside a module: a real shell, a real install, this checkout itself. The harness invariants run there too, against this checkout, the same functions a target runs. The suite exists only in the upstream repository; an installed repo runs `node scripts/check-harness.js`.
 
 ## Git hooks
 

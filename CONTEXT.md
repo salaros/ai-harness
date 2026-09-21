@@ -16,6 +16,10 @@ _Avoid_: host repo, destination, consumer
 A fact about a target's harness files that must hold for the harness to work there, such as every skill being linked or every Git hook being executable.
 _Avoid_: self check, sanity check
 
+**Decision table**:
+What one module decides, pinned as rows of input and expected verdict, in `.agents/hooks/tests/tables/<module>.js` beside the module it reads. A check that can only be made from outside a module -- a real shell, a real install, this checkout itself -- stays in `tests/self-checks.js`.
+_Avoid_: unit test, fixture, test suite
+
 **Install plan**:
 Everything one install or update will do to a target, path by path, decided before anything is written: what each path gets, its mode, and the outcome the run reports. A dry run prints it, and a real run applies it.
 _Avoid_: changeset, diff, manifest

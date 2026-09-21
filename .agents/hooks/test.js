@@ -5,8 +5,9 @@
 // The script is relative to the repo root and run with node; the fixture is piped to it as stdin
 // with __ROOT__ replaced by the root the case runs against; setup is "-", "plant <path> <first
 // line>" or "absent <path>"; expected output is "-" or a substring that the combined stdout and
-// stderr must contain. Afterward runs tests/self-checks.js and tests/tables.js, for checks that
-// don't fit that shape (add a new one there, not as a block below).
+// stderr must contain. Afterward runs tests/self-checks.js and the decision tables under
+// tests/tables/, one file per module, for checks that do not fit that shape (add a new one there,
+// not as a block below).
 // A case with no setup runs against this checkout. A case with one runs against a temp root instead,
 // seeded with the two files the scripts read from any root (AGENTS.md for the chain table,
 // scripts/stacks.tsv for the stacks) plus whatever it plants, and removed afterwards: a plant written

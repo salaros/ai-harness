@@ -1,0 +1,235 @@
+// .agents/hooks/tests/tables/harness.js
+// How an entry point finds a repo and what it then asserts about the harness in it: the root
+// resolver every script and hook shares, the hook launcher the settings file is held to, the skill
+// roster, and the frontmatter check that decides whether an agent can see a skill at all.
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const { spawnSync } = require("child_process");
+const lib = require("../../lib");
+const scriptsLib = require("../../../../scripts/lib");
+const checkHarness = require("../../../../scripts/check-harness");
+const skills = require("../../../../scripts/skills");
+const { withRoot, text } = require("../fixtures");
+
+// Which repo an entry point is about. Six places used to answer that differently -- a script read
+// --root and ignored the variables, a hook read the variables and ignored --root -- so a check run
+// one way saw a different repo from the same check run the other. One resolver answers now, and
+// this is its precedence: the flag, then the first project-dir variable that is set, then the
+// checkout the file lives in. root() reads argv and the environment, so each row is a real child
+// process; the probe sits in a throwaway directory and requires the checkout's copy of the library.
+function rootDecisions(t) {
+    const LIB = path.join(lib.checkout, "scripts", "lib");
+    const probe = `const lib = require(${JSON.stringify(LIB)});\n`
+        + "process.stdout.write(JSON.stringify({ root: lib.root(), args: lib.args() }));\n";
+    const real = p => { try { return fs.realpathSync(p); } catch { return p; } };
+    const CHECKOUT = real(scriptsLib.CHECKOUT);
+    const flag = dir => `${scriptsLib.ROOT_FLAG}${dir}`;
+    withRoot({ "probe.js": probe, "not-a-dir.txt": "x\n" }, dir => {
+        const elsewhere = real(os.tmpdir());
+        const run = (args, vars) => {
+            const env = { ...process.env };
+            for (const v of scriptsLib.ROOT_ENV_VARS) delete env[v];
+            const r = spawnSync(process.execPath, [path.join(dir, "probe.js"), ...args],
+                { encoding: "utf8", env: { ...env, ...vars } });
+            return { ...JSON.parse(r.stdout), warning: (r.stderr || "").trim() };
+        };
+        const rows = [
+            // args, environment, the root it must return, the warning it must carry, why
+            [[], {}, CHECKOUT, null, "nothing said: the checkout the file lives in"],
+            [[flag(dir)], {}, dir, null, "the flag is the explicit answer"],
+            [[flag(dir)], { CLAUDE_PROJECT_DIR: elsewhere }, dir, null, "the flag beats the harness's variable"],
+            [[], { CLAUDE_PROJECT_DIR: dir }, dir, "is not the checkout this file lives in",
+                "a hook follows the harness's variable, and says it is another checkout"],
+            [[], { CURSOR_PROJECT_DIR: dir }, dir, "is not the checkout this file lives in", "every harness's variable, not just Claude's"],
+            [[], { GEMINI_PROJECT_DIR: dir }, dir, "is not the checkout this file lives in", "Gemini's too"],
+            [[], { CURSOR_PROJECT_DIR: elsewhere, CLAUDE_PROJECT_DIR: dir }, dir, "CLAUDE_PROJECT_DIR", "the first variable in the list wins"],
+            [[], { CLAUDE_PROJECT_DIR: path.join(dir, "not-a-dir.txt") }, CHECKOUT, "is not a directory",
+                "a variable naming no directory is ignored, and said so"],
+            [[], { CLAUDE_PROJECT_DIR: path.join(dir, "gone") }, CHECKOUT, "is not a directory", "so is one naming nothing at all"],
+        ];
+        for (const [args, vars, want, warns, why] of rows) {
+            const r = run(args, vars);
+            t.ok(r.root === want && (warns === null ? !r.warning : r.warning.includes(warns)),
+                `root: ${why}`, `${r.root}\n${r.warning || "(no warning)"}`);
+        }
+        const r = run([flag(dir), "--dry-run", "install"], {});
+        t.ok(r.args.join(" ") === "--dry-run install", "root: args() hands on the command line without the flag", r.args.join(" "));
+    });
+}
+
+// .claude/settings.json wires the three hooks, and nothing read it back after an update merged it.
+// Each row is a settings file and the failure claudeHookLaunchersAreWired must report about it, run
+// through check() against a root holding nothing else, so every other invariant stands down.
+function hookLauncherDecisions(t) {
+    const entry = (script, matcher) => ({
+        ...(matcher ? { matcher } : {}),
+        hooks: [{ type: "command", command: checkHarness.launcher(script), timeout: 20 }],
+    });
+    const wired = () => ({
+        hooks: Object.fromEntries(checkHarness.CLAUDE_HOOKS.map(h => [h.event, [entry(h.script, h.matcher)]])),
+    });
+    const mine = { type: "command", command: "npm run lint" };
+    const rows = [
+        // the settings file, the failure it must produce (null: none), why
+        [wired(), null, "the launcher table's own wiring passes"],
+        [{ hooks: { ...wired().hooks, PreToolUse: [{ matcher: "Bash", hooks: [mine] }, ...wired().hooks.PreToolUse] } },
+            null, "a hook the project added beside ours is not ours to judge"],
+        [{ ...wired(), permissions: { allow: ["Bash(git status)"] } }, null, "a setting that is not a hook is left alone"],
+        [{ hooks: { ...wired().hooks, SessionStart: undefined } }, "launches session-start.js on SessionStart, once",
+            "an event whose entry a merge dropped"],
+        [{ hooks: { ...wired().hooks, PostToolUse: [...wired().hooks.PostToolUse, ...wired().hooks.PostToolUse] } },
+            "launches check-edit.js on PostToolUse, once", "the same script wired twice"],
+        [{ hooks: { ...wired().hooks, PreToolUse: [entry("guard-command.js", "Bash|Edit")] } },
+            "matches Bash", "a matcher that widened"],
+        [{ hooks: { ...wired().hooks, SessionStart: [entry("session-start.js", "Bash")] } },
+            "matches every tool", "a matcher on the entry that must have none"],
+        [{ hooks: { ...wired().hooks, PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.agents/hooks/guard-command.js"' }] }] }},
+            "is the launcher every shell runs", "a command built on a variable only Claude Code sets"],
+    ];
+    for (const [settings, wants, why] of rows) {
+        withRoot({ ".claude/settings.json": JSON.stringify(settings, null, 2) }, dir => {
+            const said = checkHarness.check(dir).failed.map(f => `${f.title}\n${f.detail}`).join("\n");
+            t.ok(wants === null ? !said : said.includes(wants), `hook launcher: ${why}`, said || "(nothing reported)");
+        });
+    }
+    withRoot({ ".claude/settings.json": "{ not json" }, dir => {
+        const said = checkHarness.check(dir).failed.map(f => f.title).join("\n");
+        t.ok(said.includes("readable JSON"), "hook launcher: a settings file that is not JSON fails rather than passing quietly", said);
+    });
+}
+
+// The skill roster of a repo built for it: what the lock records against what the disk holds, who
+// routes each skill and through which file, and whether the licence notice is current. The
+// upstream's own roster only ever shows the healthy case, so every odd shape lives here.
+function skillRosterDecisions(t) {
+    const skill = (name, extra = "") => text("---", `name: ${name}`, "description: Does one thing.", ...(extra ? [extra] : []), "---", "Body");
+    const lock = names => JSON.stringify({ version: 1, skills: Object.fromEntries(Object.entries(names).map(([n, source]) => [n, { source }])) });
+    const ACME = "acme/skills\tMIT\tCopyright (c) Acme\thttps://example.com/LICENSE\t-\n";
+    const files = {
+        ".agents/skills/local-one/SKILL.md": skill("local-one", "disable-model-invocation: true"),
+        ".agents/skills/vendored-one/SKILL.md": skill("vendored-one"),
+        ".agents/skills/vendored-two/SKILL.md": skill("vendored-two"),
+        ".agents/skills/no-skill-md/notes.md": "not a skill\n",
+        ".agents/skills/stray.txt": "a file, not a folder\n",
+        "skills-lock.json": lock({ "vendored-one": "acme/skills", "vendored-two": "other/skills", "gone-one": "acme/skills" }),
+        "scripts/skill-licences.tsv": text("# comment", ACME.trim()),
+        ".agents/routing.md": text("# Routing", "", "Preamble naming `local-one`.", "", "## Shared rows", "", "Read by `alpha`.", "", "| `vendored-one` | ... |"),
+        ".agents/agents/alpha.md": text("---", "name: alpha", "---", "Route through `local-one`, then routing.md, \"Shared rows\"."),
+        ".agents/agents/beta.md": text("---", "name: beta", "---", "Mentions \"Shared rows\" but never the routing file."),
+        ".agents/agents/not-an-agent.md": text("Names `vendored-two` with no frontmatter."),
+        "AGENTS.md": text("Every session may run `vendored-two`."),
+    };
+    withRoot(files, root => {
+        const r = skills.readRoster(root);
+        const entry = name => r.entries.find(e => e.name === name) || {};
+        const s = name => r.skills.find(x => x.name === name) || {};
+        t.ok(r.entries.map(e => e.name).join() === "local-one,no-skill-md,stray.txt,vendored-one,vendored-two",
+            "skill roster: every entry under .agents/skills is listed, sorted", r.entries.map(e => e.name).join());
+        t.ok(entry("no-skill-md").dir && !entry("no-skill-md").hasSkillMd && entry("no-skill-md").frontmatter === null,
+            "skill roster: a folder with no SKILL.md is an entry marked as such, and not a skill");
+        t.ok(!entry("stray.txt").dir && !entry("stray.txt").hasSkillMd, "skill roster: a stray file is an entry marked not a folder");
+        t.ok(r.skills.map(x => x.name).join() === "local-one,vendored-one,vendored-two", "skill roster: skills are the entries holding a SKILL.md",
+            r.skills.map(x => x.name).join());
+        t.ok(r.missing.join() === "gone-one", "skill roster: a skill the lock records and the disk lacks is missing", r.missing.join());
+        t.ok(s("local-one").source === "local" && !s("local-one").vendored && s("vendored-one").source === "acme/skills" && s("vendored-one").vendored,
+            "skill roster: the source is the lock's, or local when the lock does not record the skill");
+        t.ok(s("local-one").invoke === "`/local-one`" && s("vendored-one").invoke === "by description",
+            "skill roster: disable-model-invocation makes a skill invoked by name");
+        t.ok(s("local-one").agents.join() === "alpha", "skill roster: an agent routes a skill its own body names", s("local-one").agents.join());
+        t.ok(s("vendored-one").agents.join() === "alpha",
+            "skill roster: a routing.md section credits its skills to the agents naming the file and the section, and no other",
+            s("vendored-one").agents.join());
+        t.ok(!r.routing.agents["not-an-agent"], "skill roster: a file with no frontmatter name is not an agent");
+        t.ok(s("vendored-two").everywhere && !s("vendored-two").agents.length && !s("vendored-one").everywhere,
+            "skill roster: a skill AGENTS.md names is reached everywhere, apart from any agent");
+        const [section] = r.routing.sections;
+        t.ok(r.routing.sections.length === 1 && section.title === "Shared rows" && section.readBy.join() === "alpha" && !section.skills.has("local-one"),
+            "skill roster: routing.md's sections exclude its preamble and carry their Read by line", JSON.stringify(r.routing.sections.map(x => x.title)));
+
+        t.ok(r.notices.orphans.join() === "vendored-two (other/skills)" && !r.notices.current,
+            "skill roster: a vendored skill no licence row covers is an orphan", r.notices.orphans.join());
+        t.ok(!skills.writeNotices(root).written && !fs.existsSync(path.join(root, skills.NOTICES)),
+            "skill roster: the notice is not written while there is an orphan");
+        fs.appendFileSync(path.join(root, skills.LICENCES), "other/skills\tApache-2.0\t-\thttps://example.com/APACHE\tKeep the NOTICE file.\n");
+        t.ok(skills.writeNotices(root).written && skills.readRoster(root).notices.current,
+            "skill roster: once every upstream has a row the notice is written, and then current");
+        const notice = fs.readFileSync(path.join(root, skills.NOTICES), "utf8");
+        t.ok(/`vendored-one`/.test(notice) && /not stated upstream/.test(notice) && /Keep the NOTICE file/.test(notice) && /`local-one`/.test(notice),
+            "skill roster: the notice lists each upstream's skills, a missing holder, the notes and the local skills", notice);
+        t.ok(!skills.writeNotices(root).written, "skill roster: a current notice is not rewritten");
+
+        let linked = true;
+        try { fs.symlinkSync("local-one", path.join(root, ".agents/skills/alias"), "dir"); } catch { linked = false; }
+        if (!linked) t.skip("skill roster: this OS refuses symlinks, so the linked entry goes unchecked");
+        else t.ok(skills.readRoster(root).entries.find(e => e.name === "alias").link, "skill roster: a link under .agents/skills is an entry marked as a link");
+    });
+
+    withRoot({}, root => {
+        const r = skills.readRoster(root);
+        t.ok(r.lock === null && !r.entries.length && !r.skills.length && !r.missing.length && !r.routing.sections.length,
+            "skill roster: a repo with no harness files has an empty roster and no lock");
+    });
+
+    withRoot({ ".agents/skills/one/SKILL.md": skill("one"), ".cursor/skills/.keep": "" }, root => {
+        let first;
+        try { first = skills.relink(root); } catch (e) { t.skip(`skill roster: this OS refuses symlinks, so relink goes unchecked (${e.code})`); return; }
+        const link = path.join(root, ".cursor/skills/one");
+        t.ok(first.added === 1 && fs.readlinkSync(link).split(path.sep).join("/") === "../../.agents/skills/one",
+            "skill roster: relink links an unlinked skill into a per-skill folder, relative", JSON.stringify(first));
+        const again = skills.relink(root);
+        t.ok(again.added === 0 && again.kept === 1, "skill roster: relink leaves a relative link alone", JSON.stringify(again));
+    });
+}
+
+// The upstream's own skills all pass the frontmatter check, so harnessInvariantsHoldHere proves only
+// that it passes. Each broken shape gets a skill of its own in a temporary root, and the check must
+// name every one of them and none of the valid ones: quoted values and a folded description included.
+function skillFrontmatterCheckNamesEachProblem(t) {
+    const bodies = {
+        "plain-ok": "---\nname: plain-ok\ndescription: Does one thing.\n---\nBody\n",
+        "quoted-ok": "---\nname: \"quoted-ok\"\ndescription: 'Does one thing.'\n---\n",
+        "folded-ok": "---\nname: folded-ok\ndescription: >\n  Spans\n  two lines.\nlicense: MIT\n---\n",
+        "no-frontmatter": "# Just a heading\n",
+        "wrong-name": "---\nname: other\ndescription: x\n---\n",
+        "Bad_Name": "---\nname: Bad_Name\ndescription: x\n---\n",
+        "no-description": "---\nname: no-description\n---\n",
+        "empty-folded": "---\nname: empty-folded\ndescription: >\n---\n",
+        "too-long": `---\nname: too-long\ndescription: ${"x".repeat(1025)}\n---\n`,
+    };
+    const files = {};
+    for (const [name, body] of Object.entries(bodies)) files[`.agents/skills/${name}/SKILL.md`] = body;
+    const found = [];
+    withRoot(files, root => {
+        // A skill folder holding no SKILL.md at all, which withRoot's file list cannot express.
+        fs.mkdirSync(path.join(root, ".agents/skills/no-file"), { recursive: true });
+        const probe = {
+            ok: (condition, title, detail) => { if (!condition) found.push(...detail.split("\n")); },
+            skip: why => found.push(`skip: ${why}`),
+        };
+        checkHarness.INVARIANTS.find(fn => fn.name === "everySkillHasValidFrontmatter")(probe, root);
+    });
+
+    const expected = {
+        "no-file": "no SKILL.md",
+        "no-frontmatter": "does not start with --- frontmatter",
+        "wrong-name": "name is 'other'",
+        "Bad_Name": "lowercase letters",
+        "no-description": "no description",
+        "empty-folded": "no description",
+        "too-long": "over 1024",
+    };
+    for (const [name, says] of Object.entries(expected)) {
+        t.ok(found.some(line => line.startsWith(`${name}:`) && line.includes(says)),
+            `the skill frontmatter check reports ${name} (${says})`, found.join("\n"));
+    }
+    const noise = found.filter(line => /^(plain-ok|quoted-ok|folded-ok):/.test(line) || line.startsWith("skip:"));
+    t.ok(!noise.length, "the skill frontmatter check accepts plain, quoted and folded values", noise.join("\n"));
+}
+
+module.exports = [
+    rootDecisions,
+    hookLauncherDecisions,
+    skillRosterDecisions,
+    skillFrontmatterCheckNamesEachProblem,
+];
