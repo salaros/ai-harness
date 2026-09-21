@@ -143,10 +143,13 @@ function claudeHooksRunInEveryShell(t, env) {
 // One real install, end to end, from this checkout into an empty repository: the plan and the table
 // above can agree with each other and still disagree with the disk. A dry run first, which must
 // leave the repository as it found it, then the install, then a second run with nothing to do.
-function installerInstallsIntoAnEmptyRepo(t) {
+// Run the way a maintainer runs it from a Claude Code session open on this checkout: with
+// CLAUDE_PROJECT_DIR naming the upstream, which must not pull any step of the install away from the
+// target. Without the variable set here the check passed from a shell and failed only from a hook.
+function installerInstallsIntoAnEmptyRepo(t, env) {
     if (!installer()) { t.skip("a real install: the installer is the upstream's own, not installed here"); return; }
     withRoot({}, dir => {
-        const node = args => require("child_process").spawnSync(process.execPath, [INSTALLER, "--from", lib.checkout, "--target", dir, "--quiet", ...args], { encoding: "utf8" });
+        const node = args => require("child_process").spawnSync(process.execPath, [INSTALLER, "--from", lib.checkout, "--target", dir, "--quiet", ...args], { encoding: "utf8", env: { ...env, CLAUDE_PROJECT_DIR: lib.checkout } });
         lib.run("git", ["-C", dir, "init", "--quiet"]);
         const dry = node(["--dry-run"]);
         t.ok(dry.status === 0 && !fs.existsSync(path.join(dir, "harness-lock.json")) && !fs.existsSync(path.join(dir, "AGENTS.md")),

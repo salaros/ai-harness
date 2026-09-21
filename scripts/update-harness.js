@@ -710,11 +710,13 @@ function apply(entries, root, options) {
 // Two files nothing copied: the per-harness skill links, which depend on which skills this project
 // has rather than which the upstream ships, and the third-party notice, which must describe this
 // project's lock file. Both are generated, so the install leaves a harness that works rather than a
-// list of commands to remember.
+// list of commands to remember. Each run names the target with --root: the shared resolver prefers a
+// harness's project-dir variable to the checkout a script sits in, and an install started from a
+// session open on another repo would otherwise link and describe that repo instead.
 function finish(target, options) {
     if (!options.quiet) say("\nlinks and notices");
     for (const [label, args] of [["links", ["relink"]], ["notices", ["notices"]]]) {
-        const r = lib.node([path.join(target, "scripts/skills.js"), ...args], { cwd: target });
+        const r = lib.node([path.join(target, "scripts/skills.js"), ...args, `${lib.ROOT_FLAG}${target}`], { cwd: target });
         say(r.status === 0 ? r.output : `${label}: ${r.output}`);
     }
 }
