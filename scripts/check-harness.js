@@ -55,13 +55,15 @@ const uncommitted = (root, dir, git) => !git.rows.length && fs.existsSync(path.j
 // Git skips a hook that is not executable, and says nothing about it. On Windows core.fileMode is
 // normally false, so chmod is a no-op and a hook added there is recorded 100644: it runs for its
 // author and silently never runs on Linux or macOS. Only `git update-index --chmod=+x <file>` fixes
-// the mode Git records, so the mode in the index is what this asserts.
+// the mode Git records, so the mode in the index is what this asserts. Only the hooks githook.js
+// runs are asserted: .githooks/ may hold a project's own files beside them, such as Husky.Net's
+// task-runner.json, which Git never executes.
 function gitHooksAreExecutable(t, root) {
     const git = indexed(root, ".githooks");
     if (!git) { t.skip(".githooks mode check: not a git checkout"); return; }
     if (uncommitted(root, ".githooks", git)) { t.skip(".githooks mode check: present on disk, not committed yet"); return; }
     t.ok(git.rows.length > 0, "git tracks files under .githooks/", git.output);
-    const notExecutable = git.rows.filter(r => !r.exec).map(r => r.file);
+    const notExecutable = git.rows.filter(r => HOOKS[path.posix.basename(r.file)] && !r.exec).map(r => r.file);
     t.ok(!notExecutable.length,
         "every .githooks/ hook is committed executable (git update-index --chmod=+x <file>)",
         notExecutable.join(", "));
@@ -297,10 +299,12 @@ function onlyTheStacksReaderNamesTheTable(t, root) {
 
 // The portal presents the chain model; it does not go looking for documents of its own. A directory
 // read in chain.mjs is a second walk of docs/, and a second walk grew a second file-name rule last
-// time. tools/docs-site is optional, so a repo that publishes straight to Jira owes nothing here.
+// time. tools/docs-site is optional, so a repo that publishes straight to Jira owes nothing here, and
+// the rule binds the upstream's portal only: once installed, a project's copy is its own to change.
 function theDocsPortalReadsTheChainModel(t, root) {
     const entry = path.join(root, "tools", "docs-site", "chain.mjs");
     if (!fs.existsSync(entry)) { t.skip("docs portal: the optional portal is not installed"); return; }
+    if (!fs.existsSync(path.join(root, "scripts", "update-harness.js"))) { t.skip("docs portal: the project's own copy"); return; }
     t.ok(!/readdirSync/.test(fs.readFileSync(entry, "utf8")),
         "the docs portal reads the chain model rather than walking docs/ itself", entry);
 }

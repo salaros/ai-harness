@@ -227,9 +227,48 @@ function skillFrontmatterCheckNamesEachProblem(t) {
     t.ok(!noise.length, "the skill frontmatter check accepts plain, quoted and folded values", noise.join("\n"));
 }
 
+// Invariants that bind the harness's own files, and must leave a project's files beside them alone:
+// a target's .githooks/ can hold a task runner's config, and a target's portal is its own once
+// installed. Each row runs one invariant against a throwaway repo and names the outcome it expects.
+function invariantScopeDecisions(t) {
+    const invariant = name => checkHarness.INVARIANTS.find(f => f.name === name);
+    const run = (name, root) => {
+        const r = { passed: 0, failed: [], skipped: [] };
+        invariant(name)({ ok: (c, title, detail) => c ? r.passed++ : r.failed.push(detail || title), skip: why => r.skipped.push(why) }, root);
+        return r.failed.length ? "fail" : r.passed ? "pass" : "skip";
+    };
+    const git = (dir, ...args) => lib.run("git", ["-C", dir, ...args]);
+    // Hooks committed with the given modes: name -> true for executable.
+    const hooks = modes => dir => {
+        git(dir, "init", "--quiet");
+        for (const [name, exec] of Object.entries(modes)) {
+            git(dir, "add", "--", `.githooks/${name}`);
+            git(dir, "update-index", `--chmod=${exec ? "+" : "-"}x`, "--", `.githooks/${name}`);
+        }
+    };
+    const portal = text("import fs from 'node:fs';", "fs.readdirSync('docs');");
+    const rows = [
+        // invariant, files, setup, expected, why
+        ["gitHooksAreExecutable", { ".githooks/pre-commit": text("#!/bin/sh"), ".githooks/task-runner.json": text("{}") },
+            hooks({ "pre-commit": true, "task-runner.json": false }), "pass",
+            "a project file in .githooks/ that Git never runs need not be executable"],
+        ["gitHooksAreExecutable", { ".githooks/pre-commit": text("#!/bin/sh") },
+            hooks({ "pre-commit": false }), "fail", "a harness hook committed 100644 still fails"],
+        ["theDocsPortalReadsTheChainModel", { "tools/docs-site/chain.mjs": portal }, () => {}, "skip",
+            "a project's own portal may read docs/ however it likes"],
+        ["theDocsPortalReadsTheChainModel", { "tools/docs-site/chain.mjs": portal, "scripts/update-harness.js": "" }, () => {}, "fail",
+            "the upstream's portal must read the chain model"],
+    ];
+    for (const [name, files, setup, want, why] of rows) {
+        const got = withRoot(files, dir => { setup(dir); return run(name, dir); });
+        t.ok(got === want, `invariant scope: ${why}`, `${name}: expected ${want}, got ${got}`);
+    }
+}
+
 module.exports = [
     rootDecisions,
     hookLauncherDecisions,
     skillRosterDecisions,
     skillFrontmatterCheckNamesEachProblem,
+    invariantScopeDecisions,
 ];
