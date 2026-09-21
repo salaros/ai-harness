@@ -38,6 +38,15 @@ part of the product.
   and hand over to `githook.js <hook>`. Nothing else belongs in them: a
   decision made in the shell is one no test can reach, and the suite asserts
   the shape.
+- A script is a thin shell around its decisions. Parsing, merging,
+  formatting and the summary it prints go in a pure module the suite tests;
+  the script only reads, writes and reports, for the same reason the hooks
+  above hold no logic.
+- What two scripts share lives in one module here instead of a copy in each,
+  so the callers cannot drift: a threshold, a list, or a whole step, the way
+  `lib.js` holds root resolution and argument parsing for every script. When
+  several scripts do one job for different sources, a runner owns the common
+  steps and each script brings only its source and its rules.
 - Scripts must be idempotent where possible — running them twice should not
   break anything.
   
