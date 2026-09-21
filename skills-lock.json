@@ -61,12 +61,6 @@
       "skillPath": "skills/engineering/codebase-design/SKILL.md",
       "computedHash": "5a17552cc1482f1a40124bf4e6c9dbd90ac0dbb47e71c07d47369f9e5f2ae3b5"
     },
-    "confluence-expert": {
-      "source": "alirezarezvani/claude-skills",
-      "sourceType": "github",
-      "skillPath": "project-management/skills/confluence-expert/SKILL.md",
-      "computedHash": "9f059eda0df6e9355a5fe292cdebd9db9c66cb8f9b791413b6a3b5311c49a69a"
-    },
     "create-implementation-plan": {
       "source": "github/awesome-copilot",
       "sourceType": "github",
@@ -198,12 +192,6 @@
       "sourceType": "github",
       "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
       "computedHash": "2449db6ab1ded9581f69fcc56c1f64818112d05e271fd4c5da23c6523f9d3d9d"
-    },
-    "jira-expert": {
-      "source": "alirezarezvani/claude-skills",
-      "sourceType": "github",
-      "skillPath": "project-management/skills/jira-expert/SKILL.md",
-      "computedHash": "b743e803b6cd6c62a2bbdd9824d06effe5fa5c3559fa04b8fbe3055fb64afca8"
     },
     "loop-me": {
       "source": "mattpocock/skills",

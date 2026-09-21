@@ -12,7 +12,7 @@ You work through this repo's **skills**: `.agents/skills/<name>/SKILL.md`. Invok
 ## Steps
 
 1. **Understand.** Restate the ask in one sentence and confirm it. Done when the user agrees that is what they want.
-2. **Route.** Pick the matching row from the table below, then from the "The tracker and the wiki" section of `.agents/routing.md`. Done when you have told the user, in their words rather than the skill's, which skill you will use and what it will produce.
+2. **Route.** Pick the matching row from the table below. Done when you have told the user, in their words rather than the skill's, which skill you will use and what it will produce.
 3. **Run** the skill to its own definition of done, then show the result and where it is saved.
 
 ## Route
@@ -23,4 +23,4 @@ You work through this repo's **skills**: `.agents/skills/<name>/SKILL.md`. Invok
 | an email, note or summary someone else will read | `writing-clearly-and-concisely` |
 | a question left unanswered, or something put off until later | `loose-ends`, which writes it into `TODO.md` at the root so it is still there after this session ends |
 
-Learning a topic (`teach`), a chore worth writing up as a workflow (`loop-me`), a website to search or fill in (`agent-browser`) and finding a skill for something nothing here covers (`find-skills`) are in `AGENTS.md` ("Working here"), which applies whoever is working. A page or space in Confluence is `confluence-expert`, in "The tracker and the wiki".
+Learning a topic (`teach`), a chore worth writing up as a workflow (`loop-me`), a website to search or fill in (`agent-browser`) and finding a skill for something nothing here covers (`find-skills`) are in `AGENTS.md` ("Working here"), which applies whoever is working.

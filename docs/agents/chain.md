@@ -1,0 +1,15 @@
+# The documentation chain
+
+The stages, their folders and their skills are the table in `AGENTS.md` ("Documentation"), which `node scripts/docs-check.js` reads. These are the rules that table does not carry.
+
+- Start a stage only from the agreed artifact of the stage before it. A missing upstream document is written first, never skipped.
+- Write each artifact to the folder in the table, named `NNNN-<slug>.md`, even when the skill's own instructions name another place (`feature-forge` says `specs/`, `create-implementation-plan` says `/plan/`).
+- The file name gives the document its ID: `docs/ears/0003-<slug>.md` is `EARS-0003`, and its first heading is `# EARS-0003: <title>`. Anything inside a document that a later stage will refine carries a short ID at the start of its line (`- BR-2: …`, `- FR-3: …`, `- AC-1: …`, `### D-1 …`).
+- Every document, the BRD included, has a `**Derived from:**` line naming at least one reference: an upstream document ID, or a **source**. Other words on that line are free. Elsewhere it cites the items it refines as `DOC-ID/ITEM` (`PRD-0002/FR-3`). Citations point backwards along the chain only, and every one must resolve.
+- A source is where something outside the chain came from: a URL, a repo-relative path that exists, or `jira:KEY-123` with the key in upper case. A path may point at lines (`src/billing.cs:12`, `src/billing.cs:12-40`), and a folder is written with its slash (`src/`), since a bare word is prose. It stands in for an upstream document only while the chain holds nothing earlier, so a prototype's PRD may cite one, and must cite the BRD instead once a BRD exists. `MEMORY.md`'s `Requirements` follows the same rule, naming at least one source or document ID, or `none yet`, with the other words on the line free.
+- An ADR is cross-cutting: a decision can be forced before the chain starts or during implementation, so it may cite any document or a source at any time, and anything may cite it. Every other pair points backwards.
+- Sharpen a fuzzy ask with `grilling` before the BRD or PRD, and run `domain-modeling` the moment a term or decision lands, whatever the stage. An interview leaves a file: `brd` writes `.scratch/<slug>/interview.md` and the BRD derives from that path, so requirements gathered live still have provenance.
+- A prototype needs only PRD and BDD, then the `prototype` skill. An MVP runs the whole chain.
+- `INTENT.md` at the root is optional product intent in the [INTENT.md format](https://www.intentdocs.com/intent-md): `## Product` and `## MVP stories`, never stack or tooling. Its `## Product` owns the product's name and purpose, `MEMORY.md` keeps the configuration, and a BRD, a PRD or `Requirements` may cite `INTENT.md` as a source.
+
+The edit hook runs `docs-check` after every change under `docs/` or to `AGENTS.md`, the `pre-commit` Git hook runs it over the staged content and blocks a commit that breaks the chain (`git commit --no-verify` to override), and the `docs-check` skill repairs what it reports. The chain covers `docs/` at the repo root only: a repo split into contexts is out of scope.

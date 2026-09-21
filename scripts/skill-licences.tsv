@@ -8,7 +8,6 @@ openai/skills	Apache-2.0	-	https://github.com/openai/skills	Per-skill: each fold
 openai/skills#figma	Figma Developer Terms	-	https://www.figma.com/legal/developer-terms/	Not an open-source licence, and a Beta that Figma may modify, suspend or discontinue at any time. Covers figma, figma-use, figma-generate-design, figma-implement-design.
 dietrichgebert/ponytail	MIT	Copyright (c) 2026 DietrichGebert	https://github.com/dietrichgebert/ponytail/blob/main/LICENSE	-
 addyosmani/agent-skills	MIT	Copyright (c) 2025 Addy Osmani	https://github.com/addyosmani/agent-skills/blob/main/LICENSE	-
-alirezarezvani/claude-skills	MIT	Copyright (c) 2025 Alireza Rezvani	https://github.com/alirezarezvani/claude-skills/blob/main/LICENSE	-
 jeffallan/claude-skills	MIT	Copyright (c) 2025	https://github.com/jeffallan/claude-skills/blob/main/LICENSE	-
 vercel-labs/agent-skills	MIT	-	https://github.com/vercel-labs/agent-skills#license	Stated in the README only: no LICENSE file and no copyright holder to reproduce.
 vercel-labs/agent-browser	Apache-2.0	-	https://github.com/vercel-labs/agent-browser/blob/main/LICENSE	-
