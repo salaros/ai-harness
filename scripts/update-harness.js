@@ -149,17 +149,29 @@ function templateCheckout(ref, options) {
     return { dir, temporary: true };
 }
 
-// The installer's own name and version, read from the package it ships inside rather than written
-// down here, so a release cannot forget to update it. It answers what the upstream commit cannot:
-// which released tool wrote this tree. Both routes land on the right file, because the script always
-// sits in the scripts/ folder of either the npm package or a checkout of the upstream. Omitted
-// rather than recorded as null when it cannot be read, so the receipt never claims a version it
-// does not know.
+// The installer's own name and version: which released tool wrote this tree, the one thing the
+// upstream commit cannot answer. package.json holds 0.0.0 on every branch and only the release job
+// writes the real version into it, just before the publish, so its number means something only
+// inside the npm package. A checkout of the upstream reads the release tag on its own HEAD instead.
+// A checkout on no tag is not a release, and the receipt names no package rather than a version
+// that was never published. Omitted, never null, whenever it cannot be read, so the receipt never
+// claims a version it does not know.
+const PLACEHOLDER_VERSION = "0.0.0";
+const RELEASE_TAG = /^\d+\.\d+\.\d+$/;
+function installerStamp({ name, version, tag }) {
+    if (!name) return {};
+    if (version && version !== PLACEHOLDER_VERSION) return { installer: `${name}@${version}` };
+    return tag && RELEASE_TAG.test(tag) ? { installer: `${name}@${tag}` } : {};
+}
+// The reads behind installerStamp. The script sits in the scripts/ folder of either the npm package
+// or a checkout of the upstream, so both files are one folder up; the package has no .git, and there
+// git answers nothing.
 function installer() {
-    try {
-        const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, "..", "package.json"), "utf8"));
-        return pkg.name && pkg.version ? { installer: `${pkg.name}@${pkg.version}` } : {};
-    } catch { return {}; }
+    const home = path.resolve(__dirname, "..");
+    let pkg = {};
+    try { pkg = JSON.parse(fs.readFileSync(path.join(home, "package.json"), "utf8")); } catch { return {}; }
+    const described = at(home, ["describe", "--tags", "--exact-match", "HEAD"]);
+    return installerStamp({ name: pkg.name, version: pkg.version, tag: described.status === 0 ? described.output.trim() : null });
 }
 
 // Windows stops at 260 characters for a path, and the harness ships skill files nested deep enough
@@ -836,7 +848,7 @@ function main(args) {
 // The plan and the decisions under it, so the suite can put a case in and read the answer out rather
 // than building a git checkout to reach one branch. apply() is here for its dry run, which prints and
 // writes nothing; main() writes to somebody's repository and is reached through the command line.
-module.exports = { unknownArgs, mistypedArgs, usage, parseOptions, policyFor, plan, apply, decideText, decideBinary, lineCounts, overlap, NEAREST, skeletonLines };
+module.exports = { installerStamp, unknownArgs, mistypedArgs, usage, parseOptions, policyFor, plan, apply, decideText, decideBinary, lineCounts, overlap, NEAREST, skeletonLines };
 
 if (require.main === module) {
     try { process.exitCode = main(process.argv.slice(2)); }
