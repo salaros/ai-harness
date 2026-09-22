@@ -28,7 +28,7 @@ BRD → PRD → EARS → BDD → ADR → SPEC → TDD → IPLAN → Code
 | SPEC | the technical design that satisfies the requirements | `docs/spec/` | `design-doc` |
 | TDD | the failing tests that pin the behaviour | `tests/` | `tdd` |
 | IPLAN | ordered implementation steps | `.scratch/` | `create-implementation-plan`; `to-tickets` publishes it to the issue tracker, if any |
-| Code | | `src/` | `implement` |
+| Code | | `src/` | `implement`, `codebase-design` |
 
 Before writing or editing any document of the chain, read `docs/agents/chain.md`: document IDs, the `**Derived from:**` line every document carries, what counts as a source, which stages a prototype skips. `node scripts/docs-check.js` enforces all of it and the `docs-check` skill repairs what it reports; the `pre-commit` hook blocks a commit that breaks the chain.
 

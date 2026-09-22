@@ -13,4 +13,6 @@ The stages, their folders and their skills are the table in `AGENTS.md` ("Docume
 - A prototype needs only PRD and BDD, then the `prototype` skill. An MVP runs the whole chain.
 - `INTENT.md` at the root is optional product intent in the [INTENT.md format](https://www.intentdocs.com/intent-md): `## Product` and `## MVP stories`, never stack or tooling. Its `## Product` owns the product's name and purpose, `MEMORY.md` keeps the configuration, and a BRD, a PRD or `Requirements` may cite `INTENT.md` as a source.
 
+Each stage is written with its skill, and `chain-skill.js` asks for it: creating a file in a stage's folder without having loaded that skill is blocked, with the skill named. It reads the mapping from the same table and fires on a creation only, so an edit to a document already written is nobody's business but yours. A harness that sends its hooks no transcript cannot be checked this way and is warned instead of blocked.
+
 The edit hook runs `docs-check` after every change under `docs/` or to `AGENTS.md`, the `pre-commit` Git hook runs it over the staged content and blocks a commit that breaks the chain (`git commit --no-verify` to override), and the `docs-check` skill repairs what it reports. The chain covers `docs/` at the repo root only: a repo split into contexts is out of scope.

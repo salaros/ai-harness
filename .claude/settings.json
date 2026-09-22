@@ -14,6 +14,12 @@
         "hooks": [
           { "type": "command", "command": "node -e \"require(require('child_process').execFileSync('git',['rev-parse','--show-toplevel'],{encoding:'utf8',stdio:['ignore','pipe','inherit']}).trim()+'/.agents/hooks/guard-command.js')\"; exit $LASTEXITCODE", "timeout": 10 }
         ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "node -e \"require(require('child_process').execFileSync('git',['rev-parse','--show-toplevel'],{encoding:'utf8',stdio:['ignore','pipe','inherit']}).trim()+'/.agents/hooks/chain-skill.js')\"; exit $LASTEXITCODE", "timeout": 15 }
+        ]
       }
     ],
     "PostToolUse": [

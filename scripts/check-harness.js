@@ -94,12 +94,13 @@ function noGitHookDecidesAnything(t, root) {
     }
 }
 
-// The three events the harness hooks into, and the script each one launches. A matcher of null is an
+// The events the harness hooks into, and the script each one launches. A matcher of null is an
 // entry that runs on every tool call. Claude Code reads this table's file; so do Copilot's CLI and
 // VS Code extension, which is why the launcher below names no harness-specific variable.
 const CLAUDE_HOOKS = [
     { event: "SessionStart", matcher: null, script: "session-start.js" },
     { event: "PreToolUse", matcher: "Bash", script: "guard-command.js" },
+    { event: "PreToolUse", matcher: "Edit|Write|MultiEdit", script: "chain-skill.js" },
     { event: "PostToolUse", matcher: "Edit|Write|MultiEdit", script: "check-edit.js" },
 ];
 

@@ -66,9 +66,13 @@ function hookLauncherDecisions(t) {
         ...(matcher ? { matcher } : {}),
         hooks: [{ type: "command", command: checkHarness.launcher(script), timeout: 20 }],
     });
-    const wired = () => ({
-        hooks: Object.fromEntries(checkHarness.CLAUDE_HOOKS.map(h => [h.event, [entry(h.script, h.matcher)]])),
-    });
+    // Two scripts share the pre-tool-use event, one behind each matcher, so the entries accumulate
+    // per event rather than the later row replacing the earlier one.
+    const wired = () => {
+        const hooks = {};
+        for (const h of checkHarness.CLAUDE_HOOKS) (hooks[h.event] = hooks[h.event] || []).push(entry(h.script, h.matcher));
+        return { hooks };
+    };
     const mine = { type: "command", command: "npm run lint" };
     const rows = [
         // the settings file, the failure it must produce (null: none), why

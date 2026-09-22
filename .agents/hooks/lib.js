@@ -13,6 +13,10 @@
 //   command  the shell command text. When the payload is in no shape below, every string in it,
 //            one per line, so a guard scanning it fails safe rather than open; when it is not JSON
 //            at all, the raw text.
+//   transcript  where this session's record is kept, when the harness says; null otherwise. The one
+//            thing a hook can read to know what has already happened in the session rather than
+//            only what is happening now. A harness that names none leaves it null, and a check that
+//            needs it says so rather than guessing.
 //   raw      stdin as it arrived.
 // Shapes: tool_input.<key> (Claude Code, Gemini CLI), <key> at the top level (Cursor), or
 // toolArgs.<key> with toolArgs a JSON string (Copilot). An unreadable or unrecognised payload is
@@ -55,20 +59,30 @@ function strings(v, out = []) {
     return out;
 }
 
+// Where a harness keeps the session's transcript. It sits at the top level of the payload, beside
+// the tool's own input rather than inside it, so it is read on its own and not through FIELDS.
+const TRANSCRIPT = ["transcript_path", "transcriptPath", "transcript"];
+const transcriptOf = j => {
+    if (!j || typeof j !== "object") return null;
+    for (const k of TRANSCRIPT) if (typeof j[k] === "string" && j[k]) return j[k];
+    return null;
+};
+
 // The event a payload describes, against the repo at `root`. `say` receives each note an event
 // read the hard way leaves; event() hands it warn, and a test hands it a list.
 function readEvent(raw, root, say = warn) {
     const j = parse(raw);
     if (j === undefined) {
         say(`payload is not JSON (${raw.length} bytes); scanning it as text`);
-        return { root, paths: [], command: raw, raw };
+        return { root, paths: [], command: raw, transcript: null, raw };
     }
     const obj = j && typeof j === "object" && !Array.isArray(j) ? j : {};
+    const transcript = transcriptOf(obj);
     const commands = field(obj, FIELDS.command), found = field(obj, FIELDS.path);
     if (!commands.length && !found.length) {
         const what = obj === j ? `keys: ${Object.keys(j).join(", ") || "none"}` : `a JSON ${Array.isArray(j) ? "array" : j === null ? "null" : typeof j}`;
         say(`payload is in no shape this harness knows (${what}); scanning every string in it`);
-        return { root, paths: [], command: strings(j).join("\n"), raw };
+        return { root, paths: [], command: strings(j).join("\n"), transcript, raw };
     }
     const paths = new Set();
     for (const p of found) {
@@ -76,7 +90,7 @@ function readEvent(raw, root, say = warn) {
         if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) continue;   // outside the repo
         paths.add(rel.split(path.sep).join("/"));
     }
-    return { root, paths: [...paths], command: commands.join("\n"), raw };
+    return { root, paths: [...paths], command: commands.join("\n"), transcript, raw };
 }
 
 // stdin is a pipe and reads once, so a hook asks for its event once.
