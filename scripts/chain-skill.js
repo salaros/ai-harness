@@ -62,14 +62,15 @@ function decide(files, stages, transcript) {
         if (transcript !== null && skills.some(s => used(transcript, s))) continue;
         const list = skills.map(s => `\`${s}\``).join(" and ");
         const how = skills.map(s => `/${s}`).join(" then ");
+        const many = skills.length > 1;
         const verdict = transcript === null ? "warn" : "block";
         const message = verdict === "warn"
-            ? `chain skill: ${file} is the ${stage.stage} stage, which ${list} writes. This harness sent no transcript, `
-                + `so whether it is loaded cannot be checked here -- load it before writing the file.`
-            : `${file} is the ${stage.stage} stage of the documentation chain, and ${list} is what writes it.\n`
-                + `Load it first (${how}), then create the file. AGENTS.md's chain table is where that mapping lives.\n`
-                + `A ${stage.stage} written without its skill has the shape of one and none of its questions answered, `
-                + `and the stage after it derives from the gap.`;
+            ? `chain skill: ${file} is the ${stage.stage} stage, which ${list} ${many ? "write" : "writes"}. This harness `
+                + `sent no transcript, so whether ${many ? "they are" : "it is"} loaded cannot be checked here -- `
+                + `load ${many ? "them" : "it"} before writing the file.`
+            : `${file} is the ${stage.stage} stage of the documentation chain, and ${list} ${many ? "are the skills" : "is the skill"} that ${many ? "write" : "writes"} it.\n`
+                + `Load ${many ? "them" : "it"} first (${how}), then create the file. AGENTS.md's chain table is where that mapping lives.\n`
+                + `The skill carries the questions that stage has to answer; a file written without it has the right name and not the work.`;
         return { verdict, stage, skills, files: [file], message };
     }
     return null;
