@@ -10,6 +10,7 @@
 //   list(rel)     the names directly inside a folder, sorted; [] when there is none
 //   lstat(rel)    { link } for whatever is at the path, or null when nothing is: `link` is where a
 //                 symlink points, with forward slashes, and null for anything that is not one
+//   modes()       every path the view holds, sorted, as { file, mode, object, link, exec }
 // bytes() is a question of its own rather than a flag on read(), so that a view holding text answers
 // read() honestly and has to be handed real bytes to answer bytes(). A flag is what the installer's
 // own stand-in had, and it satisfied the flag by re-encoding its text: every branch production takes
@@ -41,38 +42,44 @@ function indexModes(dir, paths = []) {
     });
 }
 
-// A view over a set of files known up front, each read on first use. Folders are whatever the
-// paths imply, which is all an index or a map has of them. A loader gives text or bytes, whichever
-// its source holds; read() and bytes() convert what they were given rather than what they wish for.
-// A loader giving { link } is a symlink, and reads as the path it holds, which is what Git records
-// in its blob: a source with no filesystem still answers the question the installer asks of a link.
-function filesView(loaders) {
+// One entry of such a set: the mode Git records, the blob it recorded when there is one, and a
+// loader for the content, called on first use. Written this way round because modes() has to answer
+// for every path without reading a single blob: an index knows a file's mode from `ls-files -s`
+// long before anyone asks what is in it, and a listing that read them all would make the cheapest
+// question in the module the most expensive.
+const entry = (mode, object, load) => ({ mode, object, load });
+
+// A view over a set of entries known up front. Folders are whatever the paths imply, which is all
+// an index or a map has of them. A loader gives text or bytes, whichever its source holds; read()
+// and bytes() convert what they were given rather than what they wish for. A 120000 entry loads the
+// path it points at, which is what Git keeps in its blob, so a source with no filesystem still
+// answers the question the installer asks of a link.
+function filesView(entries) {
     const cache = new Map();
     const under = rel => rel ? rel + "/" : "";
     const held = rel => {
         rel = norm(rel);
-        if (!loaders.has(rel)) return null;
-        if (!cache.has(rel)) cache.set(rel, loaders.get(rel)());
-        const v = cache.get(rel);
-        return v && typeof v === "object" && !Buffer.isBuffer(v) && "link" in v ? v.link : v;
+        if (!entries.has(rel)) return null;
+        if (!cache.has(rel)) cache.set(rel, entries.get(rel).load());
+        return cache.get(rel);
     };
     const view = {
-        exists: rel => { rel = norm(rel); return loaders.has(rel) || [...loaders.keys()].some(f => f.startsWith(under(rel))); },
-        isFile: rel => loaders.has(norm(rel)),
+        exists: rel => { rel = norm(rel); return entries.has(rel) || [...entries.keys()].some(f => f.startsWith(under(rel))); },
+        isFile: rel => entries.has(norm(rel)),
         read: rel => { const v = held(rel); return v === null ? null : Buffer.isBuffer(v) ? v.toString("utf8") : v; },
         bytes: rel => { const v = held(rel); return v === null ? null : Buffer.isBuffer(v) ? v : Buffer.from(v, "utf8"); },
         lstat: rel => {
             if (!view.exists(rel)) return null;
-            if (!loaders.has(norm(rel))) return { link: null };
-            held(rel);                                        // a loader is what says whether this is a link
-            const v = cache.get(norm(rel));
-            return { link: v && typeof v === "object" && !Buffer.isBuffer(v) && "link" in v ? v.link : null };
+            const e = entries.get(norm(rel));
+            return { link: e && e.mode === "120000" ? view.read(rel) : null };
         },
         list: rel => {
             const prefix = under(norm(rel));
-            const names = new Set([...loaders.keys()].filter(f => f.startsWith(prefix)).map(f => f.slice(prefix.length).split("/")[0]));
+            const names = new Set([...entries.keys()].filter(f => f.startsWith(prefix)).map(f => f.slice(prefix.length).split("/")[0]));
             return [...names].sort();
         },
+        modes: () => [...entries.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+            .map(([file, e]) => ({ file, mode: e.mode, object: e.object, link: e.mode === "120000", exec: e.mode === "100755" })),
     };
     return view;
 }
@@ -95,6 +102,20 @@ function worktree(root) {
             try { s = fs.lstatSync(at(rel)); } catch { return null; }
             return { link: s.isSymbolicLink() ? fs.readlinkSync(at(rel)).split(path.sep).join("/") : null };
         },
+        // The tree walked from the root, .git excepted. There is no blob to name, because nothing
+        // here has been recorded yet; on Windows there is no executable bit either, which is why
+        // the harness asks the index and not the disk what mode a hook was committed with.
+        modes() {
+            const walk = (rel) => fs.readdirSync(at(rel) || root, { withFileTypes: true }).sort((a, b) => a.name < b.name ? -1 : 1)
+                .flatMap(d => {
+                    const file = rel ? `${rel}/${d.name}` : d.name;
+                    if (d.isDirectory()) return d.name === ".git" ? [] : walk(file);
+                    const mode = d.isSymbolicLink() ? "120000"
+                        : ((fs.lstatSync(at(file)).mode & 0o111) ? "100755" : "100644");
+                    return [{ file, mode, object: null, link: mode === "120000", exec: mode === "100755" }];
+                });
+            return fs.existsSync(root) ? walk("") : [];
+        },
     };
 }
 
@@ -109,7 +130,8 @@ function index(root, paths = []) {
         if (r.status !== 0) throw new Error(`could not read blob ${object}: ${r.stderr.toString("utf8")}`);
         return r.stdout;
     };
-    return filesView(new Map(rows.map(row => [row.file, () => row.link ? { link: blob(row.object).toString("utf8") } : blob(row.object)])));
+    return filesView(new Map(rows.map(row =>
+        [row.file, entry(row.mode, row.object, () => row.link ? blob(row.object).toString("utf8") : blob(row.object))])));
 }
 
 // What a commit will record for `paths`, and the working tree for everything else. Each of `paths`
@@ -126,10 +148,23 @@ function staged(root, paths) {
         bytes: rel => pick(rel).bytes(rel),
         list: rel => pick(rel).list(rel),
         lstat: rel => pick(rel).lstat(rel),
+        // The index's, not a mix of the two: a mode is a question about what a commit will record,
+        // and the disk has no answer to it that this view would rather give.
+        modes: () => idx.modes(),
     };
 }
 
-// The files a test names, path -> text or bytes, and nothing else.
-const fromMap = files => filesView(new Map(Object.entries(files).map(([f, held]) => [norm(f), () => held])));
+// The files a test names, and nothing else. An entry is the content -- text or bytes -- or, when the
+// case is about a mode rather than a content, `{ link }` for a symlink and `{ text|bytes, exec }`
+// for an executable. That is the whole of what a map has to say, so a case about a link in the way
+// or a mode already correct needs no checkout and no platform that has an executable bit.
+function fromMap(files) {
+    return filesView(new Map(Object.entries(files).map(([f, held]) => {
+        const spec = held && typeof held === "object" && !Buffer.isBuffer(held) ? held : { bytes: held };
+        const content = "link" in spec ? spec.link : "text" in spec ? spec.text : spec.bytes;
+        const mode = "link" in spec ? "120000" : spec.exec ? "100755" : "100644";
+        return [norm(f), entry(mode, null, () => content)];
+    })));
+}
 
 module.exports = { worktree, index, staged, fromMap, indexModes };

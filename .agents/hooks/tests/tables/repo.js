@@ -143,9 +143,52 @@ function repoViewLstatsLinks(t) {
     });
 }
 
+// SPEC-0001/R-1. Every path the view holds, with the mode Git records for it, which is the listing
+// the installer walks to decide what to write and the invariants walk to decide what is executable.
+// A map answers it from its entries, so a case about a symlink or an executable needs neither a
+// checkout nor a platform that has an executable bit.
+function repoViewListsModes(t) {
+    const map = repoView.fromMap({
+        "b.txt": "plain\n",
+        ".githooks/pre-commit": { text: "#!/bin/sh\n", exec: true },
+        ".claude/agents": { link: "../.agents/agents" },
+    });
+    const rows = map.modes();
+    const by = f => rows.find(r => r.file === f);
+    const cases = [
+        [rows.map(r => r.file).join(), ".claude/agents,.githooks/pre-commit,b.txt", "every path the view holds, sorted"],
+        [by("b.txt").mode, "100644", "a plain file is 100644"],
+        [by(".githooks/pre-commit").mode, "100755", "an executable is 100755"],
+        [by(".githooks/pre-commit").exec, true, "and says so without the caller reading the mode"],
+        [by(".claude/agents").mode, "120000", "a symlink is 120000"],
+        [by(".claude/agents").link, true, "and says so"],
+        [by("b.txt").exec || by("b.txt").link, false, "a plain file is neither"],
+        [map.read(".githooks/pre-commit"), "#!/bin/sh\n", "an entry carrying a mode still reads as its text"],
+    ];
+    for (const [got, want, why] of cases) t.ok(got === want, `repo view: ${why}`, JSON.stringify(got));
+
+    withRoot({ "a.txt": "x\n", "sub/b.txt": "y\n" }, dir => {
+        // The working tree walks itself. It records no blob, since nothing has been recorded yet,
+        // and on Windows it reports no executable, because the filesystem there has no such bit --
+        // which is why the invariants ask the index about hook modes and not the disk.
+        const disk = repoView.worktree(dir).modes();
+        t.ok(disk.map(r => r.file).join() === "a.txt,sub/b.txt", "repo view: the working tree walks itself, recursively and sorted", JSON.stringify(disk));
+        t.ok(disk.every(r => r.object === null), "repo view: a file nobody has recorded carries no blob");
+
+        if (spawnSync("git", ["init", "-q"], { cwd: dir }).status !== 0) { t.skip("repo view: git is not available for the index adapter"); return; }
+        spawnSync("git", ["add", "-A"], { cwd: dir });
+        const staged = repoView.index(dir).modes();
+        t.ok(staged.map(r => r.file).join() === "a.txt,sub/b.txt", "repo view: the index lists every tracked path, recursively", JSON.stringify(staged));
+        t.ok(staged.every(r => /^[0-9a-f]{40,64}$/.test(r.object)), "repo view: each row carries the blob Git recorded", JSON.stringify(staged));
+        t.ok(repoView.index(dir, ["sub"]).modes().map(r => r.file).join() === "sub/b.txt",
+            "repo view: an index scoped to a path lists only what is under it");
+    });
+}
+
 module.exports = [
     repoViewDecisions,
     repoViewReadsBytes,
     repoViewLstatsLinks,
+    repoViewListsModes,
     stagedChainDecisions,
 ];
