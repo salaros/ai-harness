@@ -7,6 +7,7 @@
   },
   "files": [
     "scripts/update-harness.js",
+    "scripts/install-policy.js",
     "scripts/lib.js",
     "scripts/project-facts.js",
     "scripts/repo-view.js",

@@ -34,6 +34,7 @@ const path = require("path");
 const lib = require("./lib");
 const projectFacts = require("./project-facts");
 const repoView = require("./repo-view");
+const installPolicy = require("./install-policy");
 const { spawnSync } = require("child_process");
 
 const TEMPLATE = "https://github.com/salaros/ai-harness.git";
@@ -198,12 +199,6 @@ function blob(dir, commit, file) {
     return r.stdout.includes(0) ? r.stdout : r.stdout.toString("utf8");
 }
 
-// One test for both, so a caller comparing what blob returned against what is on disk does not have
-// to know which it got.
-const same = (a, b) => Buffer.isBuffer(a) || Buffer.isBuffer(b)
-    ? Buffer.isBuffer(a) && Buffer.isBuffer(b) && a.equals(b)
-    : a === b;
-
 // ---------------------------------------------------------------- the adapters
 //
 // What plan() reads, and nothing more: the upstream at any commit, and the target as it stands. A
@@ -335,19 +330,6 @@ function policies(templateDir) {
     return lib.readTsv(path.join(templateDir, MANIFEST)).map(([p, policy]) => ({ path: p, policy }));
 }
 
-// First match wins, so the table's order is its precedence. A row ending in / covers everything under it.
-// `optional:<flag>` is seeded only when the run asked for it, and is otherwise not installed at all:
-// the docs site is the case, useful to some projects and dead weight in the rest.
-// `wants` answers whether the run asked for an optional part, so the table's meaning does not depend
-// on the process's own argv and a test can ask what a repo would get either way.
-const rowFor = (rows, file) => rows.find(r => r.path.endsWith("/") ? file.startsWith(r.path) : file === r.path);
-function policyFor(rows, file, wants) {
-    const row = rowFor(rows, file);
-    if (!row) return "merge";               // anything the upstream ships and nobody classified is harness
-    if (!row.policy.startsWith("optional:")) return row.policy;
-    return wants(row.policy.slice("optional:".length)) ? "seed" : "template";
-}
-
 // ---------------------------------------------------------------- skeletons
 
 // Three files the upstream does not ship, because there they would be lies: MEMORY.md
@@ -428,108 +410,6 @@ function settleDropped(text) {
     return { text: out, conflicts: conflicts > 0, failed: false };
 }
 
-// Git checks a repo out with the platform's line endings, so a Windows working copy holds CRLF where
-// the upstream stores LF. Compared raw, every line of every file reads as changed: a copy nobody
-// touched reports as edited, and a real edit is buried in a whole-file conflict nobody can read. So
-// the comparison and the merge happen in LF, and the result is written back in the endings the file
-// already had.
-const CRLF = /\r\n/g;
-const LF = /\n/g;
-// This script's own conflict label, on a line of its own, so prose about conflict markers is not
-// mistaken for one.
-const MARKED = /^<{7} yours\r?$/m;
-const isCrlf = text => (text.match(CRLF) || []).length * 2 > (text.match(LF) || []).length;
-const toLf = text => text.replace(CRLF, "\n");
-const asFound = (text, crlf) => crlf ? text.replace(LF, "\r\n") : text;
-
-// ---------------------------------------------------------------- the decision
-//
-// What happens to one file the target already has, decided apart from doing it. Everything these two
-// read is an argument, including the three things they cannot compute -- the base's text, the search
-// for a base when the receipt has none, and the three-way merge itself -- so plan() passes them in.
-//
-// Both answer the same shape: `outcome` is the word the run prints, `bucket` the summary list it
-// belongs in (null for a file nothing happened to), and `text` what to write, or null to write
-// nothing.
-
-// A file with no lines to merge: it is the upstream's copy or it is the project's, and the base
-// decides which. A logo the project replaced stays replaced.
-function decideBinary({ held, theirs, hasBase, adopt }, { baseBytes }) {
-    if (same(held, theirs)) return { outcome: "unchanged", bucket: null, text: null };
-    const was = hasBase ? baseBytes() : null;
-    if (adopt || same(held, was)) return { outcome: adopt ? "adopted" : "written", bucket: "written", text: theirs };
-    return { outcome: hasBase ? "yours, binary" : "yours, no base", bucket: "kept", text: null };
-}
-
-// A text file. `raw` is what is on disk, in whatever line endings it has; `theirs` is the upstream's,
-// always LF. The comparison and the merge happen in LF and the result is written back in the endings
-// the file already had, so a Windows checkout does not read as edited from top to bottom.
-function decideText({ policy, raw, theirs, hasBase, adopt }, { baseText, recoverBase, merge }) {
-    const crlf = isCrlf(raw);
-    const ours = toLf(raw);
-    const keep = { outcome: hasBase ? "yours, new here" : "yours, no base", bucket: "kept", text: null };
-
-    if (ours === theirs) return { outcome: "unchanged", bucket: null, text: null };
-    // Before the base logic, not inside it: a repo that needs adopting usually has a receipt
-    // already, written by the install that kept the stale files in the first place.
-    if (adopt) return { outcome: "adopted", bucket: "written", text: asFound(theirs, crlf) };
-    // Markers an earlier run wrote and nobody resolved. Left to the merge, the marked-up file is now
-    // its own nearest base, so the merge takes it whole, the run says "unchanged" and a half-merged
-    // harness passes as settled. Named instead, and the run exits 1 until someone resolves it or
-    // --adopt above throws it away.
-    if (MARKED.test(ours)) return { outcome: "STILL OPEN", bucket: "conflicted", text: null };
-
-    // A reconcile file is one the harness cannot work around: AGENTS.md is the map every agent reads
-    // and holds the table docs-check parses, and docs/README.md says what the chain puts where.
-    // Keeping a stale one leaves a repo that looks installed and behaves like the version it came
-    // from, so these are merged even when the receipt is missing. Nothing in the upstream's history
-    // matching means this copy was written by hand, and an empty base makes the whole file one
-    // conflict -- the honest answer: both versions are there to read, and the run exits 1.
-    let from = hasBase ? baseText() : null;
-    if (from === null && policy === "reconcile") from = recoverBase(ours);
-    if (from === null && policy === "reconcile") from = "";
-    // A union table merges by row whether or not there is a base, and even an untouched copy goes
-    // through that merge: it may hold a row the upstream dropped and the project still needs.
-    if (from === null && policy === "union") from = "";
-    if (from === null) return keep;
-
-    if (ours === from && policy !== "union") return { outcome: "written", bucket: "written", text: asFound(theirs, crlf) };
-    const merged = merge(from, ours, theirs);
-    if (merged.failed) return { outcome: "yours, merge failed", bucket: "kept", text: null };
-    const result = asFound(merged.text, crlf);
-    if (merged.conflicts) return { outcome: "CONFLICT", bucket: "conflicted", text: result };
-    // A file that keeps a local edit merges cleanly on every later run and comes out the same every
-    // time. Reported as merged each run it reads as churn, and the reader goes looking for a change
-    // nobody made, so what the run did is decided by the result, not the route.
-    if (result === raw) return { outcome: "unchanged", bucket: null, text: null };
-    return { outcome: "merged", bucket: "merged", text: result };
-}
-
-// A union table, merged row by row rather than line by line: a row is keyed by its first
-// tab-separated column, and the table is a set of them, so there is nothing to conflict over.
-// The upstream's comments and order come first. Each of its rows is the project's where only the
-// project changed it, or where both did, and the upstream's otherwise; a row the project deleted
-// stays deleted. Every row of the project's the upstream lacks follows, whether the project added it
-// or the upstream dropped it: the licence of a skill the upstream stopped shipping is still needed
-// here, because the skills merge keeps the skill. All three texts are LF; `base` is null without a
-// receipt, and then the project's copy of a row wins.
-function mergeRows(base, ours, theirs) {
-    const rows = text => new Map((text || "").split("\n").filter(l => l.trim() && !l.startsWith("#")).map(l => [l.split("\t")[0], l]));
-    const was = rows(base), mine = rows(ours), up = rows(theirs);
-    const out = [];
-    for (const line of theirs.split("\n")) {
-        const key = line.split("\t")[0];
-        if (!line.trim() || line.startsWith("#") || !up.has(key)) { out.push(line); continue; }
-        const o = mine.get(key), b = was.get(key);
-        if (o === undefined) { if (b === undefined) out.push(line); continue; }
-        out.push(o === b ? line : o);
-    }
-    const extra = [...mine].filter(([key]) => !up.has(key)).map(([, line]) => line);
-    if (!extra.length) return out.join("\n");
-    while (out.length && out[out.length - 1] === "") out.pop();
-    return [...out, ...extra, ""].join("\n");
-}
-
 // ---------------------------------------------------------------- the plan
 //
 // Everything a run will do to the target, decided before anything is written: an install rewrites
@@ -589,7 +469,7 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
     add({ phase: `${files.length} path(s) in ${ref} at ${head.slice(0, 8)}` });
     for (const entry of files) {
         const { file, link: isLink, exec } = entry;
-        const policy = policyFor(rows, file, options.wants);
+        const { policy, asked } = installPolicy.policyFor(rows, file, options.wants);
         const m = mode(entry);
         const theirs = upstream.blob(head, file);
         // Git listed the path a moment ago, so failing to read it is the checkout being unhappy
@@ -604,10 +484,7 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
         const line = (outcome, bucket, act = {}) =>
             add({ file, policy, mode: m, outcome, bucket, ...act, exec: exec && (exists || act.write !== undefined) });
 
-        // Not installed anywhere, and named in one line of the summary instead: sixty-five lines
-        // saying nothing happened bury the thirty-eight saying something did.
-        if (policy === "template") { line("template", "template", { silent: true }); continue; }
-        if (isLink) {
+        if (isLink && policy !== "template") {
             // A skill link is relink's to make, once the directory it lives in exists: it knows which
             // skills this project actually has, where the upstream only knows its own.
             if (policy === "skills") { add({ file, mkdir: true, silent: true }); continue; }
@@ -625,34 +502,16 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
         // Reported one line per skill by planSkills below, not one per reference file: a skill is the
         // unit a project installs, and its files run to several hundred.
         if (policy === "skills") { skills.push(entry); continue; }
-        // Reported only when the target actually has it: "left alone, yours" about a file the repo
-        // does not have names something that was never there.
-        if (policy === "skip") { line(exists ? "yours" : "absent", exists ? "skipped" : null); continue; }
-        if (policy === "seed") {
-            // A seed file the recorded commit already shipped was laid down then, so its absence is
-            // the project deleting it, and it stays deleted. An optional part is the exception: its
-            // flag is the project asking for it now, whatever an earlier run left out.
-            const asked = (rowFor(rows, file) || { policy: "" }).policy.startsWith("optional:");
-            if (exists) line("yours", "kept");
-            else if (!asked && base !== null && upstream.blob(base, file) !== null) line("deleted here", null);
-            else line("created", "seeded", { write: theirs });
-            continue;
-        }
-        // merge and reconcile
-        if (!exists) { line("written", "written", { write: theirs }); continue; }
-        const hasBase = base !== null;
-        const held = target.read(file, Buffer.isBuffer(theirs));
-        const { outcome, bucket, text } = Buffer.isBuffer(theirs)
-            ? decideBinary({ held, theirs, hasBase, adopt: options.adopt }, { baseBytes: () => upstream.blob(base, file) })
-            : decideText({ policy, raw: held, theirs, hasBase, adopt: options.adopt }, {
-                baseText: () => upstream.blob(base, file),
+        const { outcome, bucket, ...act } = installPolicy.decide(policy,
+            { exists, theirs, hasBase: base !== null, adopt: options.adopt, asked }, {
+                held: () => target.read(file, Buffer.isBuffer(theirs)),
+                base: () => upstream.blob(base, file),
+                // A seed file the recorded commit already shipped was laid down then.
+                shippedBefore: () => base !== null && upstream.blob(base, file) !== null,
                 recoverBase: ours => recoverBase(upstream, file, ours),
-                // A union table has no lines to conflict over, and no base means the project's rows win.
-                merge: policy === "union"
-                    ? (from, ours, up) => ({ text: mergeRows(from, ours, up), conflicts: false, failed: false })
-                    : threeWay,
+                merge: threeWay,
             });
-        line(outcome, bucket, text === null ? {} : { write: text });
+        line(outcome, bucket, act);
     }
 
     add({ phase: "skeletons a project starts with" });
@@ -662,9 +521,9 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
     // list is taken to know them all, which every install since the skeletons began has laid down.
     const known = new Set(previous && base !== null ? previous.skeletons || Object.keys(SKELETONS) : []);
     for (const [file, lines] of Object.entries(SKELETONS)) {
-        if (target.exists(file)) add({ file, policy: "seed", mode: "100644", outcome: "yours", bucket: null });
-        else if (known.has(file)) add({ file, policy: "seed", mode: "100644", outcome: "deleted here", bucket: null });
-        else add({ file, policy: "seed", mode: "100644", outcome: "created", bucket: "seeded", write: skeletonLines(file, lines, hasIntent).join("\n") });
+        const theirs = skeletonLines(file, lines, hasIntent).join("\n");
+        const decision = installPolicy.decide("skeleton", { exists: target.exists(file), theirs, asked: false }, { shippedBefore: () => known.has(file) });
+        add({ file, policy: "seed", mode: "100644", ...decision });
     }
 
     add({ phase: "skills, merged by name" });
@@ -710,12 +569,12 @@ function planSkills(upstream, target, head, files) {
         const held = exists ? target.read(file, true) : null;
         let write;
         if (Buffer.isBuffer(text)) {
-            if (same(held, text)) continue;
+            if (lib.sameContent(held, text)) continue;
             write = text;
         } else {
             const ourText = held === null ? null : held.toString("utf8");
-            if (ourText !== null && toLf(ourText) === text) continue;
-            write = asFound(text, ourText !== null && isCrlf(ourText));
+            if (ourText !== null && lib.toLf(ourText) === text) continue;
+            write = lib.asFound(text, ourText !== null && lib.isCrlf(ourText));
         }
         if (exists) tally.updated++; else tally.added++;
         out.push({ file, silent: true, write, bucket: exists ? "merged" : "written", exec: exec && !exists });
@@ -925,7 +784,7 @@ function main(args) {
 // The plan and the decisions under it, so the suite can put a case in and read the answer out rather
 // than building a git checkout to reach one branch. apply() is here for its dry run, which prints and
 // writes nothing; main() writes to somebody's repository and is reached through the command line.
-module.exports = { installerStamp, upToDate, mergeRows, settleDropped, unknownArgs, mistypedArgs, usage, parseOptions, policyFor, plan, apply, decideText, decideBinary, lineCounts, overlap, NEAREST, skeletonLines };
+module.exports = { installerStamp, upToDate, settleDropped, unknownArgs, mistypedArgs, usage, parseOptions, plan, apply, lineCounts, overlap, NEAREST, skeletonLines };
 
 if (require.main === module) {
     try { process.exitCode = main(process.argv.slice(2)); }

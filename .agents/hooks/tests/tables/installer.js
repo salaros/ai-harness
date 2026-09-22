@@ -1,41 +1,12 @@
 // .agents/hooks/tests/tables/installer.js
-// scripts/update-harness.js's decisions, every one of them in process: how the manifest is read,
-// which arguments it refuses, what it does to a file the target already has, and the whole plan
-// against an upstream and a target held in memory.
+// scripts/update-harness.js's decisions, every one of them in process: which arguments it refuses,
+// how a conflicted merge is settled, and the whole plan against an upstream and a target held in
+// memory. What each policy decides for one path is in install-policy.js beside this file.
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const projectFacts = require("../../../../scripts/project-facts");
 const { installer, INSTALLER } = require("../fixtures");
-
-// scripts/harness-files.tsv decides what an install does to each path, and policyFor reads it.
-// First match wins, a row ending in / covers everything under it, and an `optional:<flag>` row is
-// seeded only when the run asked for that flag. The real table is checked elsewhere; what is pinned
-// here is how a table is read, against one written for the purpose.
-function manifestPoliciesAreReadInOrder(t) {
-    const harness = installer();
-    if (!harness) { t.skip("policyFor: the installer is the upstream's own, not installed here"); return; }
-    const rows = [
-        { path: "scripts/harness-files.tsv", policy: "skip" },
-        { path: "scripts/", policy: "merge" },
-        { path: "tools/docs-site/", policy: "optional:astro-docs" },
-        { path: "src/", policy: "seed" },
-    ];
-    const all = () => true;
-    const none = () => false;
-    const cases = [
-        ["scripts/harness-files.tsv", all, "skip", "the earlier row wins over the prefix below it"],
-        ["scripts/lib.js", all, "merge", "a row ending in / covers everything under it"],
-        ["src/app.ts", all, "seed", "an exact prefix match takes its own policy"],
-        ["README.md", all, "merge", "a path nobody classified is harness"],
-        ["tools/docs-site/astro.config.mjs", all, "seed", "an optional part the run asked for is seeded"],
-        ["tools/docs-site/astro.config.mjs", none, "template", "an optional part nobody asked for is not installed"],
-    ];
-    for (const [file, wants, want, why] of cases) {
-        const got = harness.policyFor(rows, file, wants);
-        t.ok(got === want, `policyFor: ${why}`, `${file} -> ${got}, expected ${want}`);
-    }
-}
 
 // The installer writes whenever it runs, so an argument it does not know has to stop it: a --help it
 // ignored once installed the harness into the repo it was asked about.
@@ -68,82 +39,6 @@ function installerRejectsUnknownArguments(t) {
     const run = require("child_process").spawnSync(process.execPath, [INSTALLER, "--help"], { cwd: os.tmpdir(), encoding: "utf8" });
     t.ok(run.status === 0 && run.stdout.includes("Usage:"), "--help prints the usage and exits 0 without a repository",
         `exit ${run.status}: ${run.stderr}`);
-}
-
-// What an install does to a file the target already has. Every branch used to need a git checkout,
-// an upstream history and a temp tree to reach even once, so none of them had a test; the decision
-// takes the base, the base recovery and the merge as arguments now, and the fakes below stand in for
-// all three. `raw` is what is on disk, `theirs` the upstream's, always LF.
-function installDecisionCoversEveryOutcome(t) {
-    const harness = installer();
-    if (!harness) { t.skip("the install decision: the installer is the upstream's own, not installed here"); return; }
-    const OURS = "one\ntwo edited\n";
-    const THEIRS = "one\ntwo upstream\n";
-    const clean = text => () => ({ text, conflicts: false, failed: false });
-    const conflicted = text => () => ({ text, conflicts: true, failed: false });
-    const broke = () => ({ text: "", conflicts: false, failed: true });
-    const never = () => { throw new Error("should not have been consulted"); };
-
-    const decide = (input, deps) => harness.decideText(
-        { policy: "merge", raw: OURS, theirs: THEIRS, hasBase: true, adopt: false, ...input },
-        { baseText: () => null, recoverBase: () => null, merge: never, ...deps });
-
-    const cases = [
-        // input, deps, expected outcome, expected text, why
-        [{ raw: THEIRS }, {}, "unchanged", null, "a copy already matching the upstream is left alone"],
-        [{ adopt: true }, {}, "adopted", THEIRS, "--adopt takes the upstream's version whatever the base says"],
-        [{ raw: "<<<<<<< yours\nmine\n" }, {}, "STILL OPEN", null, "markers an earlier run left are named, not merged over"],
-        [{ hasBase: false }, {}, "yours, no base", null, "an install with no base keeps what is there"],
-        [{}, {}, "yours, new here", null, "a file the base did not have is the project's own"],
-        [{}, { baseText: () => OURS }, "written", THEIRS, "a file nobody edited takes the upstream's version"],
-        [{}, { baseText: () => "one\n", merge: clean("one\ntwo edited\nthree\n") },
-            "merged", "one\ntwo edited\nthree\n", "an edited file keeps its edits and gains the changes around them"],
-        [{}, { baseText: () => "one\n", merge: clean(OURS) }, "unchanged", null,
-            "a merge that comes out as what is already there is not churn to report"],
-        [{}, { baseText: () => "one\n", merge: conflicted("<<<<<<< yours\n") }, "CONFLICT", "<<<<<<< yours\n",
-            "a real collision is written with markers and named"],
-        [{}, { baseText: () => "one\n", merge: broke }, "yours, merge failed", null,
-            "a merge git could not run leaves the file alone"],
-        // reconcile is the policy for a file the harness cannot work around, so it merges even with
-        // no receipt: the nearest upstream version stands in, and failing that an empty base makes
-        // the whole file one honest conflict.
-        [{ policy: "reconcile", hasBase: false }, { recoverBase: () => "one\n", merge: clean("merged\n") },
-            "merged", "merged\n", "reconcile recovers a base when the receipt has none"],
-        [{ policy: "reconcile", hasBase: false }, { merge: (from) => ({ text: `base=${JSON.stringify(from)}`, conflicts: true, failed: false }) },
-            "CONFLICT", 'base=""', "reconcile with nothing to recover merges against an empty base"],
-    ];
-    for (const [input, deps, outcome, text, why] of cases) {
-        const got = decide(input, deps);
-        t.ok(got.outcome === outcome && got.text === text, `decideText: ${why}`,
-            `got ${JSON.stringify(got)}, expected outcome ${outcome} and text ${JSON.stringify(text)}`);
-    }
-
-    // Git checks a repo out with the platform's line endings, so a Windows copy holds CRLF where the
-    // upstream stores LF. The comparison happens in LF and the result goes back in what the file had.
-    const windows = harness.decideText(
-        { policy: "merge", raw: "one\r\ntwo edited\r\n", theirs: THEIRS, hasBase: true, adopt: false },
-        { baseText: () => OURS, recoverBase: () => null, merge: never });
-    t.ok(windows.outcome === "written" && windows.text === "one\r\ntwo upstream\r\n",
-        "decideText: a CRLF working copy is written back in CRLF", JSON.stringify(windows));
-    const unchanged = harness.decideText(
-        { policy: "merge", raw: "one\r\ntwo upstream\r\n", theirs: THEIRS, hasBase: true, adopt: false },
-        { baseText: never, recoverBase: never, merge: never });
-    t.ok(unchanged.outcome === "unchanged",
-        "decideText: a CRLF copy matching the upstream does not read as edited", JSON.stringify(unchanged));
-
-    // A file with no lines to merge is the upstream's copy or the project's, and the base decides.
-    const bin = (held, theirs, was, adopt = false) => harness.decideBinary(
-        { held: Buffer.from(held), theirs: Buffer.from(theirs), hasBase: was !== null, adopt },
-        { baseBytes: () => (was === null ? null : Buffer.from(was)) });
-    const binCases = [
-        [bin("a", "a", "a"), "unchanged", "a copy already matching the upstream is left alone"],
-        [bin("a", "b", "a"), "written", "a copy nobody replaced takes the upstream's"],
-        [bin("mine", "b", "a"), "yours, binary", "a copy the project replaced stays replaced"],
-        [bin("mine", "b", null), "yours, no base", "with no base a differing copy is the project's"],
-        [bin("mine", "b", "a", true), "adopted", "--adopt takes the upstream's binary too"],
-    ];
-    for (const [got, outcome, why] of binCases)
-        t.ok(got.outcome === outcome, `decideBinary: ${why}`, `got ${got.outcome}, expected ${outcome}`);
 }
 
 // The install plan, from an upstream and a target held in memory: the upstream as a list of commits,
@@ -280,33 +175,6 @@ function installPlanCoversEveryCase(t) {
     t.ok(pick(update, "harness-lock.json").write.includes('  "skeletons": ["MEMORY.md", "CONTEXT.md", "TODO.md"]\n'),
         "install plan: the receipt writes the list on one line, as Prettier does", pick(update, "harness-lock.json").write);
 
-    // settleDropped on its own: a --diff3 conflict whose project side shares no line with the base is
-    // a section the project dropped or replaced, and stays so.
-    const H = (ours, base, theirs) => `top\n<<<<<<< yours\n${ours}||||||| upstream (base)\n${base}=======\n${theirs}>>>>>>> upstream (new)\nend\n`;
-    for (const [merged, text, conflicts, why] of [
-        [H("dist/\n", "harness a\nharness b\n", "harness a\n"), "top\ndist/\nend\n", false, "a section the project replaced keeps the project's lines"],
-        [H("", "harness a\nharness b\n", "harness a\n"), "top\nend\n", false, "a section the project deleted stays deleted"],
-        [H("harness a\nmine\n", "harness a\n", "harness a\ntheirs\n"), "top\n<<<<<<< yours\nharness a\nmine\n=======\nharness a\ntheirs\n>>>>>>> upstream (new)\nend\n", true, "a section both edited stays a conflict, without the base"],
-        [H("mine\n", "", "theirs\n"), "top\n<<<<<<< yours\nmine\n=======\ntheirs\n>>>>>>> upstream (new)\nend\n", true, "both adding at one place stays a conflict"],
-    ]) {
-        const got = harness.settleDropped(merged);
-        t.ok(got.text === text && got.conflicts === conflicts, `install plan: merge: ${why}`, JSON.stringify(got));
-    }
-
-    // mergeRows on its own: a keyed table merged as a set of rows, never in conflict.
-    const T = (...rows) => ["# t", ...rows, ""].join("\n");
-    for (const [base, ours, theirs, want, why] of [
-        [T("a\t1", "b\t1"), T("a\t1", "b\t1"), T("a\t2"), T("a\t2", "b\t1"), "a row the upstream dropped stays"],
-        [T("a\t1"), T("a\tmine"), T("a\t2"), T("a\tmine"), "a row both changed is the project's"],
-        [T("a\t1"), T("a\tmine"), T("a\t1"), T("a\tmine"), "a row only the project changed is the project's"],
-        [T("a\t1", "b\t1"), T("a\t1"), T("a\t1", "b\t2"), T("a\t1"), "a row the project deleted stays deleted"],
-        [T("a\t1"), T("a\t1", "m\t1"), T("n\t1", "a\t1"), T("n\t1", "a\t1", "m\t1"), "the upstream's order and new rows, then the project's own"],
-        [null, T("a\tmine"), T("a\t2", "c\t1"), T("a\tmine", "c\t1"), "with no base the project's copy of a row wins"],
-    ]) {
-        const got = harness.mergeRows(base, ours, theirs);
-        t.ok(got === want, `install plan: union table: ${why}`, JSON.stringify(got));
-    }
-
     const stale = run({ ".githooks/pre-commit": "hook mine\n", "AGENTS.md": "# Agents\nold rule\n", ".claude/agents": ".agents/agents" }, null);
     t.ok(stale.notices.some(n => n.includes("predates the receipt")), "install plan: a harness with no receipt is named", stale.notices.join("\n"));
     is(pick(stale, ".githooks/pre-commit"), { outcome: "yours, no base", bucket: "kept", write: undefined, exec: true }, "with no base an edited hook is kept, and still made executable");
@@ -356,6 +224,23 @@ function installPlanCoversEveryCase(t) {
         "install plan: a dry run writes nothing", `${done.length} entries; ${nowhere} exists: ${fs.existsSync(nowhere)}`);
 }
 
+// A --diff3 conflict whose project side shares no line with the base is a section the project
+// dropped or replaced, and stays so.
+function mergeSettlesDroppedSections(t) {
+    const harness = installer();
+    if (!harness) { t.skip("settleDropped: the installer is the upstream's own, not installed here"); return; }
+    const H = (ours, base, theirs) => `top\n<<<<<<< yours\n${ours}||||||| upstream (base)\n${base}=======\n${theirs}>>>>>>> upstream (new)\nend\n`;
+    for (const [merged, text, conflicts, why] of [
+        [H("dist/\n", "harness a\nharness b\n", "harness a\n"), "top\ndist/\nend\n", false, "a section the project replaced keeps the project's lines"],
+        [H("", "harness a\nharness b\n", "harness a\n"), "top\nend\n", false, "a section the project deleted stays deleted"],
+        [H("harness a\nmine\n", "harness a\n", "harness a\ntheirs\n"), "top\n<<<<<<< yours\nharness a\nmine\n=======\nharness a\ntheirs\n>>>>>>> upstream (new)\nend\n", true, "a section both edited stays a conflict, without the base"],
+        [H("mine\n", "", "theirs\n"), "top\n<<<<<<< yours\nmine\n=======\ntheirs\n>>>>>>> upstream (new)\nend\n", true, "both adding at one place stays a conflict"],
+    ]) {
+        const got = harness.settleDropped(merged);
+        t.ok(got.text === text && got.conflicts === conflicts, `settleDropped: ${why}`, JSON.stringify(got));
+    }
+}
+
 // The installer lays down MEMORY.md's facts from the table the gate reads, every one a placeholder:
 // all of them in a plain repo, all but the name and purpose beside an INTENT.md. Either skeleton is
 // unanswered as a whole, so a fresh install is blocked until project-init runs.
@@ -397,10 +282,9 @@ function installerStampNamesOnlyAReleasedVersion(t) {
 }
 
 module.exports = [
-    manifestPoliciesAreReadInOrder,
     installerRejectsUnknownArguments,
-    installDecisionCoversEveryOutcome,
     installPlanCoversEveryCase,
+    mergeSettlesDroppedSections,
     memorySkeletonDefersToIntent,
     installerStampNamesOnlyAReleasedVersion,
 ];

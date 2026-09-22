@@ -170,6 +170,28 @@ function installerInstallsIntoAnEmptyRepo(t, env) {
     });
 }
 
+// npx runs the installer from the published package, which holds only what package.json's `files`
+// lists. A script the installer requires and the list leaves out works from a checkout and breaks
+// for every project on the next release, so the requires are followed here, one file to the next.
+function installerShipsEverythingItRequires(t) {
+    if (!installer()) { t.skip("package files: the installer is the upstream's own, not installed here"); return; }
+    const listed = new Set(JSON.parse(fs.readFileSync(path.join(lib.checkout, "package.json"), "utf8")).files || []);
+    const seen = new Set();
+    const walk = rel => {
+        if (seen.has(rel)) return;
+        seen.add(rel);
+        const text = fs.readFileSync(path.join(lib.checkout, rel), "utf8");
+        for (const [, dep] of text.matchAll(/require\(\s*["'](\.{1,2}\/[^"']+)["']\s*\)/g)) {
+            const file = path.posix.normalize(path.posix.join(path.posix.dirname(rel), dep));
+            walk(file.endsWith(".js") ? file : `${file}.js`);
+        }
+    };
+    walk("scripts/update-harness.js");
+    const missing = [...seen].filter(rel => !listed.has(rel));
+    t.ok(seen.size > 1 && !missing.length, "package.json ships every script the installer requires",
+        missing.length ? `missing from "files": ${missing.join(", ")}` : [...seen].join(", "));
+}
+
 // The harness invariants are scripts/check-harness.js's, because they travel: a target runs them after
 // an edit and the installer runs them against what it wrote. The upstream holds itself to the same
 // ones, with the suite's own t, so a regression here fails the suite the way it fails an install.
@@ -213,4 +235,5 @@ module.exports = [
     claudeHooksRunInEveryShell,
     checkEditRunsTheInvariantsOnTheirPaths,
     installerInstallsIntoAnEmptyRepo,
+    installerShipsEverythingItRequires,
 ];

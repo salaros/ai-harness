@@ -11,6 +11,8 @@
 //   lib.node(["scripts/skills.js", "missing"]) // run a script with this node; { status, output }
 //   lib.shell("npm install")                 // run a command through the OS shell
 //   lib.readTsv("scripts/stacks.tsv")        // rows as arrays of cells; blank and # lines skipped
+//   lib.toLf(text), lib.asFound(text, crlf)  // compare in LF, write back in the endings a file had
+//   lib.sameContent(a, b)                    // equal text, or equal bytes; never text against bytes
 const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
@@ -84,4 +86,21 @@ function readTsv(file) {
         .map(l => l.split("\t"));
 }
 
-module.exports = { root, args, ROOT_FLAG, ROOT_ENV_VARS, CHECKOUT, chdirRoot, fix, warn, stdin, run, node, shell, readTsv };
+// Git checks a repo out with the platform's line endings, so a Windows working copy holds CRLF where
+// the upstream stores LF. Compared raw, every line of every file reads as changed: a copy nobody
+// touched reports as edited, and a real edit is buried in a whole-file conflict nobody can read. So
+// a comparison or a merge happens in LF, and the result is written back in the endings the file
+// already had.
+const CRLF = /\r\n/g;
+const LF = /\n/g;
+const isCrlf = text => (text.match(CRLF) || []).length * 2 > (text.match(LF) || []).length;
+const toLf = text => text.replace(CRLF, "\n");
+const asFound = (text, crlf) => crlf ? text.replace(LF, "\r\n") : text;
+
+// One test for text and bytes, so a caller comparing a blob against what is on disk does not have
+// to know which it got.
+const sameContent = (a, b) => Buffer.isBuffer(a) || Buffer.isBuffer(b)
+    ? Buffer.isBuffer(a) && Buffer.isBuffer(b) && a.equals(b)
+    : a === b;
+
+module.exports = { root, args, ROOT_FLAG, ROOT_ENV_VARS, CHECKOUT, chdirRoot, fix, warn, stdin, run, node, shell, readTsv, isCrlf, toLf, asFound, sameContent };

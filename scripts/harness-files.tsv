@@ -36,6 +36,7 @@ opencode.json	template	Wiring for one agent tool. A team that does not use OpenC
 tools/docs-site/	optional:astro-docs	The Astro site that renders the chain. Optional, and nothing in the harness reaches it: install it with --astro-docs.
 package.json	template	The npm wrapper that publishes the installer. Whatever stack lands in a project’s src/ writes its own.
 scripts/update-harness.js	template	The installer. A project updates with npx @salaros/ai-harness, which clones the upstream, so it needs no copy of this.
+scripts/install-policy.js	template	What the installer decides for each path, by policy. Shipped in the npx package beside the installer, which alone requires it.
 scripts/harness-files.tsv	template	This table. Read from the upstream checkout during an update, never from the project.
 .agents/hooks/test.js	template	The harness suite: fixtures that prove the harness scripts. check-edit.js skips it where it is absent; a target runs scripts/check-harness.js instead.
 .agents/hooks/tests/	template	Its fixtures.

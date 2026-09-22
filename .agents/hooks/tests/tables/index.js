@@ -9,7 +9,7 @@ module.exports = [
     ...require("./project"),
     ...require("./docs-chain"),
     ...require("./harness"), ...require("./hook-event"),
-    ...require("./installer"),
+    ...require("./install-policy"), ...require("./installer"),
     ...require("./commit-message"),
     ...require("./todo"),
     ...require("./stacks"),

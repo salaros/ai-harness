@@ -24,6 +24,10 @@ _Avoid_: unit test, fixture, test suite
 Everything one install or update will do to a target, path by path, decided before anything is written: what each path gets, its mode, and the outcome the run reports. A dry run prints it, and a real run applies it.
 _Avoid_: changeset, diff, manifest
 
+**Install policy**:
+What an install does with one kind of path, named by its row in `scripts/harness-files.tsv`: merge, reconcile, union, seed, skip, skills or template. Each decides one path's outcome, summary bucket and content from what the target holds, the base and the run's flags, and the install plan is made of those decisions.
+_Avoid_: strategy, mode, rule
+
 **Skill roster**:
 What a repo's harness knows about its skills at one moment: every entry under `.agents/skills`, each skill's frontmatter and source, which agents route it, the skills the lock records but the disk lacks, and whether the licence notice is current. Read in one pass and never written; relinking and writing the notice are separate acts.
 _Avoid_: skill registry, skill index, skill list

@@ -4,6 +4,7 @@
 //   withRoot({ "MEMORY.md": "..." }, dir => check(dir))   a throwaway repo, removed afterwards
 //   text("# TODO", "", "- [ ] ...")                        lines, newline-terminated
 //   installer()                                            the installer module, or null
+//   installPolicy()                                        scripts/install-policy.js, or null
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -27,5 +28,8 @@ const text = (...lines) => lines.join("\n") + "\n";
 // before the first check ran, and take the whole suite with it.
 const INSTALLER = path.join(__dirname, "..", "..", "..", "scripts", "update-harness.js");
 const installer = () => fs.existsSync(INSTALLER) ? require(INSTALLER) : null;
+// The installer's policy decisions, the upstream's own for the same reason.
+const INSTALL_POLICY = path.join(__dirname, "..", "..", "..", "scripts", "install-policy.js");
+const installPolicy = () => fs.existsSync(INSTALL_POLICY) ? require(INSTALL_POLICY) : null;
 
-module.exports = { withRoot, text, installer, INSTALLER };
+module.exports = { withRoot, text, installer, INSTALLER, installPolicy };
