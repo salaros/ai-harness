@@ -16,6 +16,7 @@ const fs = require("fs");
 const path = require("path");
 const lib = require("../lib");
 const harness = require("../../../scripts/check-harness");
+const docsCheck = require("../../../scripts/docs-check");
 const { withRoot, installer, INSTALLER } = require("./fixtures");
 
 // scripts/harness-files.tsv decides what an install does with each path, and a path no row matches
@@ -39,6 +40,33 @@ function everyTrackedPathIsClassified(t) {
     t.ok(!loose.length,
         "every tracked path matches a row in scripts/harness-files.tsv",
         loose.slice(0, 10).join(", "));
+}
+
+// The upstream runs the same documentation chain it asks its projects to run, so its own docs/
+// holds real ADRs and SPECs -- about the harness, its installer, its seams. Those are the
+// upstream's work, not a starting point anybody grows into: a fresh install seeded every project
+// with an ADR about this installer's own read seam and a SPEC for modules that project will never
+// have. `.scratch/reviews/` already has this rule written down; the chain needs it too.
+// Read from AGENTS.md's table rather than from a list here, so a stage folder added later is
+// covered without anyone remembering this check exists.
+function noChainDocumentOfTheUpstreamTravels(t) {
+    const manifest = "scripts/harness-files.tsv";
+    const r = lib.run("git", ["ls-files"]);
+    if (!fs.existsSync(manifest) || r.status !== 0) { t.skip("chain manifest check: no harness-files.tsv in a git checkout"); return; }
+    const rows = fs.readFileSync(manifest, "utf8").split(/\r?\n/)
+        .filter(l => l.trim() && !l.startsWith("#"))
+        .map(l => { const [file, policy] = l.split("\t"); return { file, policy }; });
+    const policyOf = f => (rows.find(p => p.file.endsWith("/") ? f.startsWith(p.file) : f === p.file) || {}).policy;
+
+    // The stages with a folder of their own under docs/. The other three live in tests/, .scratch/
+    // and src/, where the upstream ships scaffolding a project does grow into.
+    const folders = docsCheck.readChain(lib.checkout).stages.filter(s => s.folder).map(s => s.lives);
+    t.ok(folders.length > 0, "chain manifest check: AGENTS.md names at least one stage folder", folders.join());
+    const travelling = r.output.split(/\r?\n/).filter(Boolean)
+        .filter(f => folders.some(d => f.startsWith(d)) && policyOf(f) !== "template");
+    t.ok(!travelling.length,
+        "no document of the upstream's own chain is installed into a project",
+        travelling.map(f => `${f} is ${policyOf(f)}`).join(", "));
 }
 
 // root() must actually follow a harness's project-dir variable, not just fall back to this
@@ -231,6 +259,7 @@ module.exports = [
     harnessInvariantsHoldHere,
     everyUpstreamHookIsHandled,
     everyTrackedPathIsClassified,
+    noChainDocumentOfTheUpstreamTravels,
     sessionStartFollowsProjectDir,
     checkEditFollowsProjectDir,
     checkEditChecksMemoryRequirements,

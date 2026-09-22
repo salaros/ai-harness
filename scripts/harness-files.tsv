@@ -55,7 +55,7 @@ skills-lock.json	skills	Merged as a union, so a skill the project vendored itsel
 .claude/agents	merge	One link to .agents/agents, the same shape. Declared rather than left to the fallback, because the fallback is what a reader has to know to predict it.
 docs/agents/	merge	Harness config the skills read. issue-tracker.md carries the project key, so it merges rather than being overwritten.
 docs/README.md	reconcile	Says what the chain puts where. The artifacts under it are the project's; this file is the harness explaining the folder.
-docs/	seed	The documentation chain. Every artifact in it is the project's.
+docs/	template	The documentation chain. Every artifact in it is the project's, so the upstream ships none of its own: it runs the same chain, and its ADRs and SPECs are about this harness and its installer. A project writes its own here with the skills, and an install neither seeds nor touches them.
 src/	seed	The project's code.
 tests/	seed	The project's tests.
 tools/	seed	Project tooling. The docs site lands on a first install and is then the project's to change.
