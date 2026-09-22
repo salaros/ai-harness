@@ -502,7 +502,7 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
         // Reported one line per skill by planSkills below, not one per reference file: a skill is the
         // unit a project installs, and its files run to several hundred.
         if (policy === "skills") { skills.push(entry); continue; }
-        const { outcome, bucket, ...act } = installPolicy.decide(policy,
+        const { outcome, bucket, notice, ...act } = installPolicy.decide(policy,
             { exists, theirs, hasBase: base !== null, adopt: options.adopt, asked }, {
                 held: () => target.read(file, Buffer.isBuffer(theirs)),
                 base: () => upstream.blob(base, file),
@@ -511,6 +511,7 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
                 recoverBase: ours => recoverBase(upstream, file, ours),
                 merge: threeWay,
             });
+        if (notice) notices.push(`${file}: ${notice}`);
         line(outcome, bucket, act);
     }
 
@@ -648,18 +649,25 @@ function apply(entries, root, options) {
 
 // ---------------------------------------------------------------- after it
 
-// Two files nothing copied: the per-harness skill links, which depend on which skills this project
-// has rather than which the upstream ships, and the third-party notice, which must describe this
-// project's lock file. Both are generated, so the install leaves a harness that works rather than a
-// list of commands to remember. Each run names the target with --root: the shared resolver prefers a
-// harness's project-dir variable to the checkout a script sits in, and an install started from a
-// session open on another repo would otherwise link and describe that repo instead.
+// First the Git hooks, pointed at .githooks/ before anything else: an install that stopped at a
+// printed reminder left clones whose hooks never ran, and nothing says so -- Git skips a hooks
+// folder it was never told about in silence. Then two files nothing copied: the per-harness skill
+// links, which depend on which skills this project has rather than which the upstream ships, and the
+// third-party notice, which must describe this project's lock file. All three are generated, so the
+// install leaves a harness that works rather than a list of commands to remember. Each run names the
+// target with --root: the shared resolver prefers a harness's project-dir variable to the checkout a
+// script sits in, and an install started from a session open on another repo would otherwise wire,
+// link and describe that repo instead. Returns whether the hooks were wired.
 function finish(target, options) {
-    if (!options.quiet) say("\nlinks and notices");
-    for (const [label, args] of [["links", ["relink"]], ["notices", ["notices"]]]) {
-        const r = lib.node([path.join(target, "scripts/skills.js"), ...args, `${lib.ROOT_FLAG}${target}`], { cwd: target });
+    if (!options.quiet) say("\nGit hooks, links and notices");
+    const steps = [["git hooks", "scripts/githooks-init.js", []], ["links", "scripts/skills.js", ["relink"]], ["notices", "scripts/skills.js", ["notices"]]];
+    let hooks = true;
+    for (const [label, script, args] of steps) {
+        const r = lib.node([path.join(target, script), ...args, `${lib.ROOT_FLAG}${target}`], { cwd: target });
         say(r.status === 0 ? r.output : `${label}: ${r.output}`);
+        if (label === "git hooks" && r.status !== 0) hooks = false;
     }
+    return hooks;
 }
 
 // Merging is not checking. The installer knows it wrote a file; it cannot know whether the result
@@ -682,7 +690,7 @@ function selfCheck(target, templateDir, options) {
 
 // The summary, from the entries as they turned out. Returns the exit code: 1 while anything is left
 // for the reader to act on.
-function report({ entries, base, head, ref, target, check, options }) {
+function report({ entries, base, head, ref, target, check, hooks = true, options }) {
     const notes = { written: [], merged: [], conflicted: [], seeded: [], kept: [], skipped: [], template: [], unreadable: [] };
     for (const e of entries) if (e.bucket) notes[e.bucket].push(e.file);
     // Every path was named as it happened, so repeating the lists here doubles the output; a quiet
@@ -695,7 +703,7 @@ function report({ entries, base, head, ref, target, check, options }) {
     };
     say("");
     say(options.dryRun ? `dry run against ${ref} at ${head.slice(0, 8)}` : `harness updated to ${ref} at ${head.slice(0, 8)}`);
-    if (!base) say("no merge base: this was an install, so nothing that already existed was changed");
+    if (!base) say("no merge base: this was an install, so a file already here was kept, or given only the part the harness needs");
     list("written", notes.written);
     list("merged", notes.merged);
     list("created for the first time", notes.seeded);
@@ -720,11 +728,10 @@ function report({ entries, base, head, ref, target, check, options }) {
     else if (check && check.failed) say(`\nSELF CHECK FAILED, so this install does not work yet:\n${check.output}`);
     else if (check) say(`\nself check: ${check.summary}`);
 
-    if (!options.dryRun) {
-        say(`\nIn ${target}, point Git at the hooks once per clone, then check the harness:`);
-        say(`  node scripts/githooks-init.js && node scripts/check-harness.js`);
-    }
-    return notes.conflicted.length || notes.unreadable.length || (check && check.failed) ? 1 : 0;
+    // Git hooks are wired per clone: this one was wired above, and every other clone runs the script once.
+    if (!options.dryRun && !hooks) say(`\nGIT HOOKS NOT WIRED: in ${target}, run node scripts/githooks-init.js`);
+    if (!options.dryRun) say(`\nEvery other clone of ${target} wires its Git hooks once with: node scripts/githooks-init.js`);
+    return notes.conflicted.length || notes.unreadable.length || (check && check.failed) || !hooks ? 1 : 0;
 }
 
 // ---------------------------------------------------------------- the run
@@ -769,13 +776,14 @@ function main(args) {
         for (const notice of planned.notices) say(notice);
         const entries = apply(planned.entries, target, options);
         let check = null;
+        let hooks = true;
         if (!options.dryRun) {
             // After the plan is applied, because relink needs the skills in place and the invariants
             // check the links relink has just written.
-            finish(target, options);
+            hooks = finish(target, options);
             if (options.check) check = selfCheck(target, templateDir, options);
         }
-        return report({ entries, base: planned.base, head, ref, target, check, options });
+        return report({ entries, base: planned.base, head, ref, target, check, hooks, options });
     } finally {
         if (temporary) fs.rmSync(templateDir, { recursive: true, force: true });
     }

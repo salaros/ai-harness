@@ -38,7 +38,17 @@ From the repository's root:
 npx @salaros/ai-harness
 ```
 
-The installer adds the harness files and leaves your own work alone: it never writes `README.md` or `LICENSE`, and it adds a folder README only where one is missing. It records the upstream commit it installed in `harness-lock.json`.
+The installer adds the harness files and leaves your own work alone: it never writes `README.md` or `LICENSE`, and it adds a folder README only where one is missing. It records the upstream commit it installed in `harness-lock.json`, then points Git at the harness's hooks in this clone. Other clones run `node scripts/githooks-init.js` once.
+
+If the repository already has agent files of its own, the first install keeps them and adds what the harness needs:
+
+| File | What the first install does |
+| --- | --- |
+| `AGENTS.md`, `docs/README.md` | Writes the harness's version and appends yours under `## This project`, for you to fold in |
+| `CLAUDE.md` | Adds `@AGENTS.md` at the top if it's missing |
+| `.claude/settings.json` | Merges by key: replaces the harness's hooks, keeps your permissions and hooks (on every update, too) |
+| `.mcp.json` | Adds the harness's MCP servers; yours win where both define one |
+| `.gitignore` | Appends the harness's patterns you don't have, under a comment |
 
 Run the same command again to update. Files you haven't edited take the new version, files you have edited keep your changes and gain the new ones, and a real conflict is written with conflict markers and reported.
 

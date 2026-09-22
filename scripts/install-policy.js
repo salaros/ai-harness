@@ -18,8 +18,9 @@
 //          recoverBase(ours) the upstream version nearest the target's copy, or null
 //          merge(base, ours, theirs)  a three-way merge: { text, conflicts, failed }
 // The answer: `outcome` is the word the run prints, `bucket` the summary list the path joins (null
-// for a path nothing happened to), `write` the content to write when there is any, and `silent`
-// when the path is counted in the summary but never printed as a line.
+// for a path nothing happened to), `write` the content to write when there is any, `silent`
+// when the path is counted in the summary but never printed as a line, and `notice` a sentence the
+// run prints before its summary, for a result someone has to finish by hand.
 const lib = require("./lib");
 
 // ---------------------------------------------------------------- the manifest
@@ -71,19 +72,26 @@ function decideText({ policy, raw, theirs, hasBase, adopt }, { base, recoverBase
     // --adopt above throws it away.
     if (MARKED.test(ours)) return { outcome: "STILL OPEN", bucket: "conflicted" };
 
+    // Claude Code's settings are merged by key on every run, base or none: see mergeSettings.
+    if (policy === "settings") return decideSettings(ours, theirs, crlf);
+
     // A reconcile file is one the harness cannot work around: AGENTS.md is the map every agent reads
     // and holds the table docs-check parses, and docs/README.md says what the chain puts where.
     // Keeping a stale one leaves a repo that looks installed and behaves like the version it came
     // from, so these are merged even when the receipt is missing. Nothing in the upstream's history
-    // matching means this copy was written by hand, and an empty base makes the whole file one
-    // conflict -- the honest answer: both versions are there to read, and the run exits 1.
+    // matching means this copy was written by hand, for a project that had agent instructions before
+    // it had the harness: see appendProject.
     let from = hasBase ? base() : null;
     if (from === null && policy === "reconcile") from = recoverBase(ours);
-    if (from === null && policy === "reconcile") from = "";
     // A union table merges by row whether or not there is a base, and even an untouched copy goes
     // through that merge: it may hold a row the upstream dropped and the project still needs.
     if (from === null && policy === "union") from = "";
-    if (from === null) return keep;
+    if (from === null) {
+        const own = WITHOUT_BASE[policy];
+        const done = own ? own(ours, theirs) : null;
+        if (!done) return keep;
+        return { ...done, write: lib.asFound(done.write, crlf) };
+    }
 
     if (ours === from && policy !== "union") return { outcome: "written", bucket: "written", write: lib.asFound(theirs, crlf) };
     const merged = merge(from, ours, theirs);
@@ -123,7 +131,136 @@ function mergeRows(base, ours, theirs) {
 }
 const unionMerge = (from, ours, up) => ({ text: mergeRows(from, ours, up), conflicts: false, failed: false });
 
-// merge, reconcile and union: a file the target lacks is written, and one it has is merged.
+// ---------------------------------------------------------------- a file that has no base
+
+// What a policy does with a text file the target already has and no upstream version to merge it
+// against: a first install into a project that set up its own agent files, ignore list or MCP
+// servers before it took the harness. Plain merge keeps the file whole, the project's work being
+// the one thing an install must not lose; these policies also bring in the part of the upstream's
+// copy the harness cannot work without. Each answers { outcome, bucket, write, notice? } in LF, or
+// null to keep the file as it is. A later run has the receipt, so each runs once per file.
+const WITHOUT_BASE = {
+    reconcile: appendProject,
+    import: addImport,
+    ignore: appendPatterns,
+    keyed: (ours, theirs) => {
+        const merged = mergeJson(ours, theirs, (o, t) => mergeKeys(o, t, 2));
+        return merged && { outcome: "merged by key", bucket: "merged", write: merged };
+    },
+};
+
+// The upstream's copy, then the project's under a heading of its own. A whole-file conflict was the
+// earlier answer, and it left the one file every agent reads full of markers, with the run exiting 1
+// on a first install. The harness's text is what the rest of the harness assumes; the project's is
+// what nobody else knows. Both stay, and the notice asks someone to fold the second into the first.
+// The project's headings move down under the new one, so its title does not compete with the file's.
+const PROJECT_HEADING = "## This project";
+function appendProject(ours, theirs) {
+    const note = "<!-- ai-harness: this project's own copy of this file, kept from before the harness was installed. Fold what still applies into the sections above, then delete this section. -->";
+    return {
+        outcome: "yours appended", bucket: "merged",
+        write: [theirs.trimEnd(), "", note, PROJECT_HEADING, "", demoteHeadings(ours).trim(), ""].join("\n"),
+        notice: `the harness's copy was written with the project's own appended under "${PROJECT_HEADING}": fold what still applies into it`,
+    };
+}
+
+// Moves every Markdown heading outside a code fence down, so the shallowest lands one level below
+// PROJECT_HEADING. Six stays six: Markdown has nothing deeper.
+function demoteHeadings(text) {
+    const lines = text.split("\n");
+    let fence = false;
+    const level = lines.map(line => {
+        if (/^\s*(```|~~~)/.test(line)) { fence = !fence; return 0; }
+        const m = !fence && /^(#{1,6})\s/.exec(line);
+        return m ? m[1].length : 0;
+    });
+    const top = Math.min(...level.filter(Boolean));
+    if (!Number.isFinite(top) || top >= 3) return text;
+    return lines.map((line, i) => level[i] ? "#".repeat(Math.min(6, level[i] + 3 - top)) + line.slice(level[i]) : line).join("\n");
+}
+
+// CLAUDE.md is how Claude Code reaches AGENTS.md. A project's own CLAUDE.md, kept whole, leaves Claude
+// reading instructions that never mention the harness, so the import goes on top and the rest stays.
+const IMPORT = "@AGENTS.md";
+function addImport(ours) {
+    if (ours.split("\n").some(l => l.trim() === IMPORT)) return null;
+    return { outcome: "import added", bucket: "merged", write: `${IMPORT}\n\n${ours}` };
+}
+
+// A .gitignore is a set of patterns, so the upstream's that this one lacks go at the end, under a
+// comment saying where they came from; nothing of the project's moves. A pattern the project
+// negates is its decision, and stays unlisted.
+function appendPatterns(ours, theirs) {
+    const have = new Set(ours.split("\n").map(l => l.trim()));
+    const missing = [...new Set(theirs.split("\n").map(l => l.trim()))]
+        .filter(l => l && !l.startsWith("#") && !have.has(l) && !have.has("!" + l));
+    if (!missing.length) return null;
+    const note = "# Added by the ai-harness install: the harness's patterns this file did not have.";
+    return { outcome: "patterns appended", bucket: "merged", write: [ours.trimEnd(), "", note, ...missing, ""].join("\n") };
+}
+
+// ---------------------------------------------------------------- JSON merged by key
+
+const isObject = v => v !== null && typeof v === "object" && !Array.isArray(v);
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+// The project's value wins at every key both have; a key only the upstream has is added. Objects are
+// merged down to `depth` levels, below which the project's value is taken whole: an MCP server the
+// project configured is its own, not a blend of two. Arrays are a union, the project's order first.
+function mergeKeys(ours, theirs, depth = Infinity) {
+    if (depth > 0 && isObject(ours) && isObject(theirs)) {
+        const out = { ...ours };
+        for (const [k, v] of Object.entries(theirs)) out[k] = k in ours ? mergeKeys(ours[k], v, depth - 1) : v;
+        return out;
+    }
+    if (Array.isArray(ours) && Array.isArray(theirs)) return [...ours, ...theirs.filter(t => !ours.some(o => same(o, t)))];
+    return ours;
+}
+
+// Both texts parsed and merged; null when either is not JSON or the merge adds nothing. The result is
+// the upstream's own text when it comes out equal to it, so the upstream's layout survives.
+function mergeJson(ours, theirs, merge) {
+    let o, t;
+    try { o = JSON.parse(ours); t = JSON.parse(theirs); } catch { return null; }
+    const merged = merge(o, t);
+    if (same(merged, o)) return null;
+    return same(merged, t) ? theirs : JSON.stringify(merged, null, 2) + "\n";
+}
+
+// .claude/settings.json holds the harness's hook launchers beside whatever the project set up: its
+// permissions, its own hooks, its environment. A line merge of that JSON either keeps a stale
+// launcher or conflicts over a brace, so it is merged by key on every run, receipt or none. Every
+// hook whose command runs a script in .agents/hooks/ is the harness's, and is replaced by the
+// upstream's current set; every other key and hook is the project's and stays.
+const HARNESS_HOOK = /\.agents\/hooks\//;
+function mergeSettings(ours, theirs) {
+    const merged = mergeKeys(ours, theirs);
+    const hooks = {};
+    for (const [event, groups] of Object.entries(isObject(ours.hooks) ? ours.hooks : {})) {
+        if (!Array.isArray(groups)) { hooks[event] = groups; continue; }
+        hooks[event] = groups.map(g => isObject(g) && Array.isArray(g.hooks)
+            ? { ...g, hooks: g.hooks.filter(h => !(isObject(h) && typeof h.command === "string" && HARNESS_HOOK.test(h.command))) }
+            : g).filter(g => !isObject(g) || !Array.isArray(g.hooks) || g.hooks.length);
+    }
+    for (const [event, groups] of Object.entries(isObject(theirs.hooks) ? theirs.hooks : {}))
+        hooks[event] = [...(Array.isArray(hooks[event]) ? hooks[event] : []), ...groups];
+    for (const event of Object.keys(hooks)) if (Array.isArray(hooks[event]) && !hooks[event].length) delete hooks[event];
+    if (Object.keys(hooks).length || "hooks" in ours) merged.hooks = hooks;
+    return merged;
+}
+
+// A project's settings that are not JSON are left for someone to read; the upstream's always are.
+function decideSettings(ours, theirs, crlf) {
+    try { JSON.parse(ours); } catch { return { outcome: "yours, not JSON", bucket: "kept" }; }
+    const merged = mergeJson(ours, theirs, mergeSettings);
+    if (merged === null) return { outcome: "unchanged", bucket: null };
+    return { outcome: "merged by key", bucket: "merged", write: lib.asFound(merged, crlf) };
+}
+
+// ---------------------------------------------------------------- the merging policies
+
+// merge, reconcile, union, import, ignore, keyed and settings: a file the target lacks is written,
+// and one it has is merged.
 function merging(policy) {
     return (facts, reads) => {
         if (!facts.exists) return { outcome: "written", bucket: "written", write: facts.theirs };
@@ -158,6 +295,10 @@ const POLICIES = {
     merge: merging("merge"),
     reconcile: merging("reconcile"),
     union: merging("union"),
+    import: merging("import"),
+    ignore: merging("ignore"),
+    keyed: merging("keyed"),
+    settings: merging("settings"),
     seed: layDown({ outcome: "yours", bucket: "kept" }),
     skeleton: layDown({ outcome: "yours", bucket: null }),
     // Reported only when the target actually has it: "left alone, yours" about a file the repo does

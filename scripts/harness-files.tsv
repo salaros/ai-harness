@@ -11,8 +11,14 @@
 #          conflict markers and reported. Created if absent.
 #   reconcile as merge, and merged even when there is no receipt to take a base from: the base is
 #          recovered by finding the upstream commit whose copy matches this one, and failing that the
-#          file is written with conflict markers rather than left stale. For the few files nothing
-#          works without.
+#          upstream's copy is written with the project's appended under a heading of its own, rather
+#          than left stale. For the few files nothing works without.
+#   import as merge; with no base, a CLAUDE.md that does not import AGENTS.md gains the line on top.
+#   ignore as merge; with no base, the upstream's patterns the file lacks are appended under a comment.
+#   keyed  as merge; with no base, a JSON file merged by key down to its second level, the project's
+#          entry winning where both have one.
+#   settings JSON merged by key on every run: every hook launching a script in .agents/hooks/ is
+#          replaced by the upstream's, and every other key and hook is the project's and stays.
 #   union  a table merged as a set of rows keyed by their first column, never in conflict: the
 #          upstream's rows, the project's where it changed one, and every row of the project's the
 #          upstream lacks, including one it dropped. For a table the project may still need a row of.
@@ -55,13 +61,13 @@ tools/	seed	Project tooling. The docs site lands on a first install and is then 
 workflows/	seed	Workflow specs written by loop-me, one per project.
 .scratch/	seed	Working notes, never shared.
 AGENTS.md	reconcile	The map every agent reads, and the table docs-check parses. A stale one leaves a repo that looks installed and behaves like the version it came from.
-CLAUDE.md	merge	One line pointing at AGENTS.md, but a project may add to it.
+CLAUDE.md	import	One line pointing at AGENTS.md, but a project may add to it.
 CODING_STANDARDS.md	merge	Read by code-review. The upstream's is a starting set.
-.gitignore	merge	Crafted at the root and added to by whatever stack lands.
+.gitignore	ignore	Crafted at the root and added to by whatever stack lands.
 .editorconfig	merge	As above: whitespace and encoding are enforced here rather than in CODING_STANDARDS.md, so a harness change to them has to be able to reach a repo that already has one.
 .gitattributes	merge	As above.
-.mcp.json	merge	MCP servers: the upstream's, plus whatever the project adds.
-.claude/settings.json	merge	Harness wiring for Claude Code, plus the project's own permissions.
+.mcp.json	keyed	MCP servers: the upstream's, plus whatever the project adds.
+.claude/settings.json	settings	Harness wiring for Claude Code, plus the project's own permissions.
 .agents/	merge	Agents, routing and the hook scripts: the harness itself.
 .githooks/	merge	The Git hooks. A hook the project wrote itself is not in the upstream, so it is left alone.
 scripts/	merge	The checks the Git hooks and the skills call, and the tables they read.

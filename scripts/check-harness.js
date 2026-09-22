@@ -6,8 +6,8 @@
 // in agreement, every Git hook executable and still a two-line wrapper, each hook launcher in
 // .claude/settings.json the text this file writes, every vendored skill attributed and on disk, the
 // chain table in AGENTS.md readable, one reader for the stacks table, and the docs portal reading
-// the chain model rather than walking docs/ itself, and the harness scripts CommonJS whatever the
-// project's package.json declares. Each one fails silently otherwise: nothing else
+// the chain model rather than walking docs/ itself, the harness scripts CommonJS whatever the
+// project's package.json declares, and CLAUDE.md importing AGENTS.md. Each one fails silently otherwise: nothing else
 // in the harness exits non-zero when a skill quietly vanishes from an agent's view.
 // It travels with the harness, so a project can run it after changing any of those files, and
 // check-edit.js does whenever one of PATHS is edited. The installer runs the upstream's copy against
@@ -31,7 +31,7 @@ const repoView = require("./repo-view");
 const PATHS = [
     ".agents/skills/", ".claude/skills", ".agents/agents/", ".agents/routing.md", ".githooks/",
     "skills-lock.json", "scripts/", "THIRD-PARTY-NOTICES.md", "AGENTS.md",
-    ".claude/settings.json", "tools/docs-site/", ".agents/hooks/package.json",
+    ".claude/settings.json", "tools/docs-site/", ".agents/hooks/package.json", "CLAUDE.md",
 ];
 const reads = file => PATHS.some(p => p.endsWith("/") ? file.startsWith(p) : file === p);
 
@@ -326,8 +326,20 @@ function harnessScriptsRunAsCommonJs(t, root) {
     }
 }
 
+// CLAUDE.md is Claude Code's way in, and AGENTS.md is the harness. A CLAUDE.md of the project's own
+// that stopped importing it leaves Claude working with none of the harness's rules, and nothing else
+// notices: every other agent reads AGENTS.md directly. The installer adds the import to a CLAUDE.md
+// that lacks it; this holds it there afterwards.
+function claudeImportsAgents(t, root) {
+    const file = path.join(root, "CLAUDE.md");
+    if (!fs.existsSync(file)) { t.skip("CLAUDE.md import: no CLAUDE.md"); return; }
+    const lines = fs.readFileSync(file, "utf8").split(/\r?\n/).map(l => l.trim());
+    t.ok(lines.includes("@AGENTS.md"), "CLAUDE.md imports AGENTS.md on a line of its own, so Claude Code reads the harness", "no @AGENTS.md line");
+}
+
 const INVARIANTS = [
     harnessScriptsRunAsCommonJs,
+    claudeImportsAgents,
     gitHooksAreExecutable,
     noGitHookDecidesAnything,
     claudeHookLaunchersAreWired,

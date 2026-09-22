@@ -73,12 +73,10 @@ function mergeDecisionCoversEveryOutcome(t) {
         ["merge", {}, { base: () => "one\n", merge: broke }, "yours, merge failed", "kept", undefined,
             "a merge git could not run leaves the file alone"],
         // reconcile is the policy for a file the harness cannot work around, so it merges even with
-        // no receipt: the nearest upstream version stands in, and failing that an empty base makes
-        // the whole file one honest conflict.
+        // no receipt: the nearest upstream version stands in. With nothing to recover, see
+        // noBaseDecisionsBringInWhatTheHarnessNeeds.
         ["reconcile", { hasBase: false }, { recoverBase: () => "one\n", merge: clean("merged\n") },
             "merged", "merged", "merged\n", "reconcile recovers a base when the receipt has none"],
-        ["reconcile", { hasBase: false }, { merge: from => ({ text: `base=${JSON.stringify(from)}`, conflicts: true, failed: false }) },
-            "CONFLICT", "conflicted", 'base=""', "reconcile with nothing to recover merges against an empty base"],
         ["merge", { hasBase: false }, { recoverBase: never }, "yours, no base", "kept", undefined, "only reconcile goes looking for a base"],
     ];
     for (const [name, facts, reads, outcome, bucket, write, why] of cases) {
@@ -152,6 +150,90 @@ function unionDecisionMergesByRow(t) {
         "union decision: a CRLF table is merged in LF and written back in CRLF", JSON.stringify(crlf));
 }
 
+// A first install into a project that already had its own agent files, ignore list or MCP servers:
+// no receipt, so nothing to merge against. The project's file is never lost, and the part of the
+// upstream's the harness cannot work without comes in beside it.
+function noBaseDecisionsBringInWhatTheHarnessNeeds(t) {
+    const policy = installPolicy();
+    if (!policy) { t.skip(`no-base decisions: ${SKIP}`); return; }
+    const decide = (name, held, theirs, facts = {}) => policy.decide(name,
+        { exists: true, theirs, hasBase: false, adopt: false, asked: false, ...facts },
+        { held: () => held, base: never, recoverBase: () => null, merge: never });
+    const has = (text, ...parts) => typeof text === "string" && parts.every(p => text.includes(p));
+
+    const agents = decide("reconcile", "# Our agents\n\nUse pnpm.\n\n## Deploy\n\n```sh\n# not a heading\n```\n", "# AI harness\n\nThe map.\n");
+    t.ok(agents.outcome === "yours appended" && agents.bucket === "merged" && !!agents.notice,
+        "reconcile decision: a hand-written copy with no recoverable base gets the harness's text and keeps its own, with a notice", JSON.stringify(agents));
+    t.ok(has(agents.write, "# AI harness\n\nThe map.\n\n", "## This project\n\n### Our agents\n\nUse pnpm.\n\n#### Deploy\n", "# not a heading\n")
+        && !/^<{7}/m.test(agents.write), "reconcile decision: the project's headings move under its own, code fences untouched, no markers", agents.write);
+    const crlf = decide("reconcile", "# Ours\r\n", "# AI harness\n");
+    t.ok(has(crlf.write, "# AI harness\r\n", "### Ours\r\n"), "reconcile decision: the appended file keeps the copy's CRLF", JSON.stringify(crlf.write));
+
+    const claude = decide("import", "# Project rules\n\nBe brief.\n", "@AGENTS.md\n");
+    t.ok(claude.outcome === "import added" && claude.write === "@AGENTS.md\n\n# Project rules\n\nBe brief.\n",
+        "import decision: a CLAUDE.md that does not import AGENTS.md gains the line on top", JSON.stringify(claude));
+    const already = decide("import", "Read this.\n@AGENTS.md\n", "@AGENTS.md\n");
+    t.ok(already.outcome === "yours, no base" && already.write === undefined, "import decision: one that already imports it is left alone", JSON.stringify(already));
+
+    const ignore = decide("ignore", "node_modules/\n.astro/\n!.env\n", "# harness\nnode_modules/\n.env\n.scratch/\n\n.scratch/\n");
+    t.ok(ignore.outcome === "patterns appended" && has(ignore.write, "node_modules/\n.astro/\n!.env\n\n# Added by the ai-harness install")
+        && ignore.write.endsWith("\n.scratch/\n") && !ignore.write.includes("\n.env\n") && ignore.write.split(".scratch/").length === 2,
+        "ignore decision: the upstream's missing patterns are appended once, the project's lines and negations untouched", JSON.stringify(ignore));
+    const covered = decide("ignore", "a\nb\n", "# up\na\n");
+    t.ok(covered.outcome === "yours, no base" && covered.write === undefined, "ignore decision: nothing missing leaves the file alone", JSON.stringify(covered));
+
+    const mcpOurs = JSON.stringify({ mcpServers: { figma: { command: "figma-local" }, ours: { url: "x" } } });
+    const mcpTheirs = JSON.stringify({ mcpServers: { figma: { type: "http", url: "https://f" }, atlassian: { type: "http", url: "https://a" } } });
+    const mcp = decide("keyed", mcpOurs, mcpTheirs);
+    const servers = mcp.write ? JSON.parse(mcp.write).mcpServers : {};
+    t.ok(mcp.outcome === "merged by key" && Object.keys(servers).join() === "figma,ours,atlassian" && JSON.stringify(servers.figma) === '{"command":"figma-local"}',
+        "keyed decision: the upstream's servers are added and the project's own entry wins whole", JSON.stringify(mcp));
+    t.ok(decide("keyed", "{ not json", mcpTheirs).outcome === "yours, no base", "keyed decision: a file that is not JSON is left alone", "");
+    const based = policy.decide("keyed", { exists: true, theirs: mcpTheirs, hasBase: true, adopt: false, asked: false },
+        { held: () => mcpOurs, base: () => mcpOurs, recoverBase: never, merge: never });
+    t.ok(based.outcome === "written" && based.write === mcpTheirs, "keyed decision: with a base it is a plain merge", JSON.stringify(based));
+}
+
+// .claude/settings.json, merged by key on every run: the harness's hook launchers are the upstream's,
+// everything else the project's.
+function settingsDecisionReplacesOnlyTheHarnessHooks(t) {
+    const policy = installPolicy();
+    if (!policy) { t.skip(`settings decision: ${SKIP}`); return; }
+    const hook = command => ({ type: "command", command });
+    const OLD = "node .agents/hooks/old-guard.js";
+    const NEW = "node -e \"require(x+'/.agents/hooks/guard-command.js')\"";
+    const theirs = JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Bash", hooks: [hook(NEW)] }] } }, null, 2) + "\n";
+    const decide = (ours, facts = {}) => policy.decide("settings",
+        { exists: true, theirs, hasBase: true, adopt: false, asked: false, ...facts },
+        { held: () => ours, base: never, recoverBase: never, merge: never });
+
+    const ours = JSON.stringify({
+        permissions: { allow: ["Bash(npm test)"] },
+        hooks: {
+            PreToolUse: [{ matcher: "Bash", hooks: [hook(`bash -c 'x=1; node /repo/.agents/hooks/old-guard.js'`), hook("./lint.sh")] }],
+            Stop: [{ hooks: [hook(OLD.replace("old-guard", "stop"))] }],
+        },
+    });
+    const got = decide(ours);
+    const merged = got.write ? JSON.parse(got.write) : {};
+    const commands = event => ((merged.hooks || {})[event] || []).flatMap(g => g.hooks.map(h => h.command));
+    t.ok(got.outcome === "merged by key" && got.bucket === "merged", "settings decision: a project's settings are merged by key", JSON.stringify(got));
+    t.ok(JSON.stringify(commands("PreToolUse")) === JSON.stringify(["./lint.sh", NEW]),
+        "settings decision: an old harness launcher is replaced by the upstream's, the project's own hook kept", JSON.stringify(merged.hooks));
+    t.ok(!("Stop" in merged.hooks) && JSON.stringify(merged.permissions) === '{"allow":["Bash(npm test)"]}',
+        "settings decision: an event left with no hooks goes, and the project's permissions stay", JSON.stringify(merged));
+    t.ok(decide(ours, { hasBase: false }).outcome === "merged by key", "settings decision: merged by key without a receipt too", "");
+
+    const settled = decide(got.write);
+    t.ok(settled.outcome === "unchanged" && settled.write === undefined, "settings decision: a second run over the merged file changes nothing", JSON.stringify(settled));
+    const plain = decide(JSON.stringify({ hooks: { PreToolUse: [{ matcher: "Bash", hooks: [hook(OLD)] }] } }));
+    t.ok(plain.write === theirs, "settings decision: settings that come out equal to the upstream's take its text and layout", JSON.stringify(plain.write));
+    const crlf = decide(ours.replace(/,/g, ",\r\n"));
+    t.ok(crlf.outcome === "merged by key" && crlf.write.includes("\r\n") && !/[^\r]\n/.test(crlf.write), "settings decision: a CRLF file is written back in CRLF", JSON.stringify(crlf.write));
+    t.ok(decide("{ nope").outcome === "yours, not JSON", "settings decision: settings that are not JSON are left for someone to read", "");
+    t.ok(decide("<<<<<<< yours\n{}\n").outcome === "STILL OPEN", "settings decision: markers an earlier run left are named first", "");
+}
+
 // seed, skeleton, skip and template: the policies that never merge. What the project deleted stays
 // deleted, unless the run asked for an optional part by name.
 function layDownDecisionsKeepWhatIsThere(t) {
@@ -183,5 +265,7 @@ module.exports = [
     mergeDecisionCoversEveryOutcome,
     binaryDecisionFollowsTheBase,
     unionDecisionMergesByRow,
+    noBaseDecisionsBringInWhatTheHarnessNeeds,
+    settingsDecisionReplacesOnlyTheHarnessHooks,
     layDownDecisionsKeepWhatIsThere,
 ];

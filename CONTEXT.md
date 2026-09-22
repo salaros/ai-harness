@@ -25,7 +25,7 @@ Everything one install or update will do to a target, path by path, decided befo
 _Avoid_: changeset, diff, manifest
 
 **Install policy**:
-What an install does with one kind of path, named by its row in `scripts/harness-files.tsv`: merge, reconcile, union, seed, skip, skills or template. Each decides one path's outcome, summary bucket and content from what the target holds, the base and the run's flags, and the install plan is made of those decisions.
+What an install does with one kind of path, named by its row in `scripts/harness-files.tsv`: merge, reconcile, union, import, ignore, keyed, settings, seed, skip, skills or template. Each decides one path's outcome, summary bucket and content from what the target holds, the base and the run's flags, and the install plan is made of those decisions.
 _Avoid_: strategy, mode, rule
 
 **Skill roster**:
