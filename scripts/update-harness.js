@@ -121,7 +121,7 @@ const say = m => console.log(m);
 function targetRoot(options) {
     if (options.target) return path.resolve(options.target);
     const beside = path.resolve(__dirname, "..");
-    return fs.existsSync(path.join(beside, ".git")) ? beside : process.cwd();
+    return repoView.worktree(beside).exists(".git") ? beside : process.cwd();
 }
 
 // ---------------------------------------------------------------- the upstream
@@ -683,10 +683,13 @@ function main(args) {
     const mistyped = mistypedArgs(args);
     if (mistyped.length) fail(`unknown argument(s): ${mistyped.join(" ")}. Nothing was written; run with --help for the options.`);
     const target = targetRoot(options);
-    if (!fs.existsSync(path.join(target, ".git"))) fail(`${target} is not a git checkout`);
+    // One view of the target, read from here on: whether it is a checkout at all, what its receipt
+    // says, and everything plan() asks of it. worktree() holds nothing between calls, so it still
+    // answers for the tree as the run leaves it rather than as the run found it.
+    const here = repoView.worktree(target);
+    if (!here.exists(".git")) fail(`${target} is not a git checkout`);
 
-    const lockPath = path.join(target, LOCK);
-    const previous = fs.existsSync(lockPath) ? JSON.parse(fs.readFileSync(lockPath, "utf8")) : null;
+    const previous = here.isFile(LOCK) ? JSON.parse(here.read(LOCK)) : null;
     const ref = options.ref || (previous ? previous.ref : DEFAULT_REF);
     const { dir: templateDir, temporary } = templateCheckout(ref, options);
 
@@ -703,7 +706,7 @@ function main(args) {
         }
 
         const planned = plan({
-            upstream: gitUpstream(templateDir), target: repoView.worktree(target), rows, head, ref, previous, options,
+            upstream: gitUpstream(templateDir), target: here, rows, head, ref, previous, options,
             stamp: { ...installer(), updated: new Date().toISOString().slice(0, 10) },
         });
         for (const notice of planned.notices) say(notice);
