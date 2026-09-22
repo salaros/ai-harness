@@ -34,7 +34,7 @@ A prototype skips the BRD, so its PRD derives from a source instead. Writing a B
 
 **A decision that is hard to reverse**, recorded once, immutable after acceptance. One decision per file.
 
-Contains: title, status (proposed, accepted, deprecated, superseded by ADR-NNNN), context including the requirements that force the choice, the decision, alternatives considered, consequences. The `domain-modeling` skill writes it; `CONTEXT.md` holds the vocabulary the decisions use.
+Contains: title, status (proposed, accepted, deprecated, superseded by ADR-NNNN), context including the requirements that force the choice, the decision, alternatives considered, consequences. The `grill-with-docs` skill writes it, interviewing the decision before recording it; `CONTEXT.md` holds the vocabulary the decisions use.
 
 An ADR is cross-cutting, because a decision can be forced before the chain starts or halfway through implementation. It derives from whatever forced it, a source or any document, and a later ADR that replaces one cites it as superseded.
 

@@ -143,6 +143,7 @@ To switch to GitHub, GitLab or local Markdown, run `/setup-matt-pocock-skills`.
 | `code-review` | `issue-tracker.md`, `CODING_STANDARDS.md`, the originating spec | nothing |
 | `to-tickets` | `issue-tracker.md` | drafts in `.scratch/<feature>/`, then tracker issues |
 | `triage` | `issue-tracker.md`, `triage-labels.md`, `.out-of-scope/` | `.out-of-scope/<concept>.md`, labels and comments |
+| `grill-with-docs` | the ask being sharpened | nothing of its own: it calls `grilling` and `domain-modeling` |
 | `domain-modeling` | `CONTEXT.md`, `docs/adr/` | `CONTEXT.md`, `docs/adr/NNNN-<slug>.md` |
 | `brd`, `prd`, `feature-forge`, `bdd-scenarios`, `design-doc`, `create-implementation-plan` | the document one stage upstream, `CONTEXT.md` | `docs/<stage>/NNNN-<slug>.md`, or `.scratch/<feature>/` for the plan |
 | `docs-check` | the `AGENTS.md` chain table, `docs/`, `MEMORY.md`, `INTENT.md` | repairs in place |

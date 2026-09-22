@@ -37,7 +37,7 @@ Read by `devops` and `engineer`.
 | The request is… | Skill(s) |
 | --- | --- |
 | behaviour to build or fix | `tdd`; `implement` when working from a spec or tickets; `ponytail` throughout |
-| a decision hard to reverse, or a design to write down before it is built | `domain-modeling` writes the ADR, `design-doc` the SPEC, `create-implementation-plan` the IPLAN; `docs-check` after each |
+| a decision hard to reverse, or a design to write down before it is built | `grill-with-docs` writes the ADR, `design-doc` the SPEC, `create-implementation-plan` the IPLAN; `docs-check` after each |
 | code or tooling being designed or restructured | `codebase-design` for the vocabulary; `improve-codebase-architecture` to scan the whole repo for candidates |
 | something over-built, or that works but reads badly | `ponytail-audit` ranks what to delete or replace; `code-simplification` where there is nothing to delete |
 | an issue or external PR to classify | `triage` |
