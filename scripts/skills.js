@@ -4,9 +4,10 @@
 // agent routes it, where it came from, and how the per-harness links are laid out. Inputs are
 // skills-lock.json, the frontmatter of .agents/skills/*/SKILL.md, the Route tables in
 // .agents/agents/*.md with .agents/routing.md, and scripts/skill-licences.tsv.
-// A module first: readRoster(root) reads all of it in one pass and writes nothing, and relink(root)
-// and writeNotices(root) are the only two acts that change a file. None of them prints or exits, so
-// check-harness and the hooks call them in-process. The command line below is a thin wrapper.
+// A module first: readRoster(view) reads all of it in one pass, through a repo-view rather than off
+// the disk, and writes nothing; relink(root) and writeNotices(root) are the only two acts that
+// change a file, and they take a root because a view cannot be written to. None of them prints or
+// exits, so check-harness and the hooks call them in-process. The command line below is a wrapper.
 // Everything here reports; nothing obliges. A project built on this template decides for itself
 // which skills it installs and which agent, if any, routes each one.
 //   node scripts/skills.js list             every installed skill: name, invocation, agents, source
@@ -18,6 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 const lib = require("./lib");
+const repoView = require("./repo-view");
 
 const SKILLS = ".agents/skills", AGENTS = ".agents/agents", LOCK = "skills-lock.json";
 const SHARED = ".agents/routing.md", SHARED_REF = "routing.md";
@@ -52,17 +54,17 @@ const body = text => text.replace(/^---\r?\n[\s\S]*?\r?\n---/, "");
 // Every entry under .agents/skills, whatever it is: a skill is a folder holding a SKILL.md, and
 // anything else -- a link to another skill, a folder with no SKILL.md -- is listed too, marked, so
 // the invariant that objects to it reads the same pass as everything else.
-function readEntries(root) {
-    const skills = path.join(root, SKILLS);
-    if (!fs.existsSync(skills)) return [];
-    return fs.readdirSync(skills).sort().map(name => {
-        const folder = path.join(skills, name);
-        const link = fs.lstatSync(folder).isSymbolicLink();
-        let dir = false;
-        try { dir = fs.statSync(folder).isDirectory(); } catch { /* a link to nothing */ }
-        const file = path.join(folder, "SKILL.md");
-        const hasSkillMd = dir && fs.existsSync(file);
-        return { name, link, dir, hasSkillMd, frontmatter: hasSkillMd ? frontmatter(fs.readFileSync(file, "utf8")) : null };
+function readEntries(view) {
+    if (!view.exists(SKILLS)) return [];
+    return view.list(SKILLS).map(name => {
+        const folder = `${SKILLS}/${name}`;
+        const file = `${folder}/SKILL.md`;
+        // `dir` follows the link, so a link to a real skill folder is both a link and a folder, and
+        // a link to nothing is neither. isFile answers for the file at the end of the path, which is
+        // what makes a folder a skill; exists() is true for a folder as well, hence isFile here.
+        const dir = view.exists(folder) && !view.isFile(folder);
+        const hasSkillMd = view.isFile(file);
+        return { name, link: !!(view.lstat(folder) || {}).link, dir, hasSkillMd, frontmatter: hasSkillMd ? frontmatter(view.read(file)) : null };
     });
 }
 
@@ -71,10 +73,10 @@ function readEntries(root) {
 // file in there as an agent. Each section says which agents read it on a "Read by" line; an agent
 // reads a section when its body names the file and quotes the heading, so a row moved there keeps
 // exactly the agents it had. An agent is a file whose frontmatter names it; nothing else is one.
-function readRouting(root) {
-    const shared = path.join(root, SHARED);
-    const sections = fs.existsSync(shared)
-        ? body(fs.readFileSync(shared, "utf8")).split(/^## /m).slice(1).map(s => {
+function readRouting(view) {
+    const shared = view.read(SHARED);
+    const sections = shared !== null
+        ? body(shared).split(/^## /m).slice(1).map(s => {
             const line = s.match(/^Read by .*$/m);
             return {
                 title: s.split(/\r?\n/)[0].trim(),
@@ -84,10 +86,9 @@ function readRouting(root) {
         })
         : [];
     const agents = {};
-    const dir = path.join(root, AGENTS);
-    if (fs.existsSync(dir)) {
-        for (const f of fs.readdirSync(dir).filter(n => n.endsWith(".md")).sort()) {
-            const text = fs.readFileSync(path.join(dir, f), "utf8");
+    if (view.exists(AGENTS)) {
+        for (const f of view.list(AGENTS).filter(n => n.endsWith(".md"))) {
+            const text = view.read(`${AGENTS}/${f}`);
             const name = (frontmatter(text) || {}).name;
             if (!name) continue;
             const own = body(text);
@@ -103,10 +104,10 @@ function readRouting(root) {
 
 // source (or source#prefix) -> the terms that came with it. A row per upstream, not per skill: the
 // notice is the same for every skill a repo ships, and 21 rows stay readable where 60 do not.
-function readLicences(root) {
-    const file = path.join(root, LICENCES);
-    if (!fs.existsSync(file)) return [];
-    return lib.readTsv(file).map(([key, spdx, holder, url, note]) => ({
+function readLicences(view) {
+    const text = view.read(LICENCES);
+    if (text === null) return [];
+    return lib.parseTsv(text).map(([key, spdx, holder, url, note]) => ({
         key, spdx, url,
         holder: holder === "-" ? null : holder,
         note: note === "-" ? null : note,
@@ -161,7 +162,8 @@ function noticesFor(skills, rows) {
     return { text: out.join("\n") + "\n", orphans };
 }
 
-// The roster at `root`, read in one pass. Nothing is written and nothing but `root` is read. Throws
+// The roster a repo-view holds, read in one pass. Nothing is written and nothing outside the view is
+// read, so a check about a roster shape hands this a map rather than building the folders. Throws
 // only when the lock file is there and is not JSON.
 //   lock      skills-lock.json's skills, or null when there is no lock file
 //   entries   every entry under .agents/skills: { name, link, dir, hasSkillMd, frontmatter }
@@ -169,21 +171,21 @@ function noticesFor(skills, rows) {
 //   missing   skills the lock records and the disk lacks
 //   routing   { sections: [{ title, readBy, skills }], agents: { name: { skills, readsShared, sections } } }
 //   notices   { text, orphans, current }: the notice this roster calls for, and whether the file matches
-function readRoster(root) {
-    const lockFile = path.join(root, LOCK);
+function readRoster(view) {
+    const lockText = view.read(LOCK);
     let lock = null;
-    if (fs.existsSync(lockFile)) {
-        try { lock = JSON.parse(fs.readFileSync(lockFile, "utf8")).skills || {}; }
+    if (lockText !== null) {
+        try { lock = JSON.parse(lockText).skills || {}; }
         catch (e) { throw new Error(`${LOCK} is not valid JSON: ${e.message}`); }
     }
     const vendored = lock || {};
-    const entries = readEntries(root);
-    const routing = readRouting(root);
+    const entries = readEntries(view);
+    const routing = readRouting(view);
     // AGENTS.md is loaded by every session, agent or not, so a skill it names is reached without any
     // agent routing it: the four that suit any kind of work, and `git-commit`. Reporting those as
     // routed nowhere would bury the case the column is for, a skill nothing at all points at.
-    const agentsMd = path.join(root, "AGENTS.md");
-    const everywhere = fs.existsSync(agentsMd) ? named(fs.readFileSync(agentsMd, "utf8")) : new Set();
+    const agentsMd = view.read("AGENTS.md");
+    const everywhere = agentsMd === null ? new Set() : named(agentsMd);
     const skills = entries.filter(e => e.hasSkillMd).map(e => {
         const fm = e.frontmatter || {};
         return {
@@ -197,9 +199,8 @@ function readRoster(root) {
         };
     });
     const on = new Set(skills.map(s => s.name));
-    const notices = noticesFor(skills, readLicences(root));
-    const noticeFile = path.join(root, NOTICES);
-    notices.current = fs.existsSync(noticeFile) && fs.readFileSync(noticeFile, "utf8") === notices.text;
+    const notices = noticesFor(skills, readLicences(view));
+    notices.current = view.read(NOTICES) === notices.text;
     return { lock, entries, skills, missing: Object.keys(vendored).filter(n => !on.has(n)), routing, notices };
 }
 
@@ -207,7 +208,7 @@ function readRoster(root) {
 // because a notice that leaves one out is the failure the file exists to prevent.
 //   { written: true | false, orphans }
 function writeNotices(root) {
-    const { notices } = readRoster(root);
+    const { notices } = readRoster(repoView.worktree(root));
     if (notices.orphans.length) return { written: false, orphans: notices.orphans };
     if (notices.current) return { written: false, orphans: [] };
     fs.writeFileSync(path.join(root, NOTICES), notices.text);
@@ -222,7 +223,7 @@ function writeNotices(root) {
 // folder are the ones that want links.
 //   { added, fixed, kept, whole, copies, dangling }: counts, then the paths each note is about
 function relink(root) {
-    const installed = readRoster(root).skills.map(s => s.name);
+    const installed = readRoster(repoView.worktree(root)).skills.map(s => s.name);
     const canonical = path.resolve(root, SKILLS);
     const same = (a, b) => process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
     const inside = p => same(p.slice(0, canonical.length), canonical);
@@ -284,20 +285,20 @@ const orphanMessage = orphans => `no row in ${LICENCES} covers:\n  ${orphans.joi
 // Each command returns its exit code.
 const commands = {
     list(root) {
-        for (const r of readRoster(root).skills) {
+        for (const r of readRoster(repoView.worktree(root)).skills) {
             const where = r.agents.join(",") || (r.everywhere ? "AGENTS.md" : "-");
             console.log(`${r.name}\t${r.invoke.replace(/`/g, "")}\t${where}\t${r.source}`);
         }
         return 0;
     },
     missing(root) {
-        const gone = readRoster(root).missing;
+        const gone = readRoster(repoView.worktree(root)).missing;
         if (gone.length) console.log(gone.join("\n"));
         return gone.length ? 1 : 0;
     },
     vendored(root, name) {
         if (!name) { console.error("usage: skills.js vendored <name>"); return 2; }
-        return (readRoster(root).lock || {})[name] ? 0 : 1;
+        return (readRoster(repoView.worktree(root)).lock || {})[name] ? 0 : 1;
     },
     relink(root) { printRelink(relink(root)); return 0; },
     notices(root, ...args) {
@@ -307,7 +308,7 @@ const commands = {
             console.log(`${NOTICES}: ${r.written ? "written" : "already current"}`);
             return 0;
         }
-        const { notices } = readRoster(root);
+        const { notices } = readRoster(repoView.worktree(root));
         if (notices.orphans.length) { console.error(orphanMessage(notices.orphans)); return 1; }
         if (notices.current) { console.log(`${NOTICES}: current`); return 0; }
         console.error(!fs.existsSync(path.join(root, NOTICES))

@@ -11,6 +11,7 @@
 //   lib.node(["scripts/skills.js", "missing"]) // run a script with this node; { status, output }
 //   lib.shell("npm install")                 // run a command through the OS shell
 //   lib.readTsv("scripts/stacks.tsv")        // rows as arrays of cells; blank and # lines skipped
+//   lib.parseTsv(text)                       // the same, for a caller that already has the text
 //   lib.toLf(text), lib.asFound(text, crlf)  // compare in LF, write back in the endings a file had
 //   lib.sameContent(a, b)                    // equal text, or equal bytes; never text against bytes
 const fs = require("fs");
@@ -80,11 +81,13 @@ function run(cmd, args, opts = {}) {
 const node = (args, opts) => run(process.execPath, args, opts);
 const shell = (cmd, opts) => run(cmd, [], { shell: true, ...opts });
 
-function readTsv(file) {
-    return fs.readFileSync(file, "utf8").split(/\r?\n/)
-        .filter(l => l.trim() && !l.startsWith("#"))
-        .map(l => l.split("\t"));
-}
+// The rows of a tab-separated table, blank and # lines skipped. parseTsv takes the text, for a
+// caller that already has it -- one reading through a repo-view, which hands out text rather than
+// paths -- and readTsv is the same thing for a caller holding a filename.
+const parseTsv = text => text.split(/\r?\n/)
+    .filter(l => l.trim() && !l.startsWith("#"))
+    .map(l => l.split("\t"));
+const readTsv = file => parseTsv(fs.readFileSync(file, "utf8"));
 
 // Git checks a repo out with the platform's line endings, so a Windows working copy holds CRLF where
 // the upstream stores LF. Compared raw, every line of every file reads as changed: a copy nobody
@@ -103,4 +106,4 @@ const sameContent = (a, b) => Buffer.isBuffer(a) || Buffer.isBuffer(b)
     ? Buffer.isBuffer(a) && Buffer.isBuffer(b) && a.equals(b)
     : a === b;
 
-module.exports = { root, args, ROOT_FLAG, ROOT_ENV_VARS, CHECKOUT, chdirRoot, fix, warn, stdin, run, node, shell, readTsv, isCrlf, toLf, asFound, sameContent };
+module.exports = { root, args, ROOT_FLAG, ROOT_ENV_VARS, CHECKOUT, chdirRoot, fix, warn, stdin, run, node, shell, readTsv, parseTsv, isCrlf, toLf, asFound, sameContent };

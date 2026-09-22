@@ -16,7 +16,7 @@ if (git(["config", "--get", "core.hooksPath"]) !== ".githooks") say("git hooks: 
 // The brief never fails a session: a roster it cannot read -- no scripts/skills.js, a lock file that
 // is not JSON -- is left for check-harness to report.
 try {
-    const missing = require("../../scripts/skills").readRoster(process.cwd()).missing.join(" ");
+    const missing = require("../../scripts/skills").readRoster(require("../../scripts/repo-view").worktree(process.cwd())).missing.join(" ");
     if (missing) say(`skills in skills-lock.json but missing from .agents/skills: ${missing}. Run: node scripts/skills.js install`);
 } catch { /* nothing to say */ }
 

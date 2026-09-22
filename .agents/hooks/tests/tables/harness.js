@@ -10,6 +10,7 @@ const lib = require("../../lib");
 const scriptsLib = require("../../../../scripts/lib");
 const checkHarness = require("../../../../scripts/check-harness");
 const skills = require("../../../../scripts/skills");
+const repoView = require("../../../../scripts/repo-view");
 const { withRoot, text } = require("../fixtures");
 
 // Which repo an entry point is about. Six places used to answer that differently -- a script read
@@ -125,7 +126,7 @@ function skillRosterDecisions(t) {
         "AGENTS.md": text("Every session may run `vendored-two`."),
     };
     withRoot(files, root => {
-        const r = skills.readRoster(root);
+        const r = skills.readRoster(repoView.worktree(root));
         const entry = name => r.entries.find(e => e.name === name) || {};
         const s = name => r.skills.find(x => x.name === name) || {};
         t.ok(r.entries.map(e => e.name).join() === "local-one,no-skill-md,stray.txt,vendored-one,vendored-two",
@@ -156,24 +157,29 @@ function skillRosterDecisions(t) {
         t.ok(!skills.writeNotices(root).written && !fs.existsSync(path.join(root, skills.NOTICES)),
             "skill roster: the notice is not written while there is an orphan");
         fs.appendFileSync(path.join(root, skills.LICENCES), "other/skills\tApache-2.0\t-\thttps://example.com/APACHE\tKeep the NOTICE file.\n");
-        t.ok(skills.writeNotices(root).written && skills.readRoster(root).notices.current,
+        t.ok(skills.writeNotices(root).written && skills.readRoster(repoView.worktree(root)).notices.current,
             "skill roster: once every upstream has a row the notice is written, and then current");
         const notice = fs.readFileSync(path.join(root, skills.NOTICES), "utf8");
         t.ok(/`vendored-one`/.test(notice) && /not stated upstream/.test(notice) && /Keep the NOTICE file/.test(notice) && /`local-one`/.test(notice),
             "skill roster: the notice lists each upstream's skills, a missing holder, the notes and the local skills", notice);
         t.ok(!skills.writeNotices(root).written, "skill roster: a current notice is not rewritten");
 
-        let linked = true;
-        try { fs.symlinkSync("local-one", path.join(root, ".agents/skills/alias"), "dir"); } catch { linked = false; }
-        if (!linked) t.skip("skill roster: this OS refuses symlinks, so the linked entry goes unchecked");
-        else t.ok(skills.readRoster(root).entries.find(e => e.name === "alias").link, "skill roster: a link under .agents/skills is an entry marked as a link");
     });
 
-    withRoot({}, root => {
-        const r = skills.readRoster(root);
+    // The two cases a map answers better than a directory does. A roster is a read, so a check about
+    // its shape hands readRoster a repo-view over a map and never touches the disk: no temp tree to
+    // build, and -- the reason the first of these used to be skipped half the time -- no symlink to
+    // ask Windows for, which it refuses unless the session happens to be elevated.
+    t.ok(!!skills.readRoster(repoView.fromMap({
+        ".agents/skills/real/SKILL.md": text("---", "name: real", "description: A skill.", "---"),
+        ".agents/skills/alias": { link: "real" },
+    })).entries.find(e => e.name === "alias").link, "skill roster: a link under .agents/skills is an entry marked as a link");
+
+    {
+        const r = skills.readRoster(repoView.fromMap({}));
         t.ok(r.lock === null && !r.entries.length && !r.skills.length && !r.missing.length && !r.routing.sections.length,
             "skill roster: a repo with no harness files has an empty roster and no lock");
-    });
+    }
 
     withRoot({ ".agents/skills/one/SKILL.md": skill("one"), ".cursor/skills/.keep": "" }, root => {
         let first;

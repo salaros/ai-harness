@@ -39,7 +39,7 @@ const reads = file => PATHS.some(p => p.endsWith("/") ? file.startsWith(p) : fil
 // and the licence notice, read in one pass. check() reads it once and hands the same read to every
 // invariant; an invariant called on its own reads its own.
 const once = read => { let r; return () => r || (r = read()); };
-const rosterOf = root => once(() => skills.readRoster(root));
+const rosterOf = root => once(() => skills.readRoster(repoView.worktree(root)));
 
 // Git's view of a folder, as repo-view's index rows, or null outside a git checkout.
 function indexed(root, dir) {

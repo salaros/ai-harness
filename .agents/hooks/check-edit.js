@@ -15,6 +15,7 @@ const lib = require("./lib");
 const docsCheck = require("../../scripts/docs-check");
 const harness = require("../../scripts/check-harness");
 const skills = require("../../scripts/skills");
+const repoView = require("../../scripts/repo-view");
 
 // Read before the rules, because one of them hands the root to docs-check: the chain to validate is
 // the one in the repo the harness is editing, which is what the event's root answers, and not
@@ -23,7 +24,7 @@ const { root, paths } = lib.event();
 
 // A lock that is not JSON vouches for nothing, so the skill is treated as local; the invariants
 // report the lock itself.
-const vendored = name => { try { return !!(skills.readRoster(root).lock || {})[name]; } catch { return false; } };
+const vendored = name => { try { return !!(skills.readRoster(repoView.worktree(root)).lock || {})[name]; } catch { return false; } };
 
 const rules = [
     {   // Vendored skills (recorded in skills-lock.json) must not be edited in place; local skills may be.
