@@ -10,16 +10,21 @@
 // and the harness suite fails on the mode if this was never run.
 // Usage: node scripts/githooks-init.js
 const fs = require("fs");
+const path = require("path");
 const { spawnSync } = require("child_process");
 const lib = require("./lib");
 const repoView = require("./repo-view");
+const { HOOKS } = require("./githook");
 
 lib.chdirRoot();
 const r = spawnSync("git", ["config", "core.hooksPath", ".githooks"], { stdio: "inherit" });
 if (r.status !== 0) process.exit(r.status === null ? 1 : r.status);
 
-const hooks = fs.readdirSync(".githooks");
-const wrong = (repoView.indexModes(process.cwd(), [".githooks"]) || []).filter(r => !r.exec).map(r => r.file);
+// Only the hooks githook.js runs: .githooks/ may hold a project's own files beside them, such as
+// Husky.Net's task-runner.json, and marking a data file executable stages a change nobody asked for.
+const runs = name => Object.hasOwn(HOOKS, path.posix.basename(name));
+const hooks = fs.readdirSync(".githooks").filter(runs);
+const wrong = (repoView.indexModes(process.cwd(), [".githooks"]) || []).filter(r => !r.exec && runs(r.file)).map(r => r.file);
 for (const file of wrong) {
     try { fs.chmodSync(file, 0o755); } catch { /* the filesystem does not do modes */ }
     lib.run("git", ["update-index", "--chmod=+x", "--", file]);
