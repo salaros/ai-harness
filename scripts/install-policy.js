@@ -141,7 +141,6 @@ const unionMerge = (from, ours, up) => ({ text: mergeRows(from, ours, up), confl
 // null to keep the file as it is. A later run has the receipt, so each runs once per file.
 const WITHOUT_BASE = {
     reconcile: appendProject,
-    import: addImport,
     ignore: appendPatterns,
     keyed: (ours, theirs) => {
         const merged = mergeJson(ours, theirs, (o, t) => mergeKeys(o, t, 2));
@@ -179,12 +178,18 @@ function demoteHeadings(text) {
     return lines.map((line, i) => level[i] ? "#".repeat(Math.min(6, level[i] + 3 - top)) + line.slice(level[i]) : line).join("\n");
 }
 
-// CLAUDE.md is how Claude Code reaches AGENTS.md. A project's own CLAUDE.md, kept whole, leaves Claude
-// reading instructions that never mention the harness, so the import goes on top and the rest stays.
+// CLAUDE.md is how Claude Code reaches AGENTS.md, so its import line is not something to merge: it is
+// there or the harness is unreachable, whatever else the file says. The line is added on top of
+// whatever the rest of the decision left, which covers both ways it goes missing: a project that
+// wrote its own CLAUDE.md before it had the harness, and one that has a receipt but dropped the line
+// since. Adding it to a file left full of conflict markers helps nobody, so that one is passed
+// through; the run is already exiting 1 over it.
 const IMPORT = "@AGENTS.md";
-function addImport(ours) {
-    if (ours.split("\n").some(l => l.trim() === IMPORT)) return null;
-    return { outcome: "import added", bucket: "merged", write: `${IMPORT}\n\n${ours}` };
+function ensureImport(done, raw, crlf) {
+    if (done.bucket === "conflicted") return done;
+    const text = lib.toLf(done.write === undefined ? raw : done.write);
+    if (text.split("\n").some(l => l.trim() === IMPORT)) return done;
+    return { outcome: "import added", bucket: "merged", write: lib.asFound(`${IMPORT}\n\n${text}`, crlf) };
 }
 
 // A .gitignore is a set of patterns, so the upstream's that this one lacks go at the end, under a
@@ -267,7 +272,8 @@ function merging(policy) {
         const held = reads.held();
         if (Buffer.isBuffer(facts.theirs)) return decideBinary({ ...facts, held }, reads);
         // A union table has no lines to conflict over, and no base means the project's rows win.
-        return decideText({ ...facts, policy, raw: held }, policy === "union" ? { ...reads, merge: unionMerge } : reads);
+        const done = decideText({ ...facts, policy, raw: held }, policy === "union" ? { ...reads, merge: unionMerge } : reads);
+        return policy === "import" ? ensureImport(done, held, lib.isCrlf(held)) : done;
     };
 }
 

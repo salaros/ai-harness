@@ -13,7 +13,8 @@
 #          recovered by finding the upstream commit whose copy matches this one, and failing that the
 #          upstream's copy is written with the project's appended under a heading of its own, rather
 #          than left stale. For the few files nothing works without.
-#   import as merge; with no base, a CLAUDE.md that does not import AGENTS.md gains the line on top.
+#   import as merge, and whatever that leaves, a copy with no line importing AGENTS.md gains one on
+#          top: the file Claude Code reads first has to reach the harness, base or none.
 #   ignore as merge; with no base, the upstream's patterns the file lacks are appended under a comment.
 #   keyed  as merge; with no base, a JSON file merged by key down to its second level, the project's
 #          entry winning where both have one.

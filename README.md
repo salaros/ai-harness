@@ -45,7 +45,7 @@ If the repository already has agent files of its own, the first install keeps th
 | File | What the first install does |
 | --- | --- |
 | `AGENTS.md`, `docs/README.md` | Writes the harness's version and appends yours under `## This project`, for you to fold in |
-| `CLAUDE.md` | Adds `@AGENTS.md` at the top if it's missing |
+| `CLAUDE.md` | Adds `@AGENTS.md` at the top if it's missing (on every update, too) |
 | `.claude/settings.json` | Merges by key: replaces the harness's hooks, keeps your permissions and hooks (on every update, too) |
 | `.mcp.json` | Adds the harness's MCP servers; yours win where both define one |
 | `.gitignore` | Appends the harness's patterns you don't have, under a comment |

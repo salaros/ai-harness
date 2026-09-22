@@ -169,12 +169,6 @@ function noBaseDecisionsBringInWhatTheHarnessNeeds(t) {
     const crlf = decide("reconcile", "# Ours\r\n", "# AI harness\n");
     t.ok(has(crlf.write, "# AI harness\r\n", "### Ours\r\n"), "reconcile decision: the appended file keeps the copy's CRLF", JSON.stringify(crlf.write));
 
-    const claude = decide("import", "# Project rules\n\nBe brief.\n", "@AGENTS.md\n");
-    t.ok(claude.outcome === "import added" && claude.write === "@AGENTS.md\n\n# Project rules\n\nBe brief.\n",
-        "import decision: a CLAUDE.md that does not import AGENTS.md gains the line on top", JSON.stringify(claude));
-    const already = decide("import", "Read this.\n@AGENTS.md\n", "@AGENTS.md\n");
-    t.ok(already.outcome === "yours, no base" && already.write === undefined, "import decision: one that already imports it is left alone", JSON.stringify(already));
-
     const ignore = decide("ignore", "node_modules/\n.astro/\n!.env\n", "# harness\nnode_modules/\n.env\n.scratch/\n\n.scratch/\n");
     t.ok(ignore.outcome === "patterns appended" && has(ignore.write, "node_modules/\n.astro/\n!.env\n\n# Added by the ai-harness install")
         && ignore.write.endsWith("\n.scratch/\n") && !ignore.write.includes("\n.env\n") && ignore.write.split(".scratch/").length === 2,
@@ -192,6 +186,37 @@ function noBaseDecisionsBringInWhatTheHarnessNeeds(t) {
     const based = policy.decide("keyed", { exists: true, theirs: mcpTheirs, hasBase: true, adopt: false, asked: false },
         { held: () => mcpOurs, base: () => mcpOurs, recoverBase: never, merge: never });
     t.ok(based.outcome === "written" && based.write === mcpTheirs, "keyed decision: with a base it is a plain merge", JSON.stringify(based));
+}
+
+// CLAUDE.md, the file Claude Code reads before anything else: whatever a run does with the rest of
+// it, it comes out importing AGENTS.md. A project that wrote its own before it had the harness has no
+// base; one that dropped the line since has a receipt and a clean merge, and both end up with it.
+function importDecisionAlwaysLeavesTheAgentsLine(t) {
+    const policy = installPolicy();
+    if (!policy) { t.skip(`import decision: ${SKIP}`); return; }
+    const theirs = "@AGENTS.md\n";
+    const decide = (held, facts = {}, reads = {}) => policy.decide("import",
+        { exists: true, theirs, hasBase: false, adopt: false, asked: false, ...facts },
+        { held: () => held, base: never, recoverBase: () => null, merge: never, ...reads });
+
+    const own = decide("# Project rules\n\nBe brief.\n");
+    t.ok(own.outcome === "import added" && own.write === "@AGENTS.md\n\n# Project rules\n\nBe brief.\n",
+        "import decision: a CLAUDE.md that does not import AGENTS.md gains the line on top", JSON.stringify(own));
+    const already = decide("Read this.\n@AGENTS.md\n");
+    t.ok(already.outcome === "yours, no base" && already.write === undefined,
+        "import decision: one that already imports it is left alone", JSON.stringify(already));
+    const crlf = decide("# Ours\r\n");
+    t.ok(crlf.write === "@AGENTS.md\r\n\r\n# Ours\r\n", "import decision: the line is written in the endings the file has", JSON.stringify(crlf.write));
+
+    // A receipt and a file the project has rewritten since: the merge keeps its text, and the line
+    // still goes back on. Dropping it is how a repo ends up with the harness installed and unread.
+    const dropped = decide("# Repo notes\n", { hasBase: true },
+        { base: () => theirs, merge: () => ({ text: "# Repo notes\n", conflicts: false, failed: false }) });
+    t.ok(dropped.outcome === "import added" && dropped.write === "@AGENTS.md\n\n# Repo notes\n",
+        "import decision: a file whose line was dropped after an earlier install gets it back", JSON.stringify(dropped));
+    const open = decide("<<<<<<< yours\na\n", { hasBase: true }, { base: () => theirs });
+    t.ok(open.outcome === "STILL OPEN" && open.write === undefined,
+        "import decision: a file left with conflict markers is reported, not added to", JSON.stringify(open));
 }
 
 // .claude/settings.json, merged by key on every run: the harness's hook launchers are the upstream's,
@@ -266,6 +291,7 @@ module.exports = [
     binaryDecisionFollowsTheBase,
     unionDecisionMergesByRow,
     noBaseDecisionsBringInWhatTheHarnessNeeds,
+    importDecisionAlwaysLeavesTheAgentsLine,
     settingsDecisionReplacesOnlyTheHarnessHooks,
     layDownDecisionsKeepWhatIsThere,
 ];
