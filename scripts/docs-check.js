@@ -9,7 +9,7 @@
 // (DOC-ID or DOC-ID/ITEM) pointing backwards along the chain to something that exists.
 // Every document carries a "Derived from:" line naming at least one reference: an upstream
 // document, or a source (isSource below: a URL, a path that exists, or jira:KEY-123). A path may be a
-// bare file name at the root, which is how INTENT.md is cited. A source
+// bare file name at the root, which is how INTENT.md or .gitignore is cited. A source
 // stands in for an upstream document only while the chain holds nothing earlier; an ADR may
 // always cite one, and is exempt from the backwards-only rule in both directions. MEMORY.md's
 // Requirements line follows the same reference rule, or says "none yet". INTENT.md is optional;
@@ -47,8 +47,8 @@ const withoutLine = token => token.replace(/:\d+(?:-\d+)?$/, "");
 // "e.g") or without one ("docs", "scripts") stays prose, however real that name is on disk.
 const looksLikePath = token => (/^[\w.][\w./-]*$/.test(withoutLine(token)) && token.includes("/")) || /^[\w-][\w.-]*\.md$/i.test(withoutLine(token));
 // A bare file name counts as a source only when that file is at the root, so prose that happens to
-// contain a dot never passes for a reference.
-const isRootFile = (file, view) => /^[\w-][\w.-]*\.\w+$/.test(file) && view.isFile(file);
+// contain a dot never passes for a reference. The name may be a dotfile such as .gitignore.
+const isRootFile = (file, view) => /^\.?[\w-][\w.-]*$/.test(file) && view.isFile(file);
 // A source is the non-chain thing a document derives from. Only a path can be verified here; a URL
 // and a Jira key are checked for shape, since neither can be followed. A Jira key is upper case, as
 // Jira issues them. `at` is the repo a path resolves in: a view of it, or its root.

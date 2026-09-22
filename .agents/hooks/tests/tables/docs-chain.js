@@ -33,7 +33,7 @@ function chainMembership(t) {
 
 // What counts as a source, the one rule "Derived from:", MEMORY.md's Requirements and TODO.md share.
 function sourceDecisions(t) {
-    const REPO = { "INTENT.md": "# INTENT.md\n", "src/billing.cs": "// there\n", "docs/brief.md": "# Brief\n" };
+    const REPO = { "INTENT.md": "# INTENT.md\n", ".gitignore": "node_modules/\n", "src/billing.cs": "// there\n", "docs/brief.md": "# Brief\n" };
     const rows = [
         // token, is a source, why
         ["https://example.com/spec", true, "a URL"],
@@ -47,6 +47,9 @@ function sourceDecisions(t) {
         ["src/", true, "a folder, written with its slash"],
         ["src", false, "a bare word, even one naming a real folder"],
         ["INTENT.md", true, "a file at the root"],
+        [".gitignore", true, "a dotfile at the root"],
+        [".npmrc", false, "a dotfile that is not there"],
+        ["INTENT", false, "a bare word that names no file at the root"],
         ["Node.js", false, "prose with a dot"],
         ["during the review", false, "prose"],
     ];
