@@ -17,6 +17,11 @@ part of the product.
 
 - One task per script, named after what it does (`githooks-init.js`,
   `build.js`, `release.js`); Node, so they run the same on every OS.
+- The scripts are CommonJS. `package.json` here, and its twin in
+  `.agents/hooks/`, says so, so a project whose root `package.json` declares
+  `"type": "module"` does not turn them into ES modules that fail on their
+  first `require`. A script of the project's own that uses `import` is
+  named `.mjs`.
 - Scripts are safe to run from any working directory — every script and hook
   asks `lib.root()` which repo it is about, and gets one answer: `--root=<dir>`
   when given, then the harness's project-dir variable

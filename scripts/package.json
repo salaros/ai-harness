@@ -1,0 +1,4 @@
+{
+  "description": "The harness scripts here are CommonJS, whatever type the project's own package.json declares.",
+  "type": "commonjs"
+}

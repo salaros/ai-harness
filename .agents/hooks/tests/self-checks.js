@@ -146,9 +146,11 @@ function claudeHooksRunInEveryShell(t, env) {
 // Run the way a maintainer runs it from a Claude Code session open on this checkout: with
 // CLAUDE_PROJECT_DIR naming the upstream, which must not pull any step of the install away from the
 // target. Without the variable set here the check passed from a shell and failed only from a hook.
+// The repository's one file is a package.json declaring ES modules, as a JavaScript project's often
+// does: the harness scripts are CommonJS, and the install runs them in the target before it is done.
 function installerInstallsIntoAnEmptyRepo(t, env) {
     if (!installer()) { t.skip("a real install: the installer is the upstream's own, not installed here"); return; }
-    withRoot({}, dir => {
+    withRoot({ "package.json": JSON.stringify({ type: "module" }) }, dir => {
         const node = args => require("child_process").spawnSync(process.execPath, [INSTALLER, "--from", lib.checkout, "--target", dir, "--quiet", ...args], { encoding: "utf8", env: { ...env, CLAUDE_PROJECT_DIR: lib.checkout } });
         lib.run("git", ["-C", dir, "init", "--quiet"]);
         const dry = node(["--dry-run"]);

@@ -6,7 +6,8 @@
 // in agreement, every Git hook executable and still a two-line wrapper, each hook launcher in
 // .claude/settings.json the text this file writes, every vendored skill attributed and on disk, the
 // chain table in AGENTS.md readable, one reader for the stacks table, and the docs portal reading
-// the chain model rather than walking docs/ itself. Each one fails silently otherwise: nothing else
+// the chain model rather than walking docs/ itself, and the harness scripts CommonJS whatever the
+// project's package.json declares. Each one fails silently otherwise: nothing else
 // in the harness exits non-zero when a skill quietly vanishes from an agent's view.
 // It travels with the harness, so a project can run it after changing any of those files, and
 // check-edit.js does whenever one of PATHS is edited. The installer runs the upstream's copy against
@@ -30,7 +31,7 @@ const repoView = require("./repo-view");
 const PATHS = [
     ".agents/skills/", ".claude/skills", ".agents/agents/", ".agents/routing.md", ".githooks/",
     "skills-lock.json", "scripts/", "THIRD-PARTY-NOTICES.md", "AGENTS.md",
-    ".claude/settings.json", "tools/docs-site/",
+    ".claude/settings.json", "tools/docs-site/", ".agents/hooks/package.json",
 ];
 const reads = file => PATHS.some(p => p.endsWith("/") ? file.startsWith(p) : file === p);
 
@@ -309,7 +310,24 @@ function theDocsPortalReadsTheChainModel(t, root) {
         "the docs portal reads the chain model rather than walking docs/ itself", entry);
 }
 
+// The harness scripts are CommonJS, and Node decides a .js file's module type by the nearest
+// package.json. A project declaring "type": "module" at its root would otherwise turn every one of
+// them into an ES module that dies on its first require(), hooks included, and the session would
+// stop checking anything. Each folder carries a package.json of its own that stops the lookup there.
+const COMMONJS_DIRS = ["scripts", ".agents/hooks"];
+function harnessScriptsRunAsCommonJs(t, root) {
+    for (const dir of COMMONJS_DIRS) {
+        if (!fs.existsSync(path.join(root, dir))) { t.skip(`CommonJS scope: no ${dir} folder`); continue; }
+        const file = path.join(root, dir, "package.json");
+        let type = null;
+        try { type = JSON.parse(fs.readFileSync(file, "utf8")).type; } catch { /* absent or unreadable */ }
+        t.ok(type === "commonjs", `${dir}/package.json declares "type": "commonjs", so a project's ESM package.json cannot reach the harness scripts`,
+            type === null ? "missing or not JSON" : `type is ${JSON.stringify(type)}`);
+    }
+}
+
 const INVARIANTS = [
+    harnessScriptsRunAsCommonJs,
     gitHooksAreExecutable,
     noGitHookDecidesAnything,
     claudeHookLaunchersAreWired,
