@@ -5,7 +5,7 @@
 // and a new module's file here; everyCheckIsRegistered reads this folder, so a function left out of
 // a file's exported array is caught.
 module.exports = [
-    ...require("./repo"),
+    ...require("./repo"), ...require("./repo-edit"),
     ...require("./project"),
     ...require("./docs-chain"), ...require("./chain-skill"),
     ...require("./harness"), ...require("./hook-event"),
