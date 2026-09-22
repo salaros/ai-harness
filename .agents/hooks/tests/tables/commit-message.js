@@ -79,6 +79,41 @@ function commitMessageDecisions(t) {
     }
 }
 
+// A coding agent appends "Co-authored-by: <itself>" because its own system prompt tells it to, so
+// asking it to stop is a rule it forgets and a rejection it cannot satisfy. The hook drops the line
+// instead. A human pair is credited exactly as Git intends: the discriminator is the address no
+// person reads, not the name, because Claude is also a name parents give children.
+function agentTrailersAreDropped(t) {
+    const BODY = "A body long enough to satisfy the description rule.";
+    const CLAUDE = "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>";
+    const COPILOT = "Co-authored-by: Copilot <198982749+Copilot@users.noreply.github.com>";
+    const HUMAN = "Co-authored-by: Jane Roe <jane@example.com>";
+    const subject = "feat(hooks): drop the co-author trailer an agent writes";
+    const rows = [
+        // message, what the trailer block should be afterwards, who was dropped, why
+        [text(subject, "", BODY, "", CLAUDE), "", "Claude Opus 5", "an agent's trailer is dropped, and it is named"],
+        [text(subject, "", BODY, "", COPILOT), "", "Copilot", "a bot account at a noreply address is an agent"],
+        [text(subject, "", BODY, "", HUMAN), HUMAN, null, "a person keeps the credit Git's convention is for"],
+        [text(subject, "", BODY, "", "Co-authored-by: Claude Dupont <claude.dupont@example.fr>"),
+            "Co-authored-by: Claude Dupont <claude.dupont@example.fr>", null,
+            "a person named Claude at their own address is not an agent"],
+        [text(subject, "", BODY, "", HUMAN, CLAUDE), HUMAN, "Claude Opus 5", "the human stays where the agent goes"],
+        [text(subject, "", BODY, "", "Refs: AB-42", CLAUDE), "Refs: AB-42", "Claude Opus 5", "other trailers are left alone"],
+        [text(subject, "", BODY), "", null, "a message with no trailer is not rewritten"],
+    ];
+    for (const [message, kept, who, why] of rows) {
+        const r = commitMsg.strip(message);
+        const tail = r.message.split("\n").filter(l => /^[A-Za-z][A-Za-z-]*:\s/.test(l)).join("\n");
+        const named = who === null ? !r.dropped.length : r.dropped.length === 1 && r.dropped[0].includes(who);
+        t.ok(tail === kept && named, `check-commit-msg: ${why}`, JSON.stringify(r));
+    }
+    // What is left has to still be a commit message: no trailing blank where the trailer was, and
+    // the body still ends in one newline, the way Git wrote it.
+    const stripped = commitMsg.strip(text(subject, "", BODY, "", CLAUDE)).message;
+    t.ok(stripped === text(subject, "", BODY), "check-commit-msg: dropping the last trailer leaves no blank line behind", JSON.stringify(stripped));
+}
+
 module.exports = [
     commitMessageDecisions,
+    agentTrailersAreDropped,
 ];

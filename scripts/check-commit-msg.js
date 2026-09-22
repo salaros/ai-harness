@@ -32,6 +32,40 @@ const TRAILER = /^(?:BREAKING[ -]CHANGE:|[A-Za-z][A-Za-z-]*:\s)/;
 // Git writes these itself, so holding them to the rule would block a merge or a rebase.
 const GENERATED = /^(?:Merge |Revert "|fixup! |squash! |amend! )/;
 
+// A coding agent appends its own Co-authored-by trailer because its system prompt tells it to, and
+// no instruction in this repo outranks that prompt: asking it to stop is a rule it forgets, and
+// rejecting the commit is a demand it cannot satisfy. So the line is dropped before the message is
+// checked, which is the one intervention that works whoever wrote it.
+// The discriminator is the address, not the name. Claude, Gemini and Jules are names parents give
+// children, and a human pair deserves the credit Git's convention exists for; an agent signs with a
+// vendor's noreply box or a bot account, which nobody reads. A handful of agents whose names no
+// parent chose -- Copilot, Codex, Cursor -- are recognised by name as well, for the ones that sign
+// with a plain address.
+const AGENT_MAIL = /@(?:anthropic\.com|openai\.com|cursor\.(?:com|sh)|cognition(?:-ai)?\.(?:ai|com)|sourcegraph\.com)$|^\d+\+\w+@users\.noreply\.github\.com$|^(?:noreply|bot)@(?:google|github)\.com$/i;
+const AGENT_NAME = /^(?:(?:github )?copilot|codex|cursor(?: agent)?|aider|cline|windsurf|amp|devin(?: ai)?|claude code|claude (?:opus|sonnet|haiku)\b.*)$/i;
+const COAUTHOR = /^co-authored-by:\s*(.*?)\s*$/i;
+const WHO = /^(.*?)\s*<([^>]*)>\s*$/;
+
+// The message with every agent's co-author trailer removed, and who was removed. Nothing else about
+// the message changes: a trailer that is not one, and a message with no such trailer, come back
+// exactly as they went in.
+function strip(raw) {
+    const dropped = [];
+    const eol = raw.includes("\r\n") ? "\r\n" : "\n";
+    const kept = raw.split(/\r?\n/).filter(line => {
+        const m = line.match(COAUTHOR);
+        if (!m) return true;
+        const who = m[1].match(WHO);
+        const agent = who ? AGENT_MAIL.test(who[2]) || AGENT_NAME.test(who[1]) : AGENT_NAME.test(m[1]);
+        if (agent) dropped.push(m[1]);
+        return !agent;
+    });
+    if (!dropped.length) return { message: raw, dropped };
+    // The blank line that separated the trailer block goes with it, or the message ends in one.
+    while (kept.length > 1 && kept[kept.length - 1].trim() === "" && kept[kept.length - 2].trim() === "") kept.pop();
+    return { message: kept.join(eol), dropped };
+}
+
 // Whether the project has decided it has no issue tracker. `project-init` writes
 // `Issue tracker: none` into MEMORY.md for a project that plans in docs/, and nagging that repo for
 // a key on every commit would be asking for something it has already said it does not have.
@@ -148,7 +182,7 @@ function check(raw, root) {
     return { problems, warnings, summary: `commit message: conventional, ${header.length} character subject` };
 }
 
-module.exports = { check, TYPES, MAX, MIN_WORDS, MIN_BODY };
+module.exports = { check, strip, TYPES, MAX, MIN_WORDS, MIN_BODY };
 
 if (require.main === module) {
     // Read the message before changing directory: the path given may be relative to where Git ran.

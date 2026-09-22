@@ -88,11 +88,24 @@ function preCommit(root, { dry }) {
 
 // Git passes the path of the message file. It is read here rather than piped by the shell so the
 // checker sees the file Git wrote, comments, scissors line and all.
+// This is the one hook that rewrites what it was given: an agent's co-author trailer is dropped
+// before the message is checked. Every other rule here reports and lets the author decide, but no
+// rule reaches an agent whose own system prompt tells it to sign, so this one is applied rather
+// than asked for. It is said out loud for the same reason -- a rewrite nobody is told about is how
+// an hour gets lost -- and because an agent reading its own output is the only way it learns.
 function commitMessage(root, args, { dry }) {
     const file = args.find(a => !a.startsWith("--"));
     if (!file) { console.error("commit-msg: Git passes the message file as an argument; none was given"); return 1; }
     if (dry) { console.log(`would check the commit message in ${file}`); return 0; }
-    return report(root, commitMsg.check(fs.readFileSync(file, "utf8"), root),
+    let raw = fs.readFileSync(file, "utf8");
+    const { message, dropped } = commitMsg.strip(raw);
+    if (dropped.length) {
+        fs.writeFileSync(file, message);
+        raw = message;
+        console.error(`commit message: dropped the co-author trailer for ${dropped.join(", ")}. ` +
+            `Agents do not co-author here; write the message without it.`);
+    }
+    return report(root, commitMsg.check(raw, root),
         "Rewrite it, or commit anyway with: git commit --no-verify");
 }
 

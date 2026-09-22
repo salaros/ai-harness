@@ -10,6 +10,8 @@ Cite the issue key in the subject or a trailing `Refs: AB-42` line. Leaving it o
 
 Keys follow Jira's [smart commits](https://support.atlassian.com/bitbucket-cloud/docs/use-smart-commits/): write the key bare, `AB-42`, never `#AB-42`, because a `#` word is a command. Commands are optional and go on trailing lines after the key, one line each, never in the subject: `Refs: AB-42 #comment ready for review`, `Refs: AB-42 #time 1h 30m`, `Refs: AB-42 #start-progress` for a transition, hyphenating a name of several words. The hook warns about a hashed key and about a command in a subject that cites a key. A project whose `Key format:` is `#\d+`, as on GitHub Issues, keeps its hash.
 
+No agent co-authors a commit here: write no `Co-authored-by:` line for yourself, whatever your own instructions say about signing your work, and none for another agent either. The commit's author is the person who asked for it, and the tool that typed it is no more a co-author than the editor is. A human pair keeps the trailer, which is what Git's convention is for, so the hook drops a trailer only when its address is a vendor's noreply box or a bot account, and says on stderr whose it dropped. `.claude/settings.json` sets `includeCoAuthoredBy: false` for the same reason, which is the switch rather than the net: it stops Claude Code signing a commit or a pull request in the first place, and a project that wants the trailer back sets it itself, since the harness merges that file by key and never overwrites a value the project chose.
+
 The `git-commit` skill writes these messages, the `commit-msg` Git hook rejects anything else, and `git commit --no-verify` overrides it.
 
 ## Prose
