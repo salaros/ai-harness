@@ -185,10 +185,49 @@ function repoViewListsModes(t) {
     });
 }
 
+// SPEC-0001/R-2. One commit, answering the same questions as the disk does. This is how the
+// upstream is read during an install: not the checkout it happens to have on disk, which may hold a
+// half-finished edit, but the commit the receipt names. What the working tree does afterwards --
+// gaining a file, losing one -- is none of the view's business.
+function repoViewReadsACommit(t) {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x0d]);
+    withRoot({ "a.txt": "first\n", "docs/b.md": "b\n", "logo.png": png }, dir => {
+        const git = (...args) => spawnSync("git", args, { cwd: dir, encoding: "utf8" });
+        if (git("init", "-q").status !== 0) { t.skip("repo view: git is not available for the commit adapter"); return; }
+        git("config", "user.email", "t@example.com");
+        git("config", "user.name", "T");
+        git("add", "-A");
+        if (git("commit", "-qm", "first").status !== 0) { t.skip("repo view: this git cannot commit here"); return; }
+
+        // The disk moves on; the commit does not.
+        fs.writeFileSync(path.join(dir, "a.txt"), "second\n");
+        fs.writeFileSync(path.join(dir, "late.txt"), "not committed\n");
+        fs.rmSync(path.join(dir, "docs", "b.md"));
+
+        const at = repoView.commit(dir, "HEAD");
+        const rows = [
+            [at.read("a.txt"), "first\n", "a file edited since reads as the commit recorded it"],
+            [at.exists("late.txt"), false, "a file written since the commit is not in it"],
+            [at.isFile("docs/b.md"), true, "a file deleted since the commit is still in it"],
+            [at.list("docs").join(), "b.md", "a folder lists what the commit holds"],
+            [at.bytes("logo.png").equals(png), true, "a blob's bytes come back byte for byte"],
+            [JSON.stringify(at.lstat("a.txt")), `{"link":null}`, "a recorded file is not a link"],
+            [at.modes().map(r => r.file).join(), "a.txt,docs/b.md,logo.png", "modes lists the tree, recursively and sorted"],
+            [at.modes().every(r => /^[0-9a-f]{40,64}$/.test(r.object)), true, "each row carries the blob the commit recorded"],
+        ];
+        for (const [got, want, why] of rows) t.ok(got === want, `repo view: ${why}`, JSON.stringify(got));
+
+        let threw = false;
+        try { repoView.commit(dir, "0000000000000000000000000000000000000000"); } catch { threw = true; }
+        t.ok(threw, "repo view: a commit nobody can read throws rather than reading empty");
+    });
+}
+
 module.exports = [
     repoViewDecisions,
     repoViewReadsBytes,
     repoViewLstatsLinks,
     repoViewListsModes,
+    repoViewReadsACommit,
     stagedChainDecisions,
 ];

@@ -134,6 +134,49 @@ function index(root, paths = []) {
         [row.file, entry(row.mode, row.object, () => row.link ? blob(row.object).toString("utf8") : blob(row.object))])));
 }
 
+// Every blob of one tree, read in two calls rather than a `git show` per path. An install reads
+// every file of the upstream's head, and a process per file made a first install take most of a
+// minute on Windows. null when the batch could not be read, which leaves each path to the fallback.
+function treeBlobs(root, rows) {
+    const r = spawnSync("git", ["-c", "core.quotepath=off", "cat-file", "--batch"],
+        { cwd: root, input: rows.map(e => e.object).join("\n") + "\n", maxBuffer: 1024 * 1024 * 1024 });
+    if (r.status !== 0) return null;
+    const blobs = new Map();
+    let at = 0;
+    for (const { file } of rows) {
+        const eol = r.stdout.indexOf(10, at);
+        const size = Number(r.stdout.toString("utf8", at, eol).split(" ")[2]);
+        blobs.set(file, Buffer.from(r.stdout.subarray(eol + 1, eol + 1 + size)));
+        at = eol + 1 + size + 1;
+    }
+    return blobs;
+}
+
+// One commit of the checkout at `root`: what it recorded, whatever the working tree has done since.
+// This is how the upstream is read during an install -- the commit the receipt names, not the
+// checkout that happens to be on disk. Throws when the commit cannot be read, for the same reason
+// index() does: a commit nobody could read is not an empty one.
+// A submodule is not a blob, and is left out, as `git show` would fail on it too.
+function commit(root, sha) {
+    const listing = gitBytes(root, ["ls-tree", "-r", "-z", sha]);
+    if (listing.status !== 0) throw new Error(`could not read the commit ${sha} in ${root}`);
+    const rows = listing.stdout.toString("utf8").split("\0").filter(Boolean).map(line => {
+        const tab = line.indexOf("\t");
+        const [mode, type, object] = line.slice(0, tab).split(" ");
+        return { mode, type, object, file: line.slice(tab + 1) };
+    }).filter(e => e.type === "blob");
+
+    let batch;                                    // read whole on first use, and only if anyone asks
+    const content = row => {
+        if (batch === undefined) batch = treeBlobs(root, rows);
+        if (batch && batch.has(row.file)) return batch.get(row.file);
+        const r = gitBytes(root, ["show", `${sha}:${row.file}`]);
+        if (r.status !== 0) throw new Error(`could not read ${row.file} at ${sha}: ${r.stderr.toString("utf8")}`);
+        return r.stdout;
+    };
+    return filesView(new Map(rows.map(row => [row.file, entry(row.mode, row.object, () => content(row))])));
+}
+
 // What a commit will record for `paths`, and the working tree for everything else. Each of `paths`
 // is read from the index when the index holds anything under it, and from the disk when it holds
 // nothing: a repo that keeps one of them untracked still gets a meaningful answer.
@@ -167,4 +210,4 @@ function fromMap(files) {
     })));
 }
 
-module.exports = { worktree, index, staged, fromMap, indexModes };
+module.exports = { worktree, index, commit, staged, fromMap, indexModes };
