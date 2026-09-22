@@ -11,6 +11,7 @@
     "scripts/lib.js",
     "scripts/project-facts.js",
     "scripts/repo-view.js",
+    "scripts/repo-edit.js",
     "README.md",
     "LICENSE"
   ],

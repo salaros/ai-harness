@@ -34,6 +34,7 @@ const path = require("path");
 const lib = require("./lib");
 const projectFacts = require("./project-facts");
 const repoView = require("./repo-view");
+const repoEdit = require("./repo-edit");
 const installPolicy = require("./install-policy");
 const { spawnSync } = require("child_process");
 
@@ -593,53 +594,32 @@ function planSkills(upstream, target, head, files) {
 
 // ---------------------------------------------------------------- applying it
 
-// Git runs a hook only if it is executable, and says nothing when it is not: an installed harness
-// whose hooks are mode 644 looks installed and gates nothing. The upstream records them 100755, so
-// that mode has to travel, and only Git can carry it. `chmod` alone is not enough -- on Windows
-// core.fileMode is false and the call does nothing, so the file would be staged 100644 later and the
-// hooks would run for whoever installed them and silently never run for anyone else. `git add
-// --chmod=+x` writes the mode into the index whether or not the file was tracked, which is why the
-// install stages these few files rather than leaving them for the project's own `git add`.
-// Returns why it failed, or null.
-function carryMode(root, file) {
-    try { fs.chmodSync(path.join(root, file), 0o755); } catch { /* the filesystem does not do modes */ }
-    const r = lib.run("git", [...GIT, "-C", root, "add", "--chmod=+x", "--", file]);
-    return r.status === 0 ? null : `could not mark ${file} executable: ${r.output}`;
-}
-
-// Carries out one entry. Returns null when it went as planned, or what happened instead: `why` to
-// print, and the `outcome` and `bucket` the run reports in place of the plan's.
-function perform(root, e) {
-    const full = path.join(root, e.file);
-    if (e.mkdir || e.link !== undefined || e.write !== undefined) fs.mkdirSync(path.dirname(full), { recursive: true });
-    if (e.link !== undefined) {
-        if (e.replace) fs.unlinkSync(full);
-        // Windows needs Developer Mode and core.symlinks=true for this to work at all, so a refusal
-        // is reported rather than thrown: the harness still functions with the link missing, it is
-        // just invisible to the harnesses that read it, and README says how to turn them on.
-        try { fs.symlinkSync(e.link.split("/").join(path.sep), full, "dir"); }
-        catch (err) { return { outcome: "yours", bucket: "kept", why: `could not create the symlink ${e.file} -> ${e.link}: ${err.code || err.message}` }; }
-        return null;
-    }
-    if (e.write !== undefined) fs.writeFileSync(full, e.write);
-    if (e.exec) { const why = carryMode(root, e.file); if (why) return { why }; }
-    return null;
-}
-
 // An install rewrites someone else's repository, so it says what it did to every path while it does
 // it, and --quiet asks for the summary alone. The mode is worth a column of its own: a hook that
 // lands 100644 gates nothing and a skill link written as a regular file leaves the agent with no
 // skills, and both look installed. A dry run prints the same lines straight from the plan.
+//
+// The writing is scripts/repo-edit.js, an entry at a time: the line for a path is printed as the
+// path is written, and an edit handed the whole plan at once would leave a long install silent and
+// then print all of it at the end. What order the work inside an entry goes in -- the parent folder
+// before the file, the link's way cleared before the link, the mode after the content -- is the
+// edit's, so this loop takes the plan's order as given and adds nothing to it.
 // Returns the entries as they turned out, which the summary is built from.
 function apply(entries, root, options) {
     const done = [];
+    const edit = repoEdit.worktreeEdit(root);
     for (const e of entries) {
         if (e.phase) { if (!options.quiet) say(`\n${e.phase}`); continue; }
         let shown = e;
         if (!options.dryRun) {
-            const fix = perform(root, e);
-            if (fix && fix.why) say(fix.why);
-            if (fix && fix.outcome) shown = { ...e, outcome: fix.outcome, bucket: fix.bucket };
+            const [result] = edit.apply([e]);
+            // The edit reports; the policy decides. A symlink this platform will not make means the
+            // target keeps whatever it already had, which is an outcome word and therefore this
+            // run's to choose -- the edit says only that the link is not there and why.
+            if (result && !result.done) {
+                say(result.why);
+                if (result.kind === "link") shown = { ...e, outcome: "yours", bucket: "kept" };
+            }
         }
         if (!shown.silent && !options.quiet) say(`  ${shown.policy.padEnd(9)}${shown.mode}  ${shown.outcome.padEnd(12)}${shown.file}`);
         done.push(shown);
