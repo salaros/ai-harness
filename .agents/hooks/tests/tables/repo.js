@@ -90,7 +90,62 @@ function stagedChainDecisions(t) {
     });
 }
 
+// SPEC-0001/R-1. A file's bytes are a question of their own, never a flag on read(): a stand-in
+// that holds text can answer read() honestly and has to be handed real bytes to answer this one.
+// The installer's own stand-in returned a string where production returns a Buffer, which is why
+// every branch it takes for binary content has never run in this suite.
+function repoViewReadsBytes(t) {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x0d, 0x0a, 0x1a]);   // a zero byte, so it is not text
+    const map = repoView.fromMap({ "a.txt": "hi\n", "logo.png": png });
+    const rows = [
+        [Buffer.isBuffer(map.bytes("a.txt")) && map.bytes("a.txt").equals(Buffer.from("hi\n")), "text a map holds comes back as its bytes"],
+        [map.bytes("logo.png").equals(png), "bytes a map holds come back byte for byte"],
+        [map.bytes("nothing.txt") === null, "bytes of an absent file is null"],
+        [map.bytes("docs") === null, "bytes of a folder is null"],
+        [typeof map.read("logo.png") === "string", "read never gives bytes, whatever the entry holds"],
+    ];
+    for (const [got, why] of rows) t.ok(got, `repo view: ${why}`);
+
+    withRoot({ "a.txt": "hi\n", "logo.png": png }, dir => {
+        const disk = repoView.worktree(dir);
+        t.ok(disk.bytes("logo.png").equals(png), "repo view: the working tree gives a file's actual bytes", JSON.stringify(disk.bytes("logo.png")));
+        t.ok(disk.bytes("no-such-file") === null, "repo view: bytes of a file that is not there is null");
+        if (spawnSync("git", ["init", "-q"], { cwd: dir }).status !== 0) { t.skip("repo view: git is not available for the index adapter"); return; }
+        spawnSync("git", ["add", "-A"], { cwd: dir });
+        const staged = repoView.index(dir);
+        t.ok(staged.bytes("logo.png").equals(png), "repo view: the index gives a blob's bytes, not its decoding", JSON.stringify(staged.bytes("logo.png")));
+    });
+}
+
+// SPEC-0001/R-1. What a link in the way is, which is the question the installer asks before it
+// writes a skill link: nothing there, the project's own file, or a link already pointing somewhere.
+// A link's target is POSIX whatever the platform spells it as, since the answer is compared against
+// the target the harness would write.
+function repoViewLstatsLinks(t) {
+    const map = repoView.fromMap({ "a.txt": "hi\n", ".claude/skills": { link: "../.agents/skills" } });
+    const rows = [
+        [JSON.stringify(map.lstat("a.txt")), `{"link":null}`, "a plain file is there and is not a link"],
+        [JSON.stringify(map.lstat(".claude/skills")), `{"link":"../.agents/skills"}`, "a link says where it points"],
+        [map.lstat("nothing"), null, "nothing there is null, not a file that is not a link"],
+        [map.read(".claude/skills"), "../.agents/skills", "a link reads as the path it holds, as its blob does"],
+    ];
+    for (const [got, want, why] of rows) t.ok(got === want, `repo view: ${why}`, JSON.stringify(got));
+
+    withRoot({ "a.txt": "hi\n", "sub/b.txt": "b\n" }, dir => {
+        const disk = repoView.worktree(dir);
+        t.ok(JSON.stringify(disk.lstat("a.txt")) === `{"link":null}`, "repo view: the working tree reports a plain file as no link");
+        t.ok(JSON.stringify(disk.lstat("sub")) === `{"link":null}`, "repo view: a folder is there and is not a link");
+        t.ok(disk.lstat("gone") === null, "repo view: the working tree reports nothing there as null");
+        try { fs.symlinkSync(path.join("sub", "b.txt"), path.join(dir, "link"), "file"); }
+        catch { t.skip("repo view: this platform refuses to create a symlink"); return; }
+        t.ok(disk.lstat("link").link === "sub/b.txt", "repo view: a link on disk gives its target with forward slashes", JSON.stringify(disk.lstat("link")));
+        t.ok(disk.exists("link"), "repo view: a link that resolves still exists");
+    });
+}
+
 module.exports = [
     repoViewDecisions,
+    repoViewReadsBytes,
+    repoViewLstatsLinks,
     stagedChainDecisions,
 ];
