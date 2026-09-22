@@ -33,8 +33,12 @@ What a repo's harness knows about its skills at one moment: every entry under `.
 _Avoid_: skill registry, skill index, skill list
 
 **Repo view**:
-A repo as a check reads it, by repo-relative path: whether a path exists, whether it is a file, its text, and what a folder holds. The working tree, Git's index and a set of files a test names each give one. The staged view is what a commit will record: the documentation chain from the index, and everything else from the working tree.
+A repo as anything reads it, by repo-relative path: whether a path exists, whether it is a file, its text, its bytes, where a symlink points, what a folder holds and what modes Git records. The working tree, Git's index, one commit and a set of files a test names each give one, and it is the only read seam: a check, a hook and an install all ask the same questions. The staged view is what a commit will record: the documentation chain from the index, and everything else from the working tree. Nothing in it writes.
 _Avoid_: filesystem, snapshot, tree
+
+**Repo edit**:
+A repo as a run changes it, by repo-relative path: the writes, folders, links and modes one install applies, performed by a run against the working tree and by a check against a map. It reports what it did and what it could not do, never what the run should call the result: naming that is the install policy's.
+_Avoid_: writer, mutator, filesystem
 
 **Repo root**:
 The repo an entry point acts on, which is not always the checkout the file sits in: a hook checks the project its harness was installed into, and a check can be pointed at a throwaway repo. One rule answers for every script and hook: `--root=<dir>`, then the harness's project-dir variable, then the checkout.

@@ -94,4 +94,6 @@ Deepening candidates for `ai-harness`, in the vocabulary of the `codebase-design
 
 ## Status
 
-Nothing picked yet. Whichever candidate is taken up goes through `grilling` into an ADR for the decision and a SPEC for the design; the rest stay here, found again through the `#deferred` line in `TODO.md`.
+Candidate 2 was taken up on 22 Sep and grilled to an empty frontier. The decision is ADR-0001 and the design is SPEC-0001, which narrowed it on the way: `scripts/repo-view.js` already was a read seam with four adapters, so the work deletes the installer's second one rather than adding a third, and the writes go to a sibling, `scripts/repo-edit.js`. Candidate 6's relink is expected to reuse that sibling.
+
+The other six stay here, found again through the `#deferred` line in `TODO.md`.
