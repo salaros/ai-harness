@@ -60,6 +60,7 @@ src/	seed	The project's code.
 tests/	seed	The project's tests.
 tools/	seed	Project tooling. The docs site lands on a first install and is then the project's to change.
 workflows/	seed	Workflow specs written by loop-me, one per project.
+.scratch/reviews/	template	Architecture reviews of the harness itself. A project's own land in the same place and are its own; shipping the upstream's would hand every project a review of an installer it does not maintain.
 .scratch/	seed	Working notes, never shared.
 AGENTS.md	reconcile	The map every agent reads, and the table docs-check parses. A stale one leaves a repo that looks installed and behaves like the version it came from.
 CLAUDE.md	import	One line pointing at AGENTS.md, but a project may add to it.
