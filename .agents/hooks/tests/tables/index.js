@@ -12,5 +12,5 @@ module.exports = [
     ...require("./install-policy"), ...require("./installer"),
     ...require("./commit-message"),
     ...require("./todo"),
-    ...require("./stacks"),
+    ...require("./stacks"), ...require("./format"),
 ];

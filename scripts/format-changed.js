@@ -32,13 +32,42 @@ const CANNOT_RUN = [
         "the tool is not installed"],
     [/could not find a msbuild project|no project or solution file|specify which to use with the <workspace>/i,
         "the stack has no project file here"],
+    // Unreachable while the batches below fit, and listed so it can never be read as a verdict on the
+    // files: a path long enough to fill a command line on its own is the shell's problem, not theirs.
+    [/command line is too long|argument list too long|E2BIG/i,
+        "one file fills a whole command line"],
 ];
 const cannotRun = output => (CANNOT_RUN.find(([re]) => re.test(output)) || [])[1] || null;
 
-const root = lib.chdirRoot();
-const dry = process.argv.includes("--dry-run");
-const fromPush = process.argv.includes("--push");
-const input = lib.stdin().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+// cmd.exe refuses a command line over 8191 characters, and says "The command line is too long"
+// before the formatter starts. A push touching a few hundred files passes that length easily: 338
+// files came to 18,780 characters. The shell's failure names no file and matches nothing above, so
+// it used to be reported as "N changed file(s) are not formatted" -- accusing files that were fine
+// and blocking a push that had nothing wrong with it. So the files go to the formatter in batches
+// that fit a command line, and the batches' verdicts are combined. A POSIX shell allows far more;
+// batching there costs nothing and keeps one code path.
+const LIMIT = process.platform === "win32" ? 7500 : 120000;
+function batches(template, files, limit = LIMIT) {
+    const room = limit - template.replace("{files}", "").length;
+    const out = [];
+    let group = [], length = 0;
+    for (const file of files) {
+        const cost = file.length + 3;                                   // two quotes and a separator
+        if (group.length && length + cost > room) { out.push(group); group = []; length = 0; }
+        group.push(file);
+        length += cost;
+    }
+    if (group.length) out.push(group);
+    return out;
+}
+const fill = (template, group) => template.replace("{files}", group.map(f => `"${f}"`).join(" "));
+
+// One verdict from every batch of one alternative: the files are misformatted if any batch says so,
+// and the output is what those batches said. A batch that passes has nothing to report.
+function combine(runs) {
+    const bad = runs.filter(r => r.status !== 0);
+    return { status: bad.length ? 1 : 0, output: bad.map(r => r.output).filter(Boolean).join("\n") };
+}
 
 // Git hands a pre-push hook "<local ref> <local sha> <remote ref> <remote sha>" per ref.
 function pathsFromRefUpdates(lines) {
@@ -59,41 +88,66 @@ function pathsFromRefUpdates(lines) {
     return [...out];
 }
 
-const changed = (fromPush ? pathsFromRefUpdates(input) : input).filter(p => fs.existsSync(p));
-if (!changed.length) { console.log("nothing to format-check"); process.exit(0); }
+// Reads the paths from stdin, runs each active stack's formatter over them and prints what it found.
+// Returns the exit code: 1 while a file a push would publish is misformatted.
+function main(argv) {
+    const root = lib.chdirRoot();
+    const dry = argv.includes("--dry-run");
+    const fromPush = argv.includes("--push");
+    const input = lib.stdin().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
-let status = 0, ran = false;
-// active() drops the rows whose "needs" file is absent -- not this repo's stack -- and select()
-// is the table's own matcher, the same one that decides what a merge restores.
-for (const { stack, formats, format } of stacks.active(root)) {
-    if (!format || !formats) continue;
-    const files = stacks.select(formats, changed);
-    if (!files.length) continue;
-    const quoted = files.map(f => `"${f}"`).join(" ");
-    // " ?? " separates fallbacks, tried in order: the first whose tool is actually installed runs,
-    // and its verdict stands. The dotnet row uses it to prefer a project's Husky.NET task runner and
-    // fall back to dotnet format. This is the script's own syntax, not the shell's.
-    const alternatives = format.split(" ?? ").map(s => s.trim()).filter(Boolean);
-    ran = true;
-    if (dry) {
-        for (const alt of alternatives) console.log(`would check: ${alt.replace("{files}", quoted)} (${stack})`);
-        continue;
+    const changed = (fromPush ? pathsFromRefUpdates(input) : input).filter(p => fs.existsSync(p));
+    if (!changed.length) { console.log("nothing to format-check"); return 0; }
+
+    let status = 0, ran = false;
+    // active() drops the rows whose "needs" file is absent -- not this repo's stack -- and select()
+    // is the table's own matcher, the same one that decides what a merge restores.
+    for (const { stack, formats, format } of stacks.active(root)) {
+        if (!format || !formats) continue;
+        const files = stacks.select(formats, changed);
+        if (!files.length) continue;
+        // " ?? " separates fallbacks, tried in order: the first whose tool is actually installed runs,
+        // and its verdict stands. The dotnet row uses it to prefer a project's Husky.NET task runner and
+        // fall back to dotnet format. This is the script's own syntax, not the shell's.
+        const alternatives = format.split(" ?? ").map(s => s.trim()).filter(Boolean);
+        ran = true;
+        if (dry) {
+            for (const alt of alternatives) {
+                const groups = batches(alt, files);
+                const rest = groups.length > 1 ? ` (and ${groups.length - 1} more batch(es))` : "";
+                console.log(`would check: ${fill(alt, groups[0])}${rest} (${stack})`);
+            }
+            continue;
+        }
+        let outcome = null, skipped = null;
+        for (const alt of alternatives) {
+            // A batch that cannot run at all ends the alternative rather than the run: a missing tool
+            // is the same answer for every batch, and the next fallback gets the whole list.
+            const runs = [];
+            let why = null;
+            for (const group of batches(alt, files)) {
+                const r = lib.shell(fill(alt, group));
+                if (r.status !== 0) why = cannotRun(r.output);
+                if (why) break;
+                runs.push(r);
+            }
+            if (why) { skipped = why; continue; }                       // try the next fallback
+            outcome = combine(runs);
+            break;
+        }
+        if (!outcome) { console.log(`${stack}: skipped, ${skipped}`); continue; }
+        if (outcome.status === 0) { console.log(`${stack}: ${files.length} file(s) formatted correctly`); continue; }
+        console.error(`\n${stack}: ${files.length} changed file(s) are not formatted.\n`);
+        console.error(outcome.output);
+        console.error(`\nFormat them, then commit the result. To push anyway: git push --no-verify`);
+        status = 1;
     }
-    let outcome = null, skipped = null;
-    for (const alt of alternatives) {
-        const command = alt.replace("{files}", quoted);
-        const r = lib.shell(command);
-        const why = r.status === 0 ? null : cannotRun(r.output);
-        if (why) { skipped = why; continue; }                           // try the next fallback
-        outcome = { command, r };
-        break;
-    }
-    if (!outcome) { console.log(`${stack}: skipped, ${skipped}`); continue; }
-    if (outcome.r.status === 0) { console.log(`${stack}: ${files.length} file(s) formatted correctly`); continue; }
-    console.error(`\n${stack}: ${files.length} changed file(s) are not formatted.\n`);
-    console.error(outcome.r.output);
-    console.error(`\nFormat them, then commit the result. To push anyway: git push --no-verify`);
-    status = 1;
+    if (!ran) console.log(`nothing to format-check (${changed.length} changed file(s), no stack claims them)`);
+    return status;
 }
-if (!ran) console.log(`nothing to format-check (${changed.length} changed file(s), no stack claims them)`);
-process.exit(status);
+
+// The batching is this script's own decision, so the suite reads it here rather than through a shell:
+// a command line that was too long is a failure the formatter's output cannot show.
+module.exports = { batches, fill, combine, cannotRun, LIMIT, CANNOT_RUN };
+
+if (require.main === module) process.exit(main(process.argv.slice(2)));
