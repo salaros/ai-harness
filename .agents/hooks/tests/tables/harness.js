@@ -94,12 +94,12 @@ function hookLauncherDecisions(t) {
     ];
     for (const [settings, wants, why] of rows) {
         withRoot({ ".claude/settings.json": JSON.stringify(settings, null, 2) }, dir => {
-            const said = checkHarness.check(dir).failed.map(f => `${f.title}\n${f.detail}`).join("\n");
+            const said = checkHarness.check(repoView.worktree(dir)).failed.map(f => `${f.title}\n${f.detail}`).join("\n");
             t.ok(wants === null ? !said : said.includes(wants), `hook launcher: ${why}`, said || "(nothing reported)");
         });
     }
     withRoot({ ".claude/settings.json": "{ not json" }, dir => {
-        const said = checkHarness.check(dir).failed.map(f => f.title).join("\n");
+        const said = checkHarness.check(repoView.worktree(dir)).failed.map(f => f.title).join("\n");
         t.ok(said.includes("readable JSON"), "hook launcher: a settings file that is not JSON fails rather than passing quietly", said);
     });
 }
@@ -193,8 +193,11 @@ function skillRosterDecisions(t) {
 }
 
 // The upstream's own skills all pass the frontmatter check, so harnessInvariantsHoldHere proves only
-// that it passes. Each broken shape gets a skill of its own in a temporary root, and the check must
-// name every one of them and none of the valid ones: quoted values and a folded description included.
+// that it passes. Each broken shape gets a skill of its own, and the check must name every one of
+// them and none of the valid ones: quoted values and a folded description included.
+// SPEC-0001/S-3. The shapes are a map, not a directory: an invariant reads one repo-view now, so the
+// nine skills here are nine entries rather than a temporary tree, and the folder holding no SKILL.md
+// is a file beside the one that is missing rather than a mkdirSync the fixture could not express.
 function skillFrontmatterCheckNamesEachProblem(t) {
     const bodies = {
         "plain-ok": "---\nname: plain-ok\ndescription: Does one thing.\n---\nBody\n",
@@ -207,18 +210,14 @@ function skillFrontmatterCheckNamesEachProblem(t) {
         "empty-folded": "---\nname: empty-folded\ndescription: >\n---\n",
         "too-long": `---\nname: too-long\ndescription: ${"x".repeat(1025)}\n---\n`,
     };
-    const files = {};
+    const files = { ".agents/skills/no-file/notes.md": "a folder, and no SKILL.md in it\n" };
     for (const [name, body] of Object.entries(bodies)) files[`.agents/skills/${name}/SKILL.md`] = body;
     const found = [];
-    withRoot(files, root => {
-        // A skill folder holding no SKILL.md at all, which withRoot's file list cannot express.
-        fs.mkdirSync(path.join(root, ".agents/skills/no-file"), { recursive: true });
-        const probe = {
-            ok: (condition, title, detail) => { if (!condition) found.push(...detail.split("\n")); },
-            skip: why => found.push(`skip: ${why}`),
-        };
-        checkHarness.INVARIANTS.find(fn => fn.name === "everySkillHasValidFrontmatter")(probe, root);
-    });
+    const probe = {
+        ok: (condition, title, detail) => { if (!condition) found.push(...detail.split("\n")); },
+        skip: why => found.push(`skip: ${why}`),
+    };
+    checkHarness.INVARIANTS.find(fn => fn.name === "everySkillHasValidFrontmatter")(probe, repoView.fromMap(files));
 
     const expected = {
         "no-file": "no SKILL.md",
@@ -242,9 +241,9 @@ function skillFrontmatterCheckNamesEachProblem(t) {
 // installed. Each row runs one invariant against a throwaway repo and names the outcome it expects.
 function invariantScopeDecisions(t) {
     const invariant = name => checkHarness.INVARIANTS.find(f => f.name === name);
-    const run = (name, root) => {
+    const run = (name, repo) => {
         const r = { passed: 0, failed: [], skipped: [] };
-        invariant(name)({ ok: (c, title, detail) => c ? r.passed++ : r.failed.push(detail || title), skip: why => r.skipped.push(why) }, root);
+        invariant(name)({ ok: (c, title, detail) => c ? r.passed++ : r.failed.push(detail || title), skip: why => r.skipped.push(why) }, repo);
         return r.failed.length ? "fail" : r.passed ? "pass" : "skip";
     };
     const git = (dir, ...args) => lib.run("git", ["-C", dir, ...args]);
@@ -258,20 +257,51 @@ function invariantScopeDecisions(t) {
     };
     const portal = text("import fs from 'node:fs';", "fs.readdirSync('docs');");
     const rows = [
-        // invariant, files, setup, expected, why
+        // invariant, files, setup (null: the files are all of it, so a map stands in for a checkout), expected, why
         ["gitHooksAreExecutable", { ".githooks/pre-commit": text("#!/bin/sh"), ".githooks/task-runner.json": text("{}") },
             hooks({ "pre-commit": true, "task-runner.json": false }), "pass",
             "a project file in .githooks/ that Git never runs need not be executable"],
         ["gitHooksAreExecutable", { ".githooks/pre-commit": text("#!/bin/sh") },
             hooks({ "pre-commit": false }), "fail", "a harness hook committed 100644 still fails"],
-        ["theDocsPortalReadsTheChainModel", { "tools/docs-site/chain.mjs": portal }, () => {}, "skip",
+        ["theDocsPortalReadsTheChainModel", { "tools/docs-site/chain.mjs": portal }, null, "skip",
             "a project's own portal may read docs/ however it likes"],
-        ["theDocsPortalReadsTheChainModel", { "tools/docs-site/chain.mjs": portal, "scripts/update-harness.js": "" }, () => {}, "fail",
+        ["theDocsPortalReadsTheChainModel", { "tools/docs-site/chain.mjs": portal, "scripts/update-harness.js": "" }, null, "fail",
             "the upstream's portal must read the chain model"],
     ];
     for (const [name, files, setup, want, why] of rows) {
-        const got = withRoot(files, dir => { setup(dir); return run(name, dir); });
+        const got = setup
+            ? withRoot(files, dir => { setup(dir); return run(name, repoView.worktree(dir)); })
+            : run(name, repoView.fromMap(files));
         t.ok(got === want, `invariant scope: ${why}`, `${name}: expected ${want}, got ${got}`);
+    }
+}
+
+// SPEC-0001/S-3. The .claude/skills link in each shape it comes in: one link to the whole folder,
+// one pointing at the wrong thing, and a folder of per-skill links with one skill left out. An
+// invariant reads a repo-view now, so a link is an entry in a map -- which is the only reason these
+// run at all. A real symlink needs a Windows session that happens to be elevated, and the branch
+// that reads the whole-folder link had never run in this suite on any platform.
+function skillLinkShapeDecisions(t) {
+    const invariant = checkHarness.INVARIANTS.find(f => f.name === "everyInstalledSkillIsLinked");
+    const skill = name => text("---", `name: ${name}`, "description: Does one thing.", "---");
+    const run = files => {
+        const said = [];
+        invariant({ ok: (c, title, detail) => { if (!c) said.push(`${title} :: ${detail}`); }, skip: why => said.push(`skip: ${why}`) },
+            repoView.fromMap(files));
+        return said.join("\n");
+    };
+    const one = { ".agents/skills/one/SKILL.md": skill("one") };
+    const rows = [
+        [{ ...one, ".claude/skills": { link: "../.agents/skills" } }, null, "one link to the whole folder shows every skill"],
+        [{ ...one, ".claude/skills": { link: "../.agents/agents" } }, "points at .agents/skills",
+            "a whole-folder link pointing somewhere else is caught"],
+        [{ ...one, ".agents/skills/two/SKILL.md": skill("two"), ".claude/skills/one": { link: "../../.agents/skills/one" } },
+            "two", "a folder of per-skill links is checked name by name"],
+        [one, "skip:", "skills with no links folder beside them is nothing to check"],
+    ];
+    for (const [files, wants, why] of rows) {
+        const said = run(files);
+        t.ok(wants === null ? !said : said.includes(wants), `skill links: ${why}`, said || "(nothing reported)");
     }
 }
 
@@ -280,5 +310,6 @@ module.exports = [
     hookLauncherDecisions,
     skillRosterDecisions,
     skillFrontmatterCheckNamesEachProblem,
+    skillLinkShapeDecisions,
     invariantScopeDecisions,
 ];

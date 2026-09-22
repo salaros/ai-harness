@@ -15,6 +15,7 @@ const fs = require("fs");
 const path = require("path");
 const lib = require("./lib");
 const docsCheck = require("../../scripts/docs-check");
+const repoView = require("../../scripts/repo-view");
 const chainSkill = require("../../scripts/chain-skill");
 
 const { root, paths, transcript } = lib.event();
@@ -23,7 +24,7 @@ const { root, paths, transcript } = lib.event();
 const creating = paths.filter(p => !fs.existsSync(path.join(root, p)));
 if (!creating.length) process.exit(0);
 
-const { stages } = docsCheck.readChain(root);
+const { stages } = docsCheck.readChain(repoView.worktree(root));
 const decision = chainSkill.decide(creating, stages, chainSkill.readTranscript(transcript));
 if (!decision) process.exit(0);
 

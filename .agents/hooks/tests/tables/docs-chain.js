@@ -66,7 +66,7 @@ function sourceDecisions(t) {
 // it cites included, and nothing touches the disk.
 function chainView(files = {}) {
     const map = { "AGENTS.md": fs.readFileSync(path.join(lib.checkout, "AGENTS.md"), "utf8") };
-    for (const s of docsCheck.readChain(lib.checkout).stages)
+    for (const s of docsCheck.readChain(repoView.worktree(lib.checkout)).stages)
         for (const skill of s.skills) map[`.agents/skills/${skill}/SKILL.md`] = "";
     for (const [rel, lines] of Object.entries(files)) map[rel] = [].concat(lines).join("\n") + "\n";
     return repoView.fromMap(map);
@@ -218,7 +218,7 @@ function docsCheckIntentShape(t) {
 const PIPELINE = ["BRD", "PRD", "EARS", "BDD", "ADR", "SPEC"];
 
 function chainIsParsedInPipelineOrder(t) {
-    const { stages, problems } = docsCheck.readChain(lib.checkout);
+    const { stages, problems } = docsCheck.readChain(repoView.worktree(lib.checkout));
     const named = stages.map(s => s.stage);
     const detail = named.join(",");
     t.ok(problems.length === 0, "readChain finds no problem in this repo's table", problems.join("\n"));

@@ -11,6 +11,10 @@
 //   lstat(rel)    { link } for whatever is at the path, or null when nothing is: `link` is where a
 //                 symlink points, with forward slashes, and null for anything that is not one
 //   modes()       every path the view holds, sorted, as { file, mode, object, link, exec }
+//   recorded(paths) the same rows, for what a commit would record under `paths`, or null when
+//                 nothing records them. The disk asks Git's index, because Windows has no executable
+//                 bit and a hook's mode is only ever a fact about the index; a view that is already
+//                 a record -- a map, an index, a commit -- answers with its own rows.
 // bytes() is a question of its own rather than a flag on read(), so that a view holding text answers
 // read() honestly and has to be handed real bytes to answer bytes(). A flag is what the installer's
 // own stand-in had, and it satisfied the flag by re-encoding its text: every branch production takes
@@ -85,6 +89,10 @@ function filesView(entries) {
         },
         modes: () => [...entries.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
             .map(([file, e]) => ({ file, mode: e.mode, object: e.object, link: e.mode === "120000", exec: e.mode === "100755" })),
+        // A set of entries is already a record of itself -- a map, an index, a commit -- so there is
+        // nothing to go and ask. Scoped to `paths`, which is all the caller wanted the index for.
+        recorded: (paths = []) => view.modes().filter(r => !paths.length
+            || paths.map(norm).some(p => r.file === p || r.file.startsWith(p + "/"))),
     };
     return view;
 }
@@ -121,6 +129,10 @@ function worktree(root) {
                 });
             return fs.existsSync(root) ? walk("") : [];
         },
+        // The disk records nothing itself, so this is Git's index and not the walk above: the two
+        // differ exactly where it matters, since Windows has no executable bit and stages one all
+        // the same. null when there is no index to ask, which is not an empty one.
+        recorded: (paths = []) => indexModes(root, paths),
     };
 }
 
@@ -199,6 +211,7 @@ function staged(root, paths) {
         // The index's, not a mix of the two: a mode is a question about what a commit will record,
         // and the disk has no answer to it that this view would rather give.
         modes: () => idx.modes(),
+        recorded: (within = []) => idx.recorded(within),
     };
 }
 

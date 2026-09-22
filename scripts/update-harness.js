@@ -606,7 +606,7 @@ function finish(target, options) {
 // Merging is not checking. The installer knows it wrote a file; it cannot know whether the result
 // still works -- an AGENTS.md whose chain table no longer parses, routing sections naming an agent
 // this repo does not have, a skill nothing links to, an upstream with no licence row. Those are the
-// harness invariants, and scripts/check-harness.js holds them as functions of a root.
+// harness invariants, and scripts/check-harness.js holds them as functions of a repo-view.
 //
 // So they run from the upstream checkout against the target, and nothing is written into the target
 // to run them. The upstream's copy rather than the one just installed, so the check is the one that
@@ -617,6 +617,8 @@ function selfCheck(target, templateDir, options) {
     if (!fs.existsSync(script)) return { skipped: "this upstream ref has no scripts/check-harness.js" };
     if (!options.quiet) say("\nself check: the harness invariants, run from the upstream against this repo");
     const harness = require(script);
+    // The root rather than a view of it: this is the upstream's copy of check-harness, at whichever
+    // ref the run is installing, and a ref old enough to predate the view still expects a path.
     const r = harness.check(target);
     return { failed: r.failed.length > 0, summary: r.summary, output: harness.format(r) };
 }

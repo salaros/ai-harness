@@ -45,7 +45,7 @@ function stagedChainDecisions(t) {
     const git = (dir, ...args) => spawnSync("git", args, { cwd: dir, encoding: "utf8" });
     const agents = fs.readFileSync(path.join(lib.checkout, "AGENTS.md"), "utf8");
     const brd = text("# BRD-0001: Billing", "", "**Derived from:** .scratch/interview.md", "", "- BR-1: Bill monthly.");
-    const skillFiles = Object.fromEntries(docsCheck.readChain(lib.checkout)
+    const skillFiles = Object.fromEntries(docsCheck.readChain(repoView.worktree(lib.checkout))
         .stages.flatMap(s => s.skills).map(s => [`.agents/skills/${s}/SKILL.md`, ""]));
     withRoot({ "AGENTS.md": agents, ...skillFiles, ".scratch/interview.md": "notes\n", "docs/brd/0001-billing.md": brd }, dir => {
         if (git(dir, "init", "-q").status !== 0) { t.skip("staged chain: git is not available"); return; }
@@ -185,6 +185,37 @@ function repoViewListsModes(t) {
     });
 }
 
+// SPEC-0001/S-3. What a commit would record under a path, which is not what the disk shows: on
+// Windows the filesystem has no executable bit, so a hook's mode is only ever a fact about the
+// index. Two invariants in check-harness turn on it, and until the view answered it they had to be
+// handed a root and reach for git themselves -- which is why neither had ever run against anything
+// but this repo. A view that is already a record -- a map, an index, a commit -- answers with its
+// own rows, so the same invariant reads a map on a machine with no git at all.
+function repoViewAnswersForWhatGitRecorded(t) {
+    const map = repoView.fromMap({
+        ".githooks/pre-commit": { text: "#!/bin/sh\n", exec: true },
+        ".githooks/pre-push": "#!/bin/sh\n",
+        "README.md": "x\n",
+    });
+    const recorded = map.recorded([".githooks"]);
+    t.ok(recorded.map(r => r.file).join() === ".githooks/pre-commit,.githooks/pre-push",
+        "repo view: a map records what it holds under the path, and nothing beside it", JSON.stringify(recorded));
+    t.ok(recorded.find(r => r.file === ".githooks/pre-commit").exec,
+        "repo view: a map's record carries the mode its entry was written with");
+    t.ok(map.recorded().length === 3, "repo view: no path means everything the view records");
+
+    withRoot({ ".githooks/pre-commit": "#!/bin/sh\n", "README.md": "x\n" }, dir => {
+        const disk = repoView.worktree(dir);
+        t.ok(disk.recorded([".githooks"]) === null, "repo view: outside a checkout nothing records anything, which is not the same as recording nothing");
+        if (spawnSync("git", ["init", "-q"], { cwd: dir }).status !== 0) { t.skip("repo view: git is not available for the recorded() check"); return; }
+        t.ok(disk.recorded([".githooks"]).length === 0, "repo view: a checkout that has staged nothing records nothing under the path");
+        spawnSync("git", ["add", ".githooks"], { cwd: dir });
+        const rows = disk.recorded([".githooks"]);
+        t.ok(rows.map(r => r.file).join() === ".githooks/pre-commit",
+            "repo view: the disk asks the index, so a file it has not staged is not recorded", JSON.stringify(rows));
+    });
+}
+
 // SPEC-0001/R-2. One commit, answering the same questions as the disk does. This is how the
 // upstream is read during an install: not the checkout it happens to have on disk, which may hold a
 // half-finished edit, but the commit the receipt names. What the working tree does afterwards --
@@ -228,6 +259,7 @@ module.exports = [
     repoViewReadsBytes,
     repoViewLstatsLinks,
     repoViewListsModes,
+    repoViewAnswersForWhatGitRecorded,
     repoViewReadsACommit,
     stagedChainDecisions,
 ];

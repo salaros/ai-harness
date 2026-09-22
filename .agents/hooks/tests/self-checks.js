@@ -17,6 +17,7 @@ const path = require("path");
 const lib = require("../lib");
 const harness = require("../../../scripts/check-harness");
 const docsCheck = require("../../../scripts/docs-check");
+const repoView = require("../../../scripts/repo-view");
 const { withRoot, installer, INSTALLER } = require("./fixtures");
 
 // scripts/harness-files.tsv decides what an install does with each path, and a path no row matches
@@ -60,7 +61,7 @@ function noChainDocumentOfTheUpstreamTravels(t) {
 
     // The stages with a folder of their own under docs/. The other three live in tests/, .scratch/
     // and src/, where the upstream ships scaffolding a project does grow into.
-    const folders = docsCheck.readChain(lib.checkout).stages.filter(s => s.folder).map(s => s.lives);
+    const folders = docsCheck.readChain(repoView.worktree(lib.checkout)).stages.filter(s => s.folder).map(s => s.lives);
     t.ok(folders.length > 0, "chain manifest check: AGENTS.md names at least one stage folder", folders.join());
     const travelling = r.output.split(/\r?\n/).filter(Boolean)
         .filter(f => folders.some(d => f.startsWith(d)) && policyOf(f) !== "template");
@@ -226,7 +227,7 @@ function installerShipsEverythingItRequires(t) {
 // an edit and the installer runs them against what it wrote. The upstream holds itself to the same
 // ones, with the suite's own t, so a regression here fails the suite the way it fails an install.
 function harnessInvariantsHoldHere(t) {
-    for (const invariant of harness.INVARIANTS) invariant(t, lib.checkout);
+    for (const invariant of harness.INVARIANTS) invariant(t, repoView.worktree(lib.checkout));
 }
 
 // check-harness asserts the shape of the hooks githook.js handles and leaves a target's own hooks

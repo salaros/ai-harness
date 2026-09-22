@@ -49,7 +49,7 @@ const rules = [
         // must keep, checked in whichever repo root() names. check-harness owns the path list, so a
         // new invariant brings its own trigger.
         when: file => harness.reads(file) && [file],
-        check: file => { const r = harness.check(root); return r.failed.length > 0 && `harness invariants failed after editing ${file}:\n${harness.format(r)}`; },
+        check: file => { const r = harness.check(repoView.worktree(root)); return r.failed.length > 0 && `harness invariants failed after editing ${file}:\n${harness.format(r)}`; },
     },
     {   // The harness code itself changed: the suite must still pass (HOOK_TEST stops recursion).
         // The suite is the upstream's own, and a target has the hooks without the fixtures that

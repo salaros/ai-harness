@@ -21,9 +21,10 @@
 // docs/ there means two file-name rules, two citation expressions, and a document the validator
 // rejects while the portal happily renders it. readChain() is the table alone, for a caller that
 // wants the pipeline without reading a single document.
-// Each takes the repo root and a view of it (scripts/repo-view.js), and reads nothing but the view:
-// the working tree by default, what the commit will record when check-staged-docs.js passes a
-// staged view, or a map of files in a test.
+// Each reads nothing but a view of the repo (scripts/repo-view.js): the working tree, what the
+// commit will record when check-staged-docs.js passes a staged view, or a map of files in a test.
+// check() and readDocs() take the root as well, because they report the path a reader outside the
+// view would open; readChain() takes the view alone, having nothing to resolve.
 // None changes the working directory: chdir is process-wide, so a library that moves it moves it
 // for its caller. The caller decides where the root is -- a hook honours the harness's project-dir
 // variable, a command uses its own location -- and says so here.
@@ -91,8 +92,10 @@ const citationRe = folders =>
 // row in table order, so the caller sees the pipeline the way a reader of AGENTS.md does; `folder`
 // is set only on the rows that are document stages (tests/, .scratch/ and src/ have none). This is
 // the only parser of that table: check() below goes through it, as does the optional
-// tools/docs-site portal.
-function readChain(root, view = repoView.worktree(root)) {
+// tools/docs-site portal. A view and no root, because the table is one file and nothing here
+// resolves a path against anything: readDocs() below takes both, since it reports the path a reader
+// outside the view would open.
+function readChain(view) {
     const problems = [];
     const say = msg => problems.push(`${AGENTS}: ${msg}`);
     const stages = [];
@@ -130,7 +133,7 @@ function readChain(root, view = repoView.worktree(root)) {
 // resolved against the root, for a reader outside the view. A file name the rule rejects is a problem here
 // rather than a document, so no reader has to decide what to do with one.
 function readDocs(root, view = repoView.worktree(root)) {
-    const { stages, problems } = readChain(root, view);
+    const { stages, problems } = readChain(view);
     const docStages = stages.filter(s => s.folder);
     const docs = new Map();
 
