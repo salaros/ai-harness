@@ -27,6 +27,7 @@ ADR-0001 settles where the seam goes. This document designs the two modules.
 | `bytes(rel)` | Buffer, or `null` | new; the only method that may return bytes |
 | `lstat(rel)` | `{ link }` or `null` | new; `link` is the POSIX target of a symlink, else `null`. Working tree only |
 | `modes()` | `[{ file, mode, object, link, exec }]` | new; the recursive listing `indexModes` already produces |
+| `recorded(paths)` | the same rows, or `null` | new in S-3; what a commit would record under `paths`. The working tree asks Git's index; a view that is already a record answers with its own rows |
 
 `bytes` is a method of its own rather than a flag on `read`, so that no adapter can satisfy it by re-encoding a string — which is exactly how `memoryTarget.read(file, true)` came to return `Buffer.from(<utf8 string>)` where the real one returns the file's actual bytes.
 
@@ -82,7 +83,9 @@ Add `scripts/repo-edit.js` with both adapters, move `perform` and `carryMode` be
 
 ### S-3 Migrate the readers
 
-The receipt read at `:756` and the target discovery at `:124`/`:753` go through a view; `check-harness.check` and `skills.readRoster` take one.
+The receipt read at `:756` and the target discovery at `:124`/`:753` go through a view; `check-harness.check` and `skills.readRoster` take one, and `docs-check.readChain` drops the root it never used. `check-harness` then reads no files itself at all.
+
+Two invariants ask what Git's index records rather than what the disk shows, which is the whole point of them on Windows, so the view answers that too: `recorded(paths)` above. `check()` still accepts a root string, because it is the one interface here that crosses a version boundary -- the installer runs the upstream's copy against a target, and the `update-harness.js` doing the running is the target's.
 
 ## Tests
 
