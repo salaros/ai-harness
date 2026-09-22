@@ -6,6 +6,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const projectFacts = require("../../../../scripts/project-facts");
+const repoView = require("../../../../scripts/repo-view");
 const { installer, INSTALLER } = require("../fixtures");
 
 // The installer writes whenever it runs, so an argument it does not know has to stop it: a --help it
@@ -43,29 +44,18 @@ function installerRejectsUnknownArguments(t) {
 
 // The install plan, from an upstream and a target held in memory: the upstream as a list of commits,
 // oldest first, each mapping a path to its text or to { text, exec } or { link }; the target as a
-// map from path to text or { link }. Everything plan() reads crosses those two adapters, so a whole
-// install is a row here rather than a clone and a temp tree.
+// map of the same shape. Everything plan() reads crosses a repo-view, and repoView.fromMap reads
+// exactly this shape, so a whole install is a row here rather than a clone and a temp tree -- and
+// the view a row hands the installer is the same implementation a real run hands it, rather than a
+// stand-in free to answer differently.
+// Which leaves this fixture with only what a map cannot know on its own: which commit is which.
 function memoryUpstream(commits) {
-    const at = new Map(commits);
-    const head = commits[commits.length - 1][0];
-    const entry = (commit, file) => {
-        const e = (at.get(commit) || {})[file];
-        return e === undefined ? null : typeof e === "string" ? { text: e } : e;
-    };
+    const held = new Map(commits);
     return {
-        files: () => Object.keys(at.get(head)).map(file => ({ file, link: !!entry(head, file).link, exec: !!entry(head, file).exec })),
-        blob: (commit, file) => { const e = entry(commit, file); return e ? e.link || e.text : null; },
-        hasCommit: commit => at.has(commit),
-        history: file => commits.filter(([c]) => entry(c, file)).map(([c]) => c).reverse(),
-    };
-}
-
-function memoryTarget(files) {
-    const has = file => file in files || Object.keys(files).some(k => k.startsWith(`${file}/`));
-    return {
-        exists: has,
-        read: (file, binary) => binary ? Buffer.from(files[file]) : files[file],
-        lstat: file => !has(file) ? null : { link: typeof files[file] === "object" ? files[file].link : null },
+        at: sha => repoView.fromMap(held.get(sha) || {}),
+        has: sha => held.has(sha),
+        // Newest first, as `git log` gives them, from a list written oldest first.
+        history: file => commits.filter(([, files]) => file in files).map(([sha]) => sha).reverse(),
     };
 }
 
@@ -111,7 +101,7 @@ function installPlanCoversEveryCase(t) {
         { path: ".claude/skills/", policy: "skills" },
     ];
     const run = (files, previous, options = {}) => harness.plan({
-        upstream: up, target: memoryTarget(files), rows, head: "c2", ref: "master", previous,
+        upstream: up, target: repoView.fromMap(files), rows, head: "c2", ref: "master", previous,
         options: { dryRun: false, adopt: false, quiet: true, check: true, wants: () => false, ...options },
         stamp: { installer: "test" },
     });
@@ -224,6 +214,55 @@ function installPlanCoversEveryCase(t) {
         "install plan: a dry run writes nothing", `${done.length} entries; ${nowhere} exists: ${fs.existsSync(nowhere)}`);
 }
 
+// SPEC-0001, and the whole reason bytes() is a question of its own rather than a flag on read(). A
+// skill ships a logo, and until repo-view there was no way to put a file with a zero byte in it in
+// front of plan(): the stand-in this table used answered a bytes read by re-encoding its own string,
+// so decideBinary and planSkills' binary branch never once ran here. What they are guarding against
+// is a blob decoded as UTF-8 and written back, where every byte outside ASCII becomes U+FFFD -- the
+// logo installs broken, and no later run ever agrees with the upstream about it either.
+function installPlanHandlesBinaryContent(t) {
+    const harness = installer();
+    if (!harness) { t.skip("binary content: the installer is the upstream's own, not installed here"); return; }
+    // 0x00 is what makes it binary to Git and to the installer; 0xff is what a decode would destroy.
+    const v1 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0xff]);
+    const v2 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x02, 0xff]);
+    const lock = JSON.stringify({ skills: { a: { source: "up" } } });
+    const up = memoryUpstream([
+        ["c1", { "logo.png": v1, ".agents/skills/a/icon.png": v1 }],
+        ["c2", { "logo.png": v2, ".agents/skills/a/icon.png": v2, "skills-lock.json": lock }],
+    ]);
+    const rows = [{ path: "skills-lock.json", policy: "skills" }, { path: ".agents/skills/", policy: "skills" }];
+    const run = (files, previous) => harness.plan({
+        upstream: up, target: repoView.fromMap(files), rows, head: "c2", ref: "master", previous,
+        options: { dryRun: false, adopt: false, quiet: true, check: true, wants: () => false },
+    });
+    const pick = (p, file) => p.entries.find(e => e.file === file) || {};
+    const bytes = (e, want, why) => t.ok(Buffer.isBuffer(e.write) && e.write.equals(want),
+        `binary content: ${why}`, Buffer.isBuffer(e.write) ? e.write.toString("hex") : JSON.stringify(e.write));
+
+    const fresh = pick(run({}, null), "logo.png");
+    bytes(fresh, v2, "a first install writes the upstream's bytes, byte for byte");
+    const skill = pick(run({}, null), ".agents/skills/a/icon.png");
+    bytes(skill, v2, "and a skill's binary file the same way, whole");
+
+    const at = { commit: "c1", ref: "master" };
+    const same = run({ "logo.png": v2, ".agents/skills/a/icon.png": v2 }, at);
+    t.ok(pick(same, "logo.png").outcome === "unchanged" && pick(same, "logo.png").write === undefined,
+        "binary content: a copy already holding the upstream's bytes is unchanged", JSON.stringify(pick(same, "logo.png").outcome));
+    t.ok(pick(same, ".agents/skills/a/icon.png").file === undefined,
+        "binary content: an unchanged skill file is not rewritten either", JSON.stringify(pick(same, ".agents/skills/a/icon.png")));
+
+    // The project replaced the logo with its own. Nothing merges a Buffer, so it is kept whole.
+    const mine = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x09, 0xfe]);
+    const theirs = run({ "logo.png": mine }, at);
+    t.ok(pick(theirs, "logo.png").outcome === "yours, binary" && pick(theirs, "logo.png").write === undefined,
+        "binary content: a binary file the project replaced is kept, never merged", JSON.stringify(pick(theirs, "logo.png")));
+    // The same file untouched since the recorded commit takes the upstream's, which is the branch
+    // that needs the base read as bytes rather than as text.
+    const moved = run({ "logo.png": v1 }, at);
+    bytes(pick(moved, "logo.png"), v2, "a binary file nobody touched since the base takes the upstream's");
+}
+
 // A --diff3 conflict whose project side shares no line with the base is a section the project
 // dropped or replaced, and stays so.
 function mergeSettlesDroppedSections(t) {
@@ -284,6 +323,7 @@ function installerStampNamesOnlyAReleasedVersion(t) {
 module.exports = [
     installerRejectsUnknownArguments,
     installPlanCoversEveryCase,
+    installPlanHandlesBinaryContent,
     mergeSettlesDroppedSections,
     memorySkeletonDefersToIntent,
     installerStampNamesOnlyAReleasedVersion,

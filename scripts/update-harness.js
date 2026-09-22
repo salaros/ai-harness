@@ -36,7 +36,6 @@ const projectFacts = require("./project-facts");
 const repoView = require("./repo-view");
 const repoEdit = require("./repo-edit");
 const installPolicy = require("./install-policy");
-const { spawnSync } = require("child_process");
 
 const TEMPLATE = "https://github.com/salaros/ai-harness.git";
 const LOCK = "harness-lock.json";
@@ -172,106 +171,57 @@ function installer() {
     const home = path.resolve(__dirname, "..");
     let pkg = {};
     try { pkg = JSON.parse(fs.readFileSync(path.join(home, "package.json"), "utf8")); } catch { return {}; }
-    const described = at(home, ["describe", "--tags", "--exact-match", "HEAD"]);
+    const described = git(home, ["describe", "--tags", "--exact-match", "HEAD"]);
     return installerStamp({ name: pkg.name, version: pkg.version, tag: described.status === 0 ? described.output.trim() : null });
 }
 
-// Windows stops at 260 characters for a path, and the harness ships skill files nested deep enough
-// that a project a few folders down the drive crosses it. Git then fails to stat the working copy
-// while resolving <commit>:<path>, so `git show` says the file is not there and the installer skips
-// it -- a skill missing seven of its reference files, and not a word said about it. Setting
-// core.longpaths on every call is what makes those paths reachable, and it costs nothing anywhere
-// else.
-const GIT = ["-c", "core.longpaths=true"];
-const at = (dir, args) => lib.run("git", [...GIT, "-C", dir, ...args]);
-
-// The upstream's version of a path at a commit, or null when the file did not exist there.
-// Read raw rather than through lib.run, which trims trailing whitespace: that is right for the
-// plumbing whose output is a hash or a status line, and wrong for a file. Trimmed, every installed
-// file lost its final newline, no copy was ever byte-identical to the upstream, and so every later
-// run re-merged files nobody had touched.
-// Text comes back as a string and anything holding a NUL byte as the Buffer it arrived in, which is
-// how Git itself tells the two apart. Decoded as UTF-8 and written back, every byte a PNG holds
-// outside ASCII becomes U+FFFD: the skill's logo installs as a broken image, and no later run ever
-// agrees with the upstream about it. Nothing merges a Buffer; it is written whole or kept whole.
-function blob(dir, commit, file) {
-    const r = spawnSync("git", [...GIT, "-C", dir, "show", `${commit}:${file}`], { maxBuffer: 256 * 1024 * 1024 });
-    if (r.status !== 0) return null;
-    return r.stdout.includes(0) ? r.stdout : r.stdout.toString("utf8");
-}
+// The commit graph, which is all the installer runs git for itself now that repo-view reads the
+// files. core.longpaths for the same reason repo-view sets it: Windows stops at 260 characters, and
+// the harness ships skill files nested deep enough that a project a few folders down the drive
+// crosses it.
+const git = (dir, args) => lib.run("git", ["-c", "core.longpaths=true", "-C", dir, ...args]);
 
 // ---------------------------------------------------------------- the adapters
 //
-// What plan() reads, and nothing more: the upstream at any commit, and the target as it stands. A
-// real run backs them with the upstream's git checkout and the target's directory; the suite backs
-// them with maps, so a whole install is a table row rather than a clone and a temp tree.
+// What plan() reads: the upstream at any commit, and the target as it stands. Both are repo-view
+// adapters -- scripts/repo-view.js -- so a real run reads a checkout and a commit while the suite
+// reads a map, through one implementation rather than two. That is the whole point of the seam: the
+// stand-ins this file used to carry drifted, and the branch taken for a file with a NUL byte in it
+// was unreachable from the suite for as long as a stand-in answered a bytes question with a string.
+//
+// What repo-view will not do is guess which of the two a caller wants, so the guess is made here.
 
-// Every blob in one commit, read in two calls rather than one `git show` per path: an install reads
-// every file at the head, and a process per file made a first install take most of a minute on
-// Windows. Keyed by path, holding what blob() would return; a submodule entry is not a blob and is
-// left out, as `git show` would fail on it too.
-function treeBlobs(dir, commit) {
-    const listing = spawnSync("git", [...GIT, "-C", dir, "ls-tree", "-r", "-z", commit], { maxBuffer: 64 * 1024 * 1024 });
-    if (listing.status !== 0) return null;
-    const entries = listing.stdout.toString("utf8").split("\0").filter(Boolean)
-        .map(line => { const tab = line.indexOf("\t"); const [, type, oid] = line.slice(0, tab).split(" "); return { type, oid, file: line.slice(tab + 1) }; })
-        .filter(e => e.type === "blob");
-    const r = spawnSync("git", [...GIT, "-C", dir, "cat-file", "--batch"],
-        { input: entries.map(e => e.oid).join("\n") + "\n", maxBuffer: 1024 * 1024 * 1024 });
-    if (r.status !== 0) return null;
-    const blobs = new Map();
-    let at = 0;
-    for (const { file } of entries) {
-        const eol = r.stdout.indexOf(10, at);
-        const size = Number(r.stdout.toString("utf8", at, eol).split(" ")[2]);
-        const bytes = r.stdout.subarray(eol + 1, eol + 1 + size);
-        blobs.set(file, bytes.includes(0) ? Buffer.from(bytes) : bytes.toString("utf8"));
-        at = eol + 1 + size + 1;
-    }
-    return blobs;
+// The upstream's version of a path, as the installer needs it: text as a string, and anything
+// holding a NUL byte as the Buffer it arrived in, which is how Git itself tells the two apart.
+// Decoded as UTF-8 and written back, every byte a PNG holds outside ASCII becomes U+FFFD: the
+// skill's logo installs as a broken image, and no later run ever agrees with the upstream about it.
+// Nothing merges a Buffer; it is written whole or kept whole.
+// null when the commit has no such path, and equally when the checkout will not give it up: Git
+// listed it a moment ago, so a read that fails is the checkout being unhappy rather than the file
+// being absent, and plan() reports that as UNREADABLE rather than letting it end the run.
+function contentOf(view, file) {
+    let bytes;
+    try { bytes = view.bytes(file); } catch { return null; }
+    if (bytes === null) return null;
+    return bytes.includes(0) ? bytes : bytes.toString("utf8");
 }
 
-function gitUpstream(dir, head) {
-    let atHead;
+// The upstream checkout: a view per commit, and the two questions only the commit graph can answer.
+// Views are kept, because plan() asks the head for every path and a base for every file it merges;
+// each one reads its tree once and its blobs in a single batch on first use.
+function gitUpstream(dir) {
+    const views = new Map();
     return {
-        // Every path the upstream tracks, with the mode Git recorded. Mode 120000 is a symlink, and
-        // the harness has two kinds: .claude/agents pointing at .agents/agents, and one per skill
-        // under .claude/skills. Written as ordinary files they become text files holding a path,
-        // which is how a harness ends up looking installed while the agent sees no skills at all.
-        files() {
-            const rows = repoView.indexModes(dir);
-            if (!rows) fail(`could not list the upstream's files in ${dir}`);
-            return rows.map(({ file, link, exec }) => ({ file, link, exec }));
-        },
-        // The head is read whole on first use; any other commit, which only a base or a base search
-        // asks for, one path at a time.
-        blob(commit, file) {
-            if (commit !== head) return blob(dir, commit, file);
-            if (atHead === undefined) atHead = treeBlobs(dir, head);
-            if (atHead === null) return blob(dir, commit, file);
-            return atHead.has(file) ? atHead.get(file) : null;
+        at(sha) {
+            if (!views.has(sha)) views.set(sha, repoView.commit(dir, sha));
+            return views.get(sha);
         },
         // A rewritten history no longer holds the recorded commit, which leaves the run without a base.
-        hasCommit: commit => at(dir, ["cat-file", "-e", `${commit}^{commit}`]).status === 0,
+        has: sha => git(dir, ["cat-file", "-e", `${sha}^{commit}`]).status === 0,
         // The commits that touched a path, newest first.
         history(file) {
-            const r = at(dir, ["log", "--format=%H", "--", file]);
+            const r = git(dir, ["log", "--format=%H", "--", file]);
             return r.status === 0 ? r.output.split(/\r?\n/).filter(Boolean) : [];
-        },
-    };
-}
-
-function fsTarget(root) {
-    const full = file => path.join(root, file);
-    return {
-        exists: file => fs.existsSync(full(file)),
-        // A Buffer when asked for bytes, text otherwise.
-        read: (file, binary) => binary ? fs.readFileSync(full(file)) : fs.readFileSync(full(file), "utf8"),
-        // null when nothing is there; otherwise whether it is a symlink, and where it points.
-        lstat(file) {
-            let s;
-            try { s = fs.lstatSync(full(file)); } catch { return null; }
-            return s.isSymbolicLink() ? { link: fs.readlinkSync(full(file)).split(path.sep).join("/") } : { link: null };
         },
     };
 }
@@ -281,8 +231,8 @@ function fsTarget(root) {
 // case, an older copy nobody touched; a project that has since edited its own file matches nothing
 // exactly, so the nearest version by shared lines stands in as the base. That turns a first install
 // into a real three-way merge for the files that need one, rather than one whole-file conflict.
-// Only reconcile-policy files pay for the search: one git log, then a blob read per commit that
-// touched the path.
+// Only reconcile-policy files pay for the search: one git log, then a view per commit that touched
+// the path.
 // Under half the lines in common is a different file, not an older one, and merging against it would
 // invent a diff the project never made.
 const NEAREST = 0.5;
@@ -294,7 +244,7 @@ function recoverBase(upstream, file, ours) {
     // same against a copy that has neither, and the older of them is the one whose merge puts that
     // line back. The newer would drop it silently, which is the failure this policy exists to stop.
     for (const commit of upstream.history(file).reverse()) {
-        const text = upstream.blob(commit, file);
+        const text = contentOf(upstream.at(commit), file);
         if (typeof text !== "string") continue;
         if (text === ours) return text;
         const shared = overlap(want, lineCounts(text));
@@ -425,7 +375,6 @@ function settleDropped(text) {
 //   mkdir                                 create the path's folder and nothing else
 //   silent                                counted in the summary, never printed as a line
 // and a { phase } entry heads each section of the output.
-const mode = f => f.link ? "120000" : f.exec ? "100755" : "100644";
 const SKILLS = ".agents/skills/";
 
 // `previous` is the target's harness-lock.json, or null; `stamp` is what the receipt records about
@@ -439,7 +388,8 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
     // or an upstream whose history was rewritten -- an existing file is left alone instead of being
     // guessed at, and the run says so.
     let base = previous ? previous.commit : null;
-    if (base && !upstream.hasCommit(base)) {
+    const atHead = upstream.at(head);
+    if (base && !upstream.has(base)) {
         notices.push(`the recorded upstream commit ${base.slice(0, 8)} is not in ${TEMPLATE} any more, so this run has no merge base: existing files are left alone`);
         base = null;
     }
@@ -465,14 +415,16 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
             : `this repo has a harness (${stale.join(", ")}) but no ${LOCK}, so it predates the receipt and there is no merge base.\nEvery harness file already here is kept, which leaves old checks running against new skills. Re-run with --adopt to replace them, or --dry-run --quiet to list them first.`);
     }
 
-    const files = upstream.files();
+    // The mode Git recorded, rather than one worked out from the entry: a view answers for every path
+    // it holds without reading a blob, and 120000 against 100755 against 100644 is the whole of what
+    // the mode column says.
+    const files = atHead.modes();
     const skills = [];
     add({ phase: `${files.length} path(s) in ${ref} at ${head.slice(0, 8)}` });
     for (const entry of files) {
-        const { file, link: isLink, exec } = entry;
+        const { file, link: isLink, exec, mode: m } = entry;
         const { policy, asked } = installPolicy.policyFor(rows, file, options.wants);
-        const m = mode(entry);
-        const theirs = upstream.blob(head, file);
+        const theirs = contentOf(atHead, file);
         // Git listed the path a moment ago, so failing to read it is the checkout being unhappy
         // rather than the file being absent. Said out loud: skipped quietly, the run reports a clean
         // install of a harness missing whichever files the reader was never told about.
@@ -505,10 +457,11 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
         if (policy === "skills") { skills.push(entry); continue; }
         const { outcome, bucket, notice, ...act } = installPolicy.decide(policy,
             { exists, theirs, hasBase: base !== null, adopt: options.adopt, asked }, {
-                held: () => target.read(file, Buffer.isBuffer(theirs)),
-                base: () => upstream.blob(base, file),
-                // A seed file the recorded commit already shipped was laid down then.
-                shippedBefore: () => base !== null && upstream.blob(base, file) !== null,
+                held: () => Buffer.isBuffer(theirs) ? target.bytes(file) : target.read(file),
+                base: () => contentOf(upstream.at(base), file),
+                // A seed file the recorded commit already shipped was laid down then. isFile, not a
+                // read: whether a commit holds a path is a question its listing already answers.
+                shippedBefore: () => base !== null && upstream.at(base).isFile(file),
                 recoverBase: ours => recoverBase(upstream, file, ours),
                 merge: threeWay,
             });
@@ -529,7 +482,7 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
     }
 
     add({ phase: "skills, merged by name" });
-    entries.push(...planSkills(upstream, target, head, skills));
+    entries.push(...planSkills(atHead, target, skills));
 
     // A list of strings on one line, as Prettier writes it: a project formatting its JSON with it
     // would otherwise reject the receipt at every push, and the next update would undo the fix.
@@ -542,10 +495,10 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
 // Skills merge by name, not by content: the upstream's are added and updated, and a skill the
 // project vendored itself is never removed. skills-lock.json is the union, the project's entry
 // winning where both name the same skill, so a project that pinned a different source keeps it.
-function planSkills(upstream, target, head, files) {
+function planSkills(atHead, target, files) {
     const LOCKFILE = "skills-lock.json";
-    const theirLock = JSON.parse(upstream.blob(head, LOCKFILE) || '{"skills":{}}');
-    const ourLock = target.exists(LOCKFILE) ? JSON.parse(target.read(LOCKFILE)) : { skills: {} };
+    const theirLock = JSON.parse(atHead.read(LOCKFILE) || '{"skills":{}}');
+    const ourLock = target.isFile(LOCKFILE) ? JSON.parse(target.read(LOCKFILE)) : { skills: {} };
     ourLock.skills = ourLock.skills || {};
     const mine = new Set(Object.keys(ourLock.skills));
 
@@ -564,11 +517,11 @@ function planSkills(upstream, target, head, files) {
         if (exec && exists) out.push({ file, silent: true, exec: true });
         // A skill the project installed under a name the upstream also uses stays the project's.
         if (mine.has(name) && !theirLock.skills[name]) { tally.yours = true; continue; }
-        const text = upstream.blob(head, file);
+        const text = contentOf(atHead, file);
         if (text === null) continue;
         // A vendored file the project has not touched still differs byte-for-byte on Windows, where
         // Git checked it out with CRLF. Compared raw, every skill would report as updated every run.
-        const held = exists ? target.read(file, true) : null;
+        const held = exists ? target.bytes(file) : null;
         let write;
         if (Buffer.isBuffer(text)) {
             if (lib.sameContent(held, text)) continue;
@@ -743,14 +696,14 @@ function main(args) {
         const optional = rows.filter(r => r.policy.startsWith("optional:")).map(r => r.policy.slice("optional:".length));
         const unknown = unknownArgs(args, optional);
         if (unknown.length) fail(`unknown argument(s): ${unknown.join(" ")}. Nothing was written; run with --help for the options.`);
-        const head = at(templateDir, ["rev-parse", "HEAD"]).output.trim();
+        const head = git(templateDir, ["rev-parse", "HEAD"]).output.trim();
         if (upToDate(previous, head, options, optional)) {
             say(`harness is already at ${head.slice(0, 8)} (${ref}); nothing to update`);
             return 0;
         }
 
         const planned = plan({
-            upstream: gitUpstream(templateDir, head), target: fsTarget(target), rows, head, ref, previous, options,
+            upstream: gitUpstream(templateDir), target: repoView.worktree(target), rows, head, ref, previous, options,
             stamp: { ...installer(), updated: new Date().toISOString().slice(0, 10) },
         });
         for (const notice of planned.notices) say(notice);

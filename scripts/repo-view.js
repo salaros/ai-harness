@@ -22,11 +22,16 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
+// quotepath, so a path outside ASCII comes back as itself rather than as escapes. longpaths, because
+// Windows stops at 260 characters and a vendored skill tree in a repo a few folders down the drive
+// crosses it: `git show <commit>:<path>` stats the working copy on the way past, and without this it
+// answers that a file the tree plainly holds is not there.
+const CONFIG = ["-c", "core.quotepath=off", "-c", "core.longpaths=true"];
 // stdout alone and untrimmed, since a blob's trailing newline is part of its text.
-const git = (dir, args) => spawnSync("git", ["-c", "core.quotepath=off", ...args], { cwd: dir, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
+const git = (dir, args) => spawnSync("git", [...CONFIG, ...args], { cwd: dir, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
 // The same, with stdout left as bytes: a blob is read this way and decoded only if someone asks for
 // its text, since a decode a file never had is not recoverable afterwards.
-const gitBytes = (dir, args) => spawnSync("git", ["-c", "core.quotepath=off", ...args], { cwd: dir, maxBuffer: 256 * 1024 * 1024 });
+const gitBytes = (dir, args) => spawnSync("git", [...CONFIG, ...args], { cwd: dir, maxBuffer: 256 * 1024 * 1024 });
 
 const norm = rel => path.posix.normalize(String(rel).split(path.sep).join("/")).replace(/^\.\/?$|\/+$/g, "");
 
