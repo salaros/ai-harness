@@ -17,13 +17,16 @@
 // A self check is handed `t`, which has two methods: t.ok(condition, title, detail) for a verdict,
 // and t.skip(why) for a check this repo cannot run -- an optional folder it did not install, a
 // tarball that is not a git checkout. Prints one FAIL line per mismatch and one SKIP line per
-// check that stood down, then the tally, and exits 1 if anything failed.
+// check that stood down, then the tally, and exits 1 if anything failed. A check that throws is one
+// failure named after it, not the end of the run: tests/runner.js holds that, so the suite can hand
+// it a check that throws on purpose.
 // Usage: node .agents/hooks/test.js
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const lib = require("./lib");
 const scriptsLib = require("../../scripts/lib");
+const runner = require("./tests/runner");
 const selfChecks = require("./tests/self-checks");
 const tables = require("./tests/tables");
 
@@ -83,7 +86,7 @@ for (const [script, fixture, expect, setup, want, note] of lib.readTsv(".agents/
     else failed(`${script} < ${fixture}: exit ${status}, expected ${expect}, output must contain "${want}" (${note})`, output);
 }
 
-for (const check of [...selfChecks, ...tables]) check(t, env);
+runner.runChecks([...selfChecks, ...tables], t, env);
 
 for (const why of skipped) console.log(`SKIP ${why}`);
 console.log(`harness tests: ${pass} passed, ${fail} failed${skipped.length ? `, ${skipped.length} skipped` : ""}`);

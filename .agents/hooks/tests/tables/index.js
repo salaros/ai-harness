@@ -13,4 +13,5 @@ module.exports = [
     ...require("./commit-message"),
     ...require("./todo"),
     ...require("./stacks"), ...require("./format"),
+    ...require("./suite"),
 ];
