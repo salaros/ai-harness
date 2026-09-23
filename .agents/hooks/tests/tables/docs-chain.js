@@ -191,6 +191,7 @@ exports.docsCheckDiscovery = function docsCheckDiscovery(t) {
         "pdd/9700-go.md": pdd(9700, "Go"),
         "pdd/9701-parked.md": pdd(9701, "Parked"),
         "pdd/9702-no.md": pdd(9702, "No-go"),
+        "pdd/9704-hyphen.md": pdd(9704, "Go-live pending"),
         "pdd/9703-none.md": ["# PDD-9703: Pdd", "", "**Derived from:** https://example.com/signal"],
         "brd/9700-case.md": ["# BRD-9700: Case", "", "**Derived from:** PDD-9700", "", "- SF-1 (PDD-9700/OUT-1): Churn under 5% by June"],
         "brd/9701-early.md": ["# BRD-9701: Early", "", "**Derived from:** PDD-9701"],
@@ -201,6 +202,7 @@ exports.docsCheckDiscovery = function docsCheckDiscovery(t) {
     t.ok(r.for("brd/9700-case.md").length === 0, "docs-check: a BRD builds on a PDD that is Go, citing its outcome", r.all);
     t.ok(r.for("brd/9701-early.md").some(p => p.includes("which is Parked") && p.includes("Go")), "docs-check: a BRD may not build on a parked PDD", r.all);
     t.ok(r.for("brd/9702-dead.md").some(p => p.includes("which is No-go")), "docs-check: No-go is a status of its own, not Go", r.all);
+    t.ok(r.for("pdd/9704-hyphen.md").some(p => p.includes('"**Status:**" line')), "docs-check: Go-live is not Go", r.all);
     t.ok(r.for("pdd/9703-none.md").some(p => p.includes('"**Status:**" line')), "docs-check: a PDD needs a verdict status", r.all);
     t.ok(r.for("brd/9703-settled.md").length === 0, "docs-check: a BRD is an entry stage, starting from a source while PDDs exist", r.all);
 };
