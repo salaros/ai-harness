@@ -320,6 +320,27 @@ function installerStampNamesOnlyAReleasedVersion(t) {
     }
 }
 
+// The command line the run clones the upstream with, which is how every install that did not pass
+// --from begins. Nothing in the suite clones, so for as long as the arguments were built inline the
+// only thing standing behind that line was whether it happened to be written correctly: one stale
+// identifier left from a refactor made `npx @salaros/ai-harness` crash before it said anything, and
+// every check here still passed, because each one arrives holding a --from. Asking for the arguments
+// rather than the clone puts that line where a check can read it.
+function theUpstreamIsClonedWithArgumentsThatName(t) {
+    const inst = installer();
+    if (!inst) { t.skip("clone arguments: no scripts/update-harness.js"); return; }
+    const args = inst.cloneArgs("0.5.1", "/tmp/harness-x");
+    const at = name => args.indexOf(name);
+    t.ok(at("clone") >= 0, "clone arguments: the run clones", args.join(" "));
+    t.ok(args[at("--branch") + 1] === "0.5.1", "clone arguments: the ref asked for is the branch cloned", args.join(" "));
+    t.ok(args[args.length - 1] === "/tmp/harness-x", "clone arguments: the temporary directory is where it lands", args.join(" "));
+    t.ok(args[args.length - 2] === "https://github.com/salaros/ai-harness.git", "clone arguments: the upstream is what it clones from", args.join(" "));
+    // Windows stops at 260 characters and the harness ships skills nested deeper than that, so a
+    // clone without this reads as a checkout missing most of its files rather than as a failure.
+    t.ok(args.slice(0, at("clone")).join(" ") === "-c core.longpaths=true",
+        "clone arguments: core.longpaths is set before the subcommand, where git takes it", args.join(" "));
+}
+
 module.exports = [
     installerRejectsUnknownArguments,
     installPlanCoversEveryCase,
@@ -327,4 +348,5 @@ module.exports = [
     mergeSettlesDroppedSections,
     memorySkeletonDefersToIntent,
     installerStampNamesOnlyAReleasedVersion,
+    theUpstreamIsClonedWithArgumentsThatName,
 ];

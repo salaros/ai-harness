@@ -126,6 +126,11 @@ function targetRoot(options) {
 
 // ---------------------------------------------------------------- the upstream
 
+// The command line that clone runs on, which is how every install begins that did not bring its own
+// checkout. Separate from the running of it because nothing in the suite clones: a check can read
+// arguments, and cannot watch a network call it must not make.
+const cloneArgs = (ref, dir) => ["-c", "core.longpaths=true", "clone", "--quiet", "--branch", ref, TEMPLATE, dir];
+
 // A clone deep enough to read the recorded commit: an update needs that commit's version of a file
 // as the merge base, and --depth 1 would not have it. Removed again unless the caller supplied one.
 function templateCheckout(ref, options) {
@@ -141,7 +146,7 @@ function templateCheckout(ref, options) {
     }
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "harness-"));
     say(`cloning ${TEMPLATE} at ${ref}`);
-    const r = lib.run("git", [...GIT, "clone", "--quiet", "--branch", ref, TEMPLATE, dir]);
+    const r = lib.run("git", cloneArgs(ref, dir));
     if (r.status !== 0) { fs.rmSync(dir, { recursive: true, force: true }); fail(`could not clone the upstream at ${ref}\n${r.output}`); }
     if (!usable(dir)) {
         fs.rmSync(dir, { recursive: true, force: true });
@@ -730,7 +735,7 @@ function main(args) {
 // The plan and the decisions under it, so the suite can put a case in and read the answer out rather
 // than building a git checkout to reach one branch. apply() is here for its dry run, which prints and
 // writes nothing; main() writes to somebody's repository and is reached through the command line.
-module.exports = { installerStamp, upToDate, settleDropped, unknownArgs, mistypedArgs, usage, parseOptions, plan, apply, lineCounts, overlap, NEAREST, skeletonLines };
+module.exports = { cloneArgs, installerStamp, upToDate, settleDropped, unknownArgs, mistypedArgs, usage, parseOptions, plan, apply, lineCounts, overlap, NEAREST, skeletonLines };
 
 if (require.main === module) {
     try { process.exitCode = main(process.argv.slice(2)); }
