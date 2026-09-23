@@ -50,7 +50,7 @@ Several services in one repo, deployed separately and orchestrated together. Eac
 - **Where a term goes.** A term one service owns goes in `src/<Service>/CONTEXT.md`. A term two or more services share, such as an identifier or an event, goes in the root `CONTEXT.md`, and the event itself goes under `Relationships` in `CONTEXT-MAP.md`.
 - **Where a decision goes.** A decision that changes one service goes in `src/<Service>/docs/adr/`. One that changes a contract between services, the orchestration or anything every service inherits goes in `docs/adr/`. When unsure, it crosses services.
 - **Citing a service ADR.** `docs-check` covers the root `docs/` only, so `ADR-0003` always means `docs/adr/0003-*.md`. A chain document that depends on a service decision names its path, `src/Ordering/docs/adr/0001-<slug>.md`, on the `**Derived from:**` line beside its upstream document; `docs-check` accepts an existing path as a source.
-- **One chain.** BRD, PRD, EARS and BDD describe the product, not a service. A SPEC may cover one service; name the service in its title.
+- **One chain.** BRD, PRD, EARS and BDD describe the product, not a service. A TRD, an RFC or a SPEC may cover one service; name the service in its title.
 
 ### Adding a service
 

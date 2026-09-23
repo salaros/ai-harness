@@ -16,19 +16,21 @@ The `project-init` skill writes both, and a clone without `MEMORY.md` is unconfi
 
 Business requirements become code through one chain, each stage refining the one before it and written with one skill:
 
-BRD → PRD → EARS → BDD → ADR → SPEC → TDD → IPLAN → Code
+BRD → PRD → TRD → EARS → BDD → RFC → ADR → SPEC → TDD → IPLAN → Code
 
-| Stage | Answers | Lives in | Skill |
-| --- | --- | --- | --- |
-| BRD | why the business wants it, and how it will know it worked | `docs/brd/` | `brd` |
-| PRD | what the product does for whom | `docs/prd/` | `prd` |
-| EARS | each requirement as one testable "shall" statement | `docs/ears/` | `feature-forge` |
-| BDD | behaviour as Given/When/Then scenarios | `docs/bdd/` | `bdd-scenarios` |
-| ADR | decisions that are hard to reverse | `docs/adr/` | `grill-with-docs` |
-| SPEC | the technical design that satisfies the requirements | `docs/spec/` | `design-doc` |
-| TDD | the failing tests that pin the behaviour | `tests/` | `tdd` |
-| IPLAN | ordered implementation steps | `.scratch/` | `create-implementation-plan`; `to-tickets` publishes it to the issue tracker, if any |
-| Code | | `src/` | `implement`, `codebase-design` |
+| Stage | Answers | Lives in | Cites | Status | Skill |
+| --- | --- | --- | --- | --- | --- |
+| BRD | why the business wants it, and how it will know it worked | `docs/brd/` | backwards | | `brd` |
+| PRD | what the product does for whom | `docs/prd/` | backwards | | `prd` |
+| TRD | what the system must satisfy technically, each requirement measurable | `docs/trd/` | backwards or source | | `trd` |
+| EARS | each requirement as one testable "shall" statement | `docs/ears/` | backwards | | `feature-forge` |
+| BDD | behaviour as Given/When/Then scenarios | `docs/bdd/` | backwards | | `bdd-scenarios` |
+| RFC | how to solve a technical problem, argued out between options | `docs/rfc/` | any | Draft, Open, **Accepted**, Rejected, Withdrawn, Superseded | `rfc` |
+| ADR | decisions that are hard to reverse | `docs/adr/` | any | | `grill-with-docs` |
+| SPEC | the technical design that satisfies the requirements | `docs/spec/` | backwards | | `design-doc` |
+| TDD | the failing tests that pin the behaviour | `tests/` | | | `tdd` |
+| IPLAN | ordered implementation steps | `.scratch/` | | | `create-implementation-plan`; `to-tickets` publishes it to the issue tracker, if any |
+| Code | | `src/` | | | `implement`, `codebase-design` |
 
 Before writing or editing any document of the chain, read `docs/agents/chain.md`: document IDs, the `**Derived from:**` line every document carries, what counts as a source, which stages a prototype skips. `node scripts/docs-check.js` enforces all of it and the `docs-check` skill repairs what it reports; the `pre-commit` hook blocks a commit that breaks the chain.
 
