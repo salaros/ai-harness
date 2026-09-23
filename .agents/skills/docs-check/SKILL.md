@@ -1,6 +1,6 @@
 ---
 name: docs-check
-description: Verify and repair the documentation chain under docs/. Use after writing or editing any BRD, PRD, TRD, EARS, BDD, RFC, ADR or SPEC document, after changing MEMORY.md's Requirements line, when a citation such as PRD-0002/FR-3 looks wrong, or when asked whether the docs are traceable.
+description: Verify and repair the documentation chain under docs/. Use after writing or editing any PDD, BRD, PRD, TRD, EARS, BDD, RFC, ADR or SPEC document, after changing MEMORY.md's Requirements line, when a citation such as PRD-0002/FR-3 looks wrong, or when asked whether the docs are traceable.
 ---
 
 # Docs check
@@ -27,7 +27,7 @@ The chain in `AGENTS.md` ("Documentation") only pays off when every document can
    - a citation to a missing item: add the ID to the item's line in the upstream document (`- FR-3: …`) if the item exists without an ID, otherwise fix the reference;
    - a forward citation: the document is citing a later stage; move that content downstream or drop the reference. A stage whose `Cites` column in `AGENTS.md` says `any` (ADR, RFC) is exempt in both directions, so this never fires on one;
    - a missing or unlisted `**Status:**`: give the document one of the values its stage's `Status` column lists;
-   - a citation to a document whose status a later stage may not build on (a SPEC citing an RFC that is not `Accepted`): ask the user whether the RFC is resolved, and never change its status yourself; until it is, the SPEC waits.
+   - a citation to a document whose status a later stage may not build on (a BRD citing a PDD that is not `Go`, a SPEC citing an RFC that is not `Accepted`): ask the user whether the verdict or the resolution is in, and never change its status yourself; until it is, the later document waits.
 
    Done when the script prints "no problems".
 

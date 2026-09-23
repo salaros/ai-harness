@@ -85,7 +85,7 @@ export function overview(chain) {
         "",
         docs.length
             ? `${docs.length} document${docs.length === 1 ? "" : "s"} across ${stageCount} stage${stageCount === 1 ? "" : "s"}, read live from \`docs/\`. \`node scripts/docs-check.js\` checks that the citations above all resolve.`
-            : "No documents yet. Run the `brd` skill to write the first one; this page picks it up on reload.",
+            : "No documents yet. Run the `pdd` skill for an idea still in question, or `brd` for a settled need, to write the first one; this page picks it up on reload.",
     ].join("\n");
 }
 

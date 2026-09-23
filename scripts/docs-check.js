@@ -201,8 +201,8 @@ function check(root, view = repoView.worktree(root)) {
     const statusOf = d => {
         const line = d.lines.find(l => /^\**Status\**:/i.test(l));
         const value = line ? line.replace(/^\**Status\**:\**\s*/i, "").trim().toLowerCase() : "";
-        // The value, then anything but a letter: "Accepted.", "Accepted, 2026-09-20", "Superseded by …".
-        return stageOf[d.folder].statuses.find(s => new RegExp(`^${s.value.toLowerCase()}(?![a-z])`).test(value)) || null;
+        // The value, then anything but a letter or a hyphen, so "Go-live" is not Go: "Accepted.", "Accepted, 2026-09-20", "Superseded by …".
+        return stageOf[d.folder].statuses.find(s => new RegExp(`^${s.value.toLowerCase()}(?![a-z-])`).test(value)) || null;
     };
     const prefixes = chain.map(s => s.toUpperCase());
 

@@ -16,11 +16,12 @@ The `project-init` skill writes both, and a clone without `MEMORY.md` is unconfi
 
 Business requirements become code through one chain, each stage refining the one before it and written with one skill:
 
-BRD → PRD → TRD → EARS → BDD → RFC → ADR → SPEC → TDD → IPLAN → Code
+PDD → BRD → PRD → TRD → EARS → BDD → RFC → ADR → SPEC → TDD → IPLAN → Code
 
 | Stage | Answers | Lives in | Cites | Status | Skill |
 | --- | --- | --- | --- | --- | --- |
-| BRD | why the business wants it, and how it will know it worked | `docs/brd/` | backwards | | `brd` |
+| PDD | whether the opportunity is worth pursuing at all | `docs/pdd/` | backwards or source | Draft, **Go**, No-go, Parked | `pdd` |
+| BRD | why the business wants it, and how it will know it worked | `docs/brd/` | backwards or source | | `brd` |
 | PRD | what the product does for whom | `docs/prd/` | backwards | | `prd` |
 | TRD | what the system must satisfy technically, each requirement measurable | `docs/trd/` | backwards or source | | `trd` |
 | EARS | each requirement as one testable "shall" statement | `docs/ears/` | backwards | | `feature-forge` |

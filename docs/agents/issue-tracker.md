@@ -1,6 +1,6 @@
 # Issue tracker: local Markdown, until a project has one
 
-A tracker is optional, and a clone starts without one: `MEMORY.md` records `Issue tracker: none`, and issues, drafts and work items live as Markdown under `.scratch/`, committed with the code. Documents in the BRD → SPEC chain live under `docs/<stage>/` (see `docs/README.md`) either way. A skill that needs a tracker says so instead of guessing at one.
+A tracker is optional, and a clone starts without one: `MEMORY.md` records `Issue tracker: none`, and issues, drafts and work items live as Markdown under `.scratch/`, committed with the code. Documents in the PDD → SPEC chain live under `docs/<stage>/` (see `docs/README.md`) either way. A skill that needs a tracker says so instead of guessing at one.
 
 The conventions below are the ones every clone follows. The Jira section at the end is what `setup-matt-pocock-skills` writes over them when the project does have a tracker, and the shape to adapt for a tracker that is not Jira.
 

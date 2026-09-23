@@ -4,13 +4,21 @@ Everything written about this project before and beside its code lives here, one
 
 Every document is `docs/<stage>/NNNN-<slug>.md`, its ID is `<STAGE>-NNNN`, its first heading is `# <STAGE>-NNNN: <title>`, and it carries a `**Derived from:**` line naming at least one reference. Items a later stage will refine start their line with a short ID (`BR-2`, `FR-3`, `AC-1`, `### D-1`), and later documents cite them as `DOC-ID/ITEM`.
 
-A reference is an upstream document ID, or a **source**: a URL, a repo-relative path that exists (optionally `path:line`, a folder written `src/`), or `jira:KEY-123` in upper case. A file at the root counts by its bare name, so a project that keeps its product intent in an optional `INTENT.md` cites `INTENT.md`. A source stands in for an upstream document only while the chain holds nothing earlier, so the first document written may name one and every later document cites the chain. The `Cites` column of the table in `AGENTS.md` names the exceptions. A TRD may always derive from a source alone, since engineering-driven work starts there. An ADR and an RFC are exceptions at both ends: each may cite a source or any document at any time, and any document may cite it.
+A reference is an upstream document ID, or a **source**: a URL, a repo-relative path that exists (optionally `path:line`, a folder written `src/`), or `jira:KEY-123` in upper case. A file at the root counts by its bare name, so a project that keeps its product intent in an optional `INTENT.md` cites `INTENT.md`. A source stands in for an upstream document only while the chain holds nothing earlier, so the first document written may name one and every later document cites the chain. The `Cites` column of the table in `AGENTS.md` names the exceptions. A PDD, a BRD and a TRD may always derive from a source alone, since discovery, a settled business need and engineering-driven work each start there. An ADR and an RFC are exceptions at both ends: each may cite a source or any document at any time, and any document may cite it.
+
+## PDD, Product Discovery Document
+
+**Whether** the opportunity is worth pursuing at all: an opportunity assessment written while the idea is still a hunch, before anyone writes a business case. It is optional; a need already settled by a contract, a regulation or a decision taken elsewhere goes straight to a BRD.
+
+Contains: the problem in the customer's words, who has it, evidence (`EV-n`) each with its reference, the size of the opportunity, today's alternatives, why us, why now, how it would reach them, the outcomes that would prove it worked (`OUT-n`), risks and assumptions (`RISK-n`), and the verdict. It derives from its evidence: interview records under `docs/research/interviews/`, tickets, analytics, a roadmap entry. The `pdd` skill writes it.
+
+Its status is `Draft`, `Go`, `No-go` or `Parked`. The user gives the verdict, and a BRD may build only on a PDD that is `Go`; a `No-go` is kept as the record of why, and a `Parked` one has a `#deferred` line in `TODO.md` saying what would reopen it.
 
 ## BRD, Business Requirements Document
 
 **Why** the business wants it, and how it will know it worked. No solution: no features, screens or technology.
 
-As the chain's first document it derives from a source: the brief, the ticket, the deck it came from. Requirements gathered in conversation are a source too, once written down: `brd` saves the interview as `.scratch/<slug>/interview.md` and the BRD derives from that path. `MEMORY.md`'s `Requirements` then points at the BRD.
+It derives from the PDD that said `Go`, or, as an entry stage, from a source: the brief, the ticket, the deck it came from. Requirements gathered in conversation are a source too, once written down: `brd` records the interview with `interview-notes` under `docs/research/interviews/` and the BRD derives from that path. `MEMORY.md`'s `Requirements` then points at the BRD.
 
 Contains: overview of the situation, objectives in the business's words, measurable success factors (`SF-n`, each with a number and a date), scope in and out, stakeholders, business requirements (`BR-n`, each tied to a success factor), assumptions and constraints. The `brd` skill writes it.
 
@@ -57,6 +65,10 @@ An ADR is cross-cutting, because a decision can be forced before the chain start
 **How** the system satisfies the requirements: the design that engineering builds from.
 
 Contains: goals and non-goals citing the EARS and BDD documents, the architecture and its components, data model, interfaces between modules and with the outside, decisions taken (citing the ADRs, and the accepted RFC it implements, if any), risks, test strategy, and the sections a later implementation plan will refine (`### D-n`). The `design-doc` skill writes it.
+
+## Research, the sources beside the chain
+
+`docs/research/` holds what the chain's documents cite as evidence but that is not itself a stage, so `docs-check` checks nothing inside it beyond its being there to cite. Its first kind is interviews: `docs/research/interviews/YYYY-MM-DD-<slug>.md`, one conversation per file, written with `interview-notes`. A `user` interview is with someone who has the problem, and feeds a PDD's evidence. A `stakeholder` interview is with someone who decides or pays, including a grilling session that settled requirements or a decision, and feeds a PDD, a BRD, a TRD or an ADR. Real names are allowed; what the participant asked to keep off the record stays off it.
 
 ## After the documents
 

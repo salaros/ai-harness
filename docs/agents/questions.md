@@ -1,6 +1,6 @@
 # Asking the user
 
-Every question to the user goes through the harness's question tool: the interviews that `grilling`, `grill-with-docs`, `brd`, `prd`, `feature-forge`, `project-init`, `to-questionnaire`, `teach` and any other skill run, and every confirmation before acting ("proceed?", "which one?", "drop these?"). Plain-text questions are the fallback for a harness that has no such tool, never a shortcut.
+Every question to the user goes through the harness's question tool: the interviews that `grilling`, `grill-with-docs`, `pdd`, `interview-notes`, `brd`, `prd`, `feature-forge`, `project-init`, `to-questionnaire`, `teach` and any other skill run, and every confirmation before acting ("proceed?", "which one?", "drop these?"). Plain-text questions are the fallback for a harness that has no such tool, never a shortcut.
 
 ## Rules
 
