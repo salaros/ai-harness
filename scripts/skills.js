@@ -65,7 +65,13 @@ function readEntries(view) {
         // what makes a folder a skill; exists() is true for a folder as well, hence isFile here.
         const dir = view.exists(folder) && !view.isFile(folder);
         const hasSkillMd = view.isFile(file);
-        return { name, link: !!(view.lstat(folder) || {}).link, dir, hasSkillMd, frontmatter: hasSkillMd ? frontmatter(view.read(file)) : null };
+        const fm = hasSkillMd ? frontmatter(view.read(file)) : null;
+        // What says the skill came from somewhere, whether or not anything recorded where: a licence
+        // file in its own folder, or a licence named in its frontmatter. Both are things a copy
+        // brings with it and a skill written here has no reason to carry.
+        const licence = dir ? (view.list(folder) || []).find(f => /^(licen[cs]e|notice)\b/i.test(f)) : null;
+        const carries = licence ? `\`${licence}\`` : (fm && fm.license ? `a \`license: ${fm.license}\` line` : null);
+        return { name, link: !!(view.lstat(folder) || {}).link, dir, hasSkillMd, frontmatter: fm, carries };
     });
 }
 
@@ -132,13 +138,22 @@ function noticesFor(skills, rows) {
     const held = new Map(rows.map(r => [r.key, []]));
     const orphans = [];
     for (const s of skills) {
-        if (!s.vendored) continue;                           // written for this repo, not vendored
+        if (!s.vendored) {
+            // A skill the lock does not record is this repository's own work -- unless it is
+            // carrying somebody else's licence, which is what a hand-copied skill brings with it and
+            // a skill written here has no reason to have. `npx skills` writes the lock entry, so
+            // only a copy somebody made by hand lands here. Saying "written for this repository,
+            // with no upstream" about that skill would be the notice claiming authorship of work
+            // this repository did not write, which is the failure the file exists to prevent.
+            if (s.carries) orphans.push(`${s.name} (no ${LOCK} entry, but carries ${s.carries})`);
+            continue;
+        }
         const terms = termsFor(rows, s.name, s.source);
         if (!terms) { orphans.push(`${s.name} (${s.source})`); continue; }
         held.get(terms.key).push(s.name);
     }
     const used = rows.filter(r => held.get(r.key).length);
-    const local = skills.filter(s => !s.vendored).map(s => s.name);
+    const local = skills.filter(s => !s.vendored && !s.carries).map(s => s.name);
     const out = [
         "# Third-party notices",
         "",
@@ -195,6 +210,7 @@ function readRoster(view) {
             invoke: fm["disable-model-invocation"] === "true" ? `\`/${e.name}\`` : "by description",
             source: vendored[e.name] ? vendored[e.name].source : "local",
             vendored: !!vendored[e.name],
+            carries: e.carries || null,
             agents: Object.keys(routing.agents).filter(a => routing.agents[a].skills.has(e.name)),
             everywhere: everywhere.has(e.name),
         };
@@ -345,7 +361,13 @@ function relink(root) {
     return report;
 }
 
-module.exports = { readRoster, relinkPlan, relink, writeNotices, frontmatter, LOCK, NOTICES, LICENCES };
+// Two shapes of orphan, and they are fixed at different ends, so the message names both rather than
+// sending a skill with no lock entry off to add a licence row that would never be reached.
+const orphanMessage = orphans => `${NOTICES} cannot account for:\n  ${orphans.join("\n  ")}\n` +
+    `A skill the lock records needs a row in ${LICENCES}: source, SPDX id, copyright line, licence URL, and any restriction.\n` +
+    `A skill carrying a licence with no ${LOCK} entry was copied in by hand: record where it came from, or remove the licence if it really is this repository's own.`;
+
+module.exports = { readRoster, relinkPlan, relink, writeNotices, frontmatter, orphanMessage, LOCK, NOTICES, LICENCES };
 
 // ---------------------------------------------------------------- the command line
 
@@ -357,9 +379,6 @@ function printRelink(r) {
     console.log(`skill links: ${r.added} created, ${r.fixed} rewritten as relative, ${r.kept} already relative`);
     for (const d of r.dangling) console.log(`${d} points at a skill that is not installed: remove the link, or restore the skill`);
 }
-
-const orphanMessage = orphans => `no row in ${LICENCES} covers:\n  ${orphans.join("\n  ")}\n` +
-    `Add one per upstream: source, SPDX id, copyright line, licence URL, and any restriction.`;
 
 // Each command returns its exit code.
 const commands = {

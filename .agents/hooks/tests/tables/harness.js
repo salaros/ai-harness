@@ -13,6 +13,10 @@ const skills = require("../../../../scripts/skills");
 const repoView = require("../../../../scripts/repo-view");
 const { withRoot, text } = require("../fixtures");
 
+// A minimal valid SKILL.md, which both roster rows below build their skills from: the frontmatter
+// the check demands and nothing else, plus whatever one line a row wants to add to it.
+const skill = (name, extra = "") => text("---", `name: ${name}`, "description: Does one thing.", ...(extra ? [extra] : []), "---", "Body");
+
 // Which repo an entry point is about. Six places used to answer that differently -- a script read
 // --root and ignored the variables, a hook read the variables and ignored --root -- so a check run
 // one way saw a different repo from the same check run the other. One resolver answers now, and
@@ -108,7 +112,6 @@ exports.hookLauncherDecisions = function hookLauncherDecisions(t) {
 // routes each skill and through which file, and whether the licence notice is current. The
 // upstream's own roster only ever shows the healthy case, so every odd shape lives here.
 exports.skillRosterDecisions = function skillRosterDecisions(t) {
-    const skill = (name, extra = "") => text("---", `name: ${name}`, "description: Does one thing.", ...(extra ? [extra] : []), "---", "Body");
     const lock = names => JSON.stringify({ version: 1, skills: Object.fromEntries(Object.entries(names).map(([n, source]) => [n, { source }])) });
     const ACME = "acme/skills\tMIT\tCopyright (c) Acme\thttps://example.com/LICENSE\t-\n";
     const files = {
@@ -193,6 +196,59 @@ exports.skillRosterDecisions = function skillRosterDecisions(t) {
         const again = skills.relink(root);
         t.ok(again.added === 0 && again.kept === 1, "skill roster: relink leaves a relative link alone", JSON.stringify(again));
     });
+};
+
+// THIRD-PARTY-NOTICES.md exists to stop a vendored skill going unattributed, and it had a way of
+// doing the opposite. A skill somebody copied in by hand rather than vendoring with `npx skills` has
+// no lock entry -- that tool is what writes one -- so the roster called it local and the notice
+// listed it under "written for this repository, with no upstream": authorship claimed, in writing,
+// over somebody else's work. What tells a copy from a skill written here is what a copy brings with
+// it and a new file has no reason to carry, a licence of its own, in the folder or the frontmatter.
+// Both shapes are asked here, beside a skill that really was written here, which has to stay listed.
+exports.skillNoticesWillNotClaimACopyAsItsOwn = function skillNoticesWillNotClaimACopyAsItsOwn(t) {
+    const view = repoView.fromMap({
+        ".agents/skills/written-here/SKILL.md": skill("written-here"),
+        ".agents/skills/copied-by-hand/SKILL.md": skill("copied-by-hand"),
+        ".agents/skills/copied-by-hand/LICENSE.txt": "MIT License\n\nCopyright (c) Somebody\n",
+        ".agents/skills/says-so-itself/SKILL.md": skill("says-so-itself", "license: Apache-2.0"),
+    });
+    const r = skills.readRoster(view);
+    const s = n => r.skills.find(x => x.name === n) || {};
+    // Membership first. Every assertion below reads a field off a skill looked up by name, and a
+    // lookup that finds nothing answers for a skill with no licence, which is what two of them are
+    // asking about. Pinned here, a skill dropped from the roster fails on this line instead of
+    // passing on those.
+    t.ok(r.skills.map(x => x.name).sort().join() === "copied-by-hand,says-so-itself,written-here",
+        "skill notices: the roster holds all three skills", r.skills.map(x => x.name).join());
+    t.ok(!s("written-here").carries, "skill notices: a skill written here carries no licence of its own", s("written-here").carries);
+    t.ok(/LICENSE\.txt/.test(s("copied-by-hand").carries || ""),
+        "skill notices: a licence file in the folder says the skill came from somewhere", s("copied-by-hand").carries);
+    t.ok(/Apache-2\.0/.test(s("says-so-itself").carries || ""),
+        "skill notices: and so does a licence named in the frontmatter", s("says-so-itself").carries);
+
+    const orphans = r.notices.orphans.join(" | ");
+    t.ok(r.notices.orphans.length === 2 && /copied-by-hand/.test(orphans) && /says-so-itself/.test(orphans)
+        && r.notices.orphans.every(o => /skills-lock\.json/.test(o)),
+        "skill notices: each of them is an orphan naming the lock, not a line in the notice", orphans);
+    t.ok(!/copied-by-hand|says-so-itself/.test(r.notices.text) && /`written-here`/.test(r.notices.text),
+        "skill notices: only the skill actually written here is listed as written here", r.notices.text);
+
+    // And the gate that actually runs. `node scripts/skills.js notices` is not what a project meets
+    // day to day -- the invariants are, on every edit -- and that one used to skip a repo with no
+    // lock, which is precisely the repo a hand-copied skill lives in. The orphan was computed and
+    // thrown away. It waits on the orphans now, so both halves are asked here: a carrier with no
+    // lock fails it, and a repo that really has nothing vendored still skips.
+    const gate = checkHarness.INVARIANTS.find(f => f.name === "vendoredSkillsAreAttributed");
+    const outcome = v => {
+        const said = [];
+        gate({ ok: (c, title, detail) => c || said.push(detail || title), skip: why => said.push(`skip: ${why}`) }, v);
+        return said.join("\n");
+    };
+    const said = outcome(view);
+    t.ok(/copied-by-hand/.test(said) && /says-so-itself/.test(said) && !/^skip:/.test(said),
+        "skill notices: the invariant reports the orphan rather than skipping a repo with no lock", said);
+    t.ok(/^skip:/.test(outcome(repoView.fromMap({ ".agents/skills/written-here/SKILL.md": skill("written-here") }))),
+        "skill notices: a repo that vendored nothing and carries no licence still skips");
 };
 
 // The upstream's own skills all pass the frontmatter check, so harnessInvariantsHoldHere proves only
