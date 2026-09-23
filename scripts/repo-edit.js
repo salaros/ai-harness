@@ -24,6 +24,10 @@ const result = (file, kind, why) => ({ file, kind, done: !why, why: why || null 
 // the same way, which is easier to keep true when there is one sentence rather than two copies.
 const noSource = e => `nothing at ${e.move} to move to ${e.file}`;
 const taken = e => `${e.file} is already there, so ${e.move} was left where it is`;
+// The third, for the step where the rename is done and Git will not record it: worded once for the
+// same reason, and carrying the command's own words, since what Git refused is the whole of what
+// there is to say about it.
+const cannotStage = (e, r) => `could not stage the move of ${e.move} to ${e.file}: ${(r.stderr || "").trim()}`;
 // A path a move in the same plan is moving to, claimed by some other entry as well. A plan that
 // says two things about one path is a plan that contradicts itself, and the second of them is
 // refused rather than performed: see `apply`, where the reason this can arise at all is set out.
@@ -193,19 +197,24 @@ function worktreeEdit(root) {
         // at neither path while the disk holds it at the new one. So the destination is offered
         // alone, and if Git will not have it the rename goes back and the index is untouched: the
         // refusal a real target actually produces costs the repository nothing.
-        // Dropping the source afterwards is the step with no way back, because by then the
-        // destination is staged. Nothing was found that makes it fail -- a path `git add -A` is
-        // asked about is gone from the disk by this point, and staging that is a deletion Git takes
-        // whether or not the path is ignored -- so the refusal is reported and TODO.md carries the
-        // gap rather than this carrying a rollback no check can reach.
         const added = git(root, ["add", "-A", "--", e.file]);
         if (added.status !== 0) {
             try { fs.renameSync(at(e.file), at(e.move)); }
             catch { /* the way back is gone too; the message below is all there is to give */ }
-            return `could not stage the move of ${e.move} to ${e.file}: ${(added.stderr || "").trim()}`;
+            return cannotStage(e, added);
         }
+        // Dropping the source afterwards is judged by the index, not by what `git add` answers. A
+        // source now covered by the target's .gitignore is refused and dropped in the same breath:
+        // the command exits non-zero over the ignore rule and takes the entry out of the index all
+        // the same, which is the staging that was asked for. So the index is read back, and only a
+        // read that returns and finds nothing says the move is staged: a read that fails says
+        // nothing, and leaves the refusal standing, which is the safe way round. Nothing rolls back
+        // here and nothing should, the destination being staged by then -- putting the file back on
+        // disk would leave the two contradicting each other rather than as they started.
         const dropped = git(root, ["add", "-A", "--", e.move]);
-        return dropped.status === 0 ? null : `could not stage the move of ${e.move} to ${e.file}: ${(dropped.stderr || "").trim()}`;
+        if (dropped.status === 0) return null;
+        const stillTracked = repoView.indexModes(root, [e.move]);
+        return stillTracked && !stillTracked.length ? null : cannotStage(e, dropped);
     };
     const marked = [];
     // Git runs a hook only if it is executable and says nothing when it is not, so an installed

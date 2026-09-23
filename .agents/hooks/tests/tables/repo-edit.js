@@ -267,6 +267,38 @@ exports.repoEditStagesAMoveItCannotOtherwiseRecord = function repoEditStagesAMov
     });
 };
 
+// SPEC-0001/W-1 from its other side. `git add -A` asked to stage the deletion of a path the
+// repository's own .gitignore has since come to cover refuses it -- exit 1, "The following paths are
+// ignored" -- and drops the entry from the index in the same breath, which is the whole of what was
+// asked. Read by its exit code alone, a move the project can see on disk and in its index is
+// reported as a refusal, and whoever reads that message reruns an install that already worked.
+exports.repoEditBelievesTheIndexRatherThanGitsRefusal = function repoEditBelievesTheIndexRatherThanGitsRefusal(t) {
+    if (repoEdit.kindOf({ file: "a", move: "b" }) !== "move") { t.skip("repo edit ignored source: this scripts/repo-edit.js does not move"); return; }
+    const git = (root, args) => spawnSync("git", ["-c", "core.longpaths=true", "-C", root, ...args], { encoding: "utf8" });
+    if (git(".", ["--version"]).status !== 0) { t.skip("repo edit ignored source: git is not installed"); return; }
+
+    // The source is committed first and covered by .gitignore only afterwards, because a path
+    // already ignored when it was added is one Git goes on tracking without a word about it.
+    withRoot({ ".claude/skills/mine/SKILL.md": "mine\n" }, root => {
+        git(root, ["init", "-q", "-b", "main", "."]);
+        git(root, ["config", "user.email", "a@b.c"]);
+        git(root, ["config", "user.name", "T"]);
+        git(root, ["add", "-A"]);
+        git(root, ["commit", "-qm", "initial"]);
+        fs.writeFileSync(path.join(root, ".gitignore"), ".claude/\n");
+        git(root, ["add", ".gitignore"]);
+        git(root, ["commit", "-qm", "ignore the skills folder"]);
+
+        const [r] = repoEdit.worktreeEdit(root).apply([{ file: ".agents/skills/mine", move: ".claude/skills/mine" }]);
+        const staged = git(root, ["ls-files"]).stdout;
+        t.ok(r.done && !r.why, "repo edit ignored source: a move Git refuses and performs anyway is not reported as a refusal", JSON.stringify(r));
+        t.ok(staged.includes(".agents/skills/mine/SKILL.md") && !staged.includes(".claude/skills/mine"),
+            "repo edit ignored source: and the index records the skill at the destination and nowhere else", staged);
+        t.ok(fs.existsSync(path.join(root, ".agents/skills/mine/SKILL.md")),
+            "repo edit ignored source: and the disk agrees with it", JSON.stringify(fs.readdirSync(root)));
+    });
+};
+
 // The two adapters have to answer the same question the same way, and "is something already there"
 // is where they could quietly differ: a map holds a link as an entry like any other, while
 // existsSync on disk follows a link and reports a dangling one's path free. Then the map refuses a
