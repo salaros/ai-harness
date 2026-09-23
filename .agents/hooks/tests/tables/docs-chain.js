@@ -131,6 +131,74 @@ exports.docsCheckSourceAndAdrExemption = function docsCheckSourceAndAdrExemption
     t.ok(r.for("prd/9201-decided.md").length === 0, "docs-check: any document may cite an ADR", r.all);
 };
 
+// The Cites column: a TRD is an entry stage, so engineering-driven work may start at one from a
+// source however much of the chain exists; an RFC is cross-cutting like an ADR.
+exports.docsCheckCitesColumn = function docsCheckCitesColumn(t) {
+    const rfc = (n, status, extra = []) => [`# RFC-${n}: Rfc`, "", `**Status:** ${status}`, "**Derived from:** https://example.com/issue", ...extra];
+    const r = checkDocs({
+        "brd/9500-real.md": ["# BRD-9500: Real", "", "**Derived from:** https://example.com/brief"],
+        "prd/9500-product.md": ["# PRD-9500: Product", "", "**Derived from:** BRD-9500", "", "- NFR-1: Search feels instant"],
+        "trd/9500-migration.md": ["# TRD-9500: Migration", "", "**Derived from:** https://example.com/eol-notice"],
+        "trd/9501-refines.md": ["# TRD-9501: Refines", "", "**Derived from:** PRD-9500", "", "| TR-1 | Performance | p95 < 200 ms | PRD-9500/NFR-1 |"],
+        "ears/9500-shall.md": ["# EARS-9500: Shall", "", "**Derived from:** TRD-9501", "", "- REQ-1: The search shall answer in 200 ms (TRD-9501/TR-1)."],
+        "rfc/9500-late.md": rfc(9500, "Accepted", ["", "Constrained by SPEC-9500.", "", "### OPT-1: Cache"]),
+        "bdd/9500-early.md": ["# BDD-9500: Early", "", "**Derived from:** EARS-9500", "", "Follows RFC-9500/OPT-1."],
+        "spec/9500-design.md": ["# SPEC-9500: Design", "", "**Derived from:** RFC-9500"],
+    });
+    t.ok(r.for("trd/9500-migration.md").length === 0, "docs-check: a TRD may derive from a source alone once a PRD exists", r.all);
+    t.ok(r.for("trd/9501-refines.md").length === 0, "docs-check: a TRD refines a PRD's NFR", r.all);
+    t.ok(r.for("ears/9500-shall.md").length === 0, "docs-check: EARS cites a TRD item", r.all);
+    t.ok(r.for("rfc/9500-late.md").length === 0, "docs-check: an RFC derives from a source and cites a later stage", r.all);
+    t.ok(r.for("bdd/9500-early.md").length === 0, "docs-check: an earlier stage may cite an RFC", r.all);
+    t.ok(r.for("spec/9500-design.md").length === 0, "docs-check: a SPEC builds on an accepted RFC", r.all);
+};
+
+// The Status column: every RFC carries one of the listed values, and a later stage builds only on
+// one the table marks in bold. A cross-cutting ADR may cite a rejected RFC; an RFC may cite another.
+exports.docsCheckStatusColumn = function docsCheckStatusColumn(t) {
+    const rfc = (n, status) => [`# RFC-${n}: Rfc`, "", ...(status ? [`**Status:** ${status}`] : []), "**Derived from:** https://example.com/issue"];
+    const r = checkDocs({
+        "rfc/9600-open.md": rfc(9600, "Open"),
+        "rfc/9601-rejected.md": rfc(9601, "Rejected"),
+        "rfc/9602-none.md": rfc(9602, null),
+        "rfc/9603-odd.md": rfc(9603, "Pondering"),
+        "rfc/9604-old.md": rfc(9604, "Superseded by RFC-9605"),
+        "rfc/9605-new.md": [...rfc(9605, "Accepted"), "", "Replaces RFC-9604."],
+        "rfc/9606-dated.md": ["# RFC-9606: Rfc", "", "Status quo is a list of options.", "**Status:** Accepted, 2026-09-20", "**Derived from:** https://example.com/issue"],
+        "bdd/9600-early.md": ["# BDD-9600: Early", "", "**Derived from:** RFC-9600"],
+        "spec/9600-early.md": ["# SPEC-9600: Early", "", "**Derived from:** RFC-9600"],
+        "spec/9601-accepted.md": ["# SPEC-9601: Accepted", "", "**Derived from:** RFC-9605"],
+        "adr/9600-no.md": ["# ADR-9600: No", "", "**Derived from:** RFC-9601"],
+    });
+    t.ok(r.for("spec/9600-early.md").some(p => p.includes("which is Open") && p.includes("Accepted")),
+        "docs-check: a SPEC may not build on an RFC still open", r.all);
+    t.ok(r.for("spec/9601-accepted.md").length === 0, "docs-check: a SPEC builds on an accepted RFC", r.all);
+    t.ok(r.for("adr/9600-no.md").length === 0, "docs-check: an ADR may cite a rejected RFC", r.all);
+    t.ok(r.for("bdd/9600-early.md").every(p => !p.includes("which is Open")), "docs-check: only a stage after the RFC is held to its status", r.all);
+    t.ok(r.for("rfc/9606-dated.md").length === 0, "docs-check: the Status line is the one with a colon, and a date may follow the value", r.all);
+    t.ok(r.for("rfc/9602-none.md").some(p => p.includes('"**Status:**" line')), "docs-check: an RFC with no status", r.all);
+    t.ok(r.for("rfc/9603-odd.md").some(p => p.includes('"**Status:**" line')), "docs-check: an RFC with a status the table does not list", r.all);
+    t.ok(r.for("rfc/9604-old.md").length === 0 && r.for("rfc/9605-new.md").length === 0,
+        "docs-check: Superseded by RFC-NNNN is a status, and RFCs cite each other", r.all);
+};
+
+// The two columns are optional in the table's shape: a table written before them keeps ADR's old
+// rule, and a value the parser does not know is reported rather than guessed at.
+exports.readChainCitesAndStatus = function readChainCitesAndStatus(t) {
+    const table = (header, rows) => repoView.fromMap({
+        "AGENTS.md": [header, header.replace(/[^|]+/g, " --- "), ...rows].join("\n") + "\n",
+    });
+    const legacy = docsCheck.readChain(table("| Stage | Answers | Lives in | Skill |",
+        ["| BRD | why | `docs/brd/` | |", "| ADR | decisions | `docs/adr/` | |"]));
+    const cites = Object.fromEntries(legacy.stages.map(s => [s.stage, s.cites]));
+    t.ok(cites.BRD === "backwards" && cites.ADR === "any", "readChain: a table with no Cites column keeps ADR cross-cutting", JSON.stringify(cites));
+    const odd = docsCheck.readChain(table("| Stage | Answers | Lives in | Cites | Status | Skill |",
+        ["| BRD | why | `docs/brd/` | sideways | | |", "| RFC | how | `docs/rfc/` | any | Draft, Accepted | |"]));
+    const said = odd.problems.join("\n");
+    t.ok(said.includes('cites "sideways"'), "readChain: an unknown Cites value", said);
+    t.ok(said.includes("marks none in bold"), "readChain: statuses with none to build on", said);
+};
+
 // MEMORY.md's Requirements takes part in traceability, so it follows the same reference rule.
 exports.docsCheckMemoryRequirements = function docsCheckMemoryRequirements(t) {
     const memory = lines => {
@@ -215,7 +283,7 @@ exports.docsCheckIntentShape = function docsCheckIntentShape(t) {
 // table says and then checks the answer against the table proves only that reading twice gives the
 // same answer. This is the expectation the parser is held to, so reordering the table without
 // meaning to fails here. Reordering it on purpose is an edit to this line as well.
-const PIPELINE = ["BRD", "PRD", "EARS", "BDD", "ADR", "SPEC"];
+const PIPELINE = ["BRD", "PRD", "TRD", "EARS", "BDD", "RFC", "ADR", "SPEC"];
 
 exports.chainIsParsedInPipelineOrder = function chainIsParsedInPipelineOrder(t) {
     const { stages, problems } = docsCheck.readChain(repoView.worktree(lib.checkout));

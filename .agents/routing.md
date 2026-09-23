@@ -37,6 +37,8 @@ Read by `devops` and `engineer`.
 | The request is… | Skill(s) |
 | --- | --- |
 | behaviour to build or fix | `tdd`; `implement` when working from a spec or tickets; `ponytail` throughout |
+| a technical requirement to pin down: performance, availability, security, compatibility, compliance, a constraint; or engineering-driven work with no business or product document behind it | `trd`, then `docs-check` |
+| a technical problem with two or more viable solutions and no obvious winner | `rfc` before the ADR and the SPEC; `docs-check` after it. Never `design-doc`, whatever its description says about RFCs |
 | a decision hard to reverse, or a design to write down before it is built | `grill-with-docs` writes the ADR, `design-doc` the SPEC, `create-implementation-plan` the IPLAN; `docs-check` after each |
 | code or tooling being designed or restructured | `codebase-design` for the vocabulary; `improve-codebase-architecture` to scan the whole repo for candidates |
 | something over-built, or that works but reads badly | `ponytail-audit` ranks what to delete or replace; `code-simplification` where there is nothing to delete |
@@ -45,6 +47,6 @@ Read by `devops` and `engineer`.
 | "that did not land" | `wait-what` |
 | the end of a session | `duck-debt`, then `retro` to improve this harness, then `handoff` for a successor |
 
-An ADR is cross-cutting: write it the moment a decision is forced, whatever stage you are at, and derive it from whatever forced it.
+An ADR is cross-cutting: write it the moment a decision is forced, whatever stage you are at, and derive it from whatever forced it. So is an RFC, for a decision that needs arguing first; once the user accepts one, each hard-to-reverse choice it settled becomes an ADR citing it.
 
 `duck-debt` tiers what it finds by whether each comment carries an issue link. Run it first at the end of a session, so the retrospective opens on what was actually deferred rather than on what anyone remembers.

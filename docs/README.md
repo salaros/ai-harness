@@ -4,7 +4,7 @@ Everything written about this project before and beside its code lives here, one
 
 Every document is `docs/<stage>/NNNN-<slug>.md`, its ID is `<STAGE>-NNNN`, its first heading is `# <STAGE>-NNNN: <title>`, and it carries a `**Derived from:**` line naming at least one reference. Items a later stage will refine start their line with a short ID (`BR-2`, `FR-3`, `AC-1`, `### D-1`), and later documents cite them as `DOC-ID/ITEM`.
 
-A reference is an upstream document ID, or a **source**: a URL, a repo-relative path that exists (optionally `path:line`, a folder written `src/`), or `jira:KEY-123` in upper case. A file at the root counts by its bare name, so a project that keeps its product intent in an optional `INTENT.md` cites `INTENT.md`. A source stands in for an upstream document only while the chain holds nothing earlier, so the first document written may name one and every later document cites the chain. An ADR is the exception at both ends: it may cite a source or any document at any time, and any document may cite it.
+A reference is an upstream document ID, or a **source**: a URL, a repo-relative path that exists (optionally `path:line`, a folder written `src/`), or `jira:KEY-123` in upper case. A file at the root counts by its bare name, so a project that keeps its product intent in an optional `INTENT.md` cites `INTENT.md`. A source stands in for an upstream document only while the chain holds nothing earlier, so the first document written may name one and every later document cites the chain. The `Cites` column of the table in `AGENTS.md` names the exceptions. A TRD may always derive from a source alone, since engineering-driven work starts there. An ADR and an RFC are exceptions at both ends: each may cite a source or any document at any time, and any document may cite it.
 
 ## BRD, Business Requirements Document
 
@@ -22,13 +22,27 @@ Contains: purpose and objectives citing `BRD-NNNN/BR-n`, user stories, functiona
 
 A prototype skips the BRD, so its PRD derives from a source instead. Writing a BRD later makes that PRD wrong: it must then cite the BRD, and the validator says so.
 
+## TRD, Technical Requirements Document
+
+**What the system must satisfy technically.** Each requirement is a measurable target, a constraint the design must live within, or an obligation it must meet. It contains no design: "p95 under 200 ms" belongs here, and the cache that achieves it belongs in an RFC or the SPEC.
+
+Contains: context, requirements (`TR-n`) by ISO/IEC 25010 category, each with a target, how it is measured and a priority; constraints; the categories that do not apply and why; open questions. A PRD's `NFR-n` lines state quality goals in the user's words, and the TRD turns each into a `TR-n` that cites `PRD-NNNN/NFR-n`. Engineering-driven work has no PRD behind it, so its TRD derives from whatever forced the work: an incident, an end-of-life notice, an audit finding. The `trd` skill writes it.
+
 ## EARS, requirements as "shall" statements
 
-**Each requirement as one testable sentence** in the EARS form: ubiquitous, event-driven ("When … the system shall …"), state-driven ("While …"), unwanted behaviour ("If … then the system shall …"), optional feature. One statement per line with an ID (`REQ-n`), each citing the `PRD-NNNN/FR-n` it refines, with acceptance criteria (`AC-n`). The `feature-forge` skill writes it.
+**Each requirement as one testable sentence** in the EARS form: ubiquitous, event-driven ("When … the system shall …"), state-driven ("While …"), unwanted behaviour ("If … then the system shall …"), optional feature. One statement per line with an ID (`REQ-n`), each citing the `PRD-NNNN/FR-n` or `TRD-NNNN/TR-n` it refines, with acceptance criteria (`AC-n`). The `feature-forge` skill writes it.
 
 ## BDD, behaviour scenarios
 
 **Behaviour as Given / When / Then.** One feature file per document, scenarios grouped by rule, each scenario citing the `EARS-NNNN/REQ-n` it exercises; edge cases and failure paths are scenarios too. These become the acceptance tests. The `bdd-scenarios` skill writes it.
+
+## RFC, Request for Comments
+
+**How to solve a technical problem, argued out before anyone commits.** An RFC is optional and is written when there are two or more viable solutions and no obvious winner.
+
+Contains: status, abstract, problem, goals and non-goals, criteria (`C-n`) set before the options, options (`OPT-n`) each scored against every criterion, the Discussion, open questions (`Q-n`), and the Resolution. The debate runs inside the file: an agent argues for each option, a critic attacks all of them, and each advocate answers once. The user writes the Resolution; no agent closes an RFC. The `rfc` skill writes it.
+
+Its status is `Draft`, `Open`, `Accepted`, `Rejected`, `Withdrawn` or `Superseded by RFC-NNNN`, and a closed RFC is frozen. Like an ADR it is cross-cutting. It argues and the ADR records: each hard-to-reverse choice an accepted RFC settled becomes an ADR citing it, and its design becomes a SPEC, which may cite only an accepted RFC.
 
 ## ADR, Architecture Decision Record
 
@@ -42,7 +56,7 @@ An ADR is cross-cutting, because a decision can be forced before the chain start
 
 **How** the system satisfies the requirements: the design that engineering builds from.
 
-Contains: goals and non-goals citing the EARS and BDD documents, the architecture and its components, data model, interfaces between modules and with the outside, decisions taken (citing the ADRs), risks, test strategy, and the sections a later implementation plan will refine (`### D-n`). The `design-doc` skill writes it.
+Contains: goals and non-goals citing the EARS and BDD documents, the architecture and its components, data model, interfaces between modules and with the outside, decisions taken (citing the ADRs, and the accepted RFC it implements, if any), risks, test strategy, and the sections a later implementation plan will refine (`### D-n`). The `design-doc` skill writes it.
 
 ## After the documents
 

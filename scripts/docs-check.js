@@ -10,8 +10,11 @@
 // Every document carries a "Derived from:" line naming at least one reference: an upstream
 // document, or a source (isSource below: a URL, a path that exists, or jira:KEY-123). A path may be a
 // bare file name at the root, which is how INTENT.md or .gitignore is cited. A source
-// stands in for an upstream document only while the chain holds nothing earlier; an ADR may
-// always cite one, and is exempt from the backwards-only rule in both directions. MEMORY.md's
+// stands in for an upstream document only while the chain holds nothing earlier. The table's Cites
+// column names the exceptions: an entry stage (a TRD) may always derive from a source alone, and a
+// cross-cutting one (an ADR, an RFC) is exempt from the backwards-only rule in both directions. Its
+// Status column lists the values a stage's documents carry, the bold ones those a later stage may
+// build on, so no SPEC cites an RFC that is not Accepted. MEMORY.md's
 // Requirements line follows the same reference rule, or says "none yet". INTENT.md is optional;
 // when there is one it must carry the sections its specification requires, as readIntent() in scripts/project-facts.js reads them.
 // Prints one line per problem and exits 1 when there are any. The edit hook requires check().
@@ -88,7 +91,12 @@ const ITEM_RE = /^(?:[-*]\s+|#{1,6}\s+|\*\*|\|\s*)?([A-Z]{1,5}-\d+)\b/;
 const citationRe = folders =>
     new RegExp(`\\b(${folders.map(f => f.toUpperCase()).join("|") || "NONE"})-(\\d{4})(?:\\/([A-Z]{1,5}-\\d+))?\\b`, "g");
 
-// The chain itself, read from the AGENTS.md table: | Stage | Answers | Lives in | Skill |. Every
+// What a stage's documents may cite, the table's Cites column: `backwards` along the chain only;
+// `backwards or source`, an entry stage that may also derive from a source alone however much of the
+// chain exists; `any`, a cross-cutting stage that cites and is cited in either direction.
+const CITES = ["backwards", "backwards or source", "any"];
+
+// The chain itself, read from the AGENTS.md table: | Stage | Answers | Lives in | Cites | Status | Skill |. Every
 // row in table order, so the caller sees the pipeline the way a reader of AGENTS.md does; `folder`
 // is set only on the rows that are document stages (tests/, .scratch/ and src/ have none). This is
 // the only parser of that table: check() below goes through it, as does the optional
@@ -119,7 +127,18 @@ function readChain(view) {
                 say(`stage ${stage} names skill \`${skill}\`, which is not under .agents/skills/`);
         const m = lives.match(/^docs\/([a-z0-9-]+)\/$/);   // tests/, .scratch/, src/: not a document stage
         if (m && m[1].toUpperCase() !== stage) say(`stage ${stage} lives in ${lives}; the folder must be docs/${stage.toLowerCase()}/`);
-        stages.push({ stage, answers: col(row, "Answers"), lives, folder: m ? m[1] : null, skills });
+        // Cites says what a stage's documents may reference. A table written before the column
+        // existed keeps the one rule it had, ADR citing anything.
+        const citesCell = cols.includes("Cites") ? col(row, "Cites").replace(/`/g, "").trim().toLowerCase() : (stage === "ADR" ? "any" : "backwards");
+        const cites = m ? (citesCell || "backwards") : null;
+        if (m && !CITES.includes(cites)) say(`stage ${stage} cites "${cites}"; the Cites column takes ${CITES.map(c => `\`${c}\``).join(", ")}`);
+        // Status lists the values a document of the stage carries on its **Status:** line; the bold
+        // ones are those a later stage may build on (an Accepted RFC, a Go PDD).
+        const statusCell = m ? col(row, "Status") : "";
+        const statuses = [...statusCell.matchAll(/(\*\*)?([A-Za-z][A-Za-z -]*[A-Za-z])\1?/g)]
+            .map(s => ({ value: s[2].trim(), buildable: !!s[1] }));
+        if (statuses.length && !statuses.some(s => s.buildable)) say(`stage ${stage} lists statuses but marks none in bold as one a later stage may build on`);
+        stages.push({ stage, answers: col(row, "Answers"), lives, folder: m ? m[1] : null, cites, statuses, skills });
     }
     if (!stages.some(s => s.folder)) say("chain table has no row living in docs/<stage>/");
     return { stages, problems };
@@ -176,11 +195,21 @@ function check(root, view = repoView.worktree(root)) {
     const { docStages, docs, problems, refRe } = readDocs(root, view);
     const chain = docStages.map(s => s.folder);   // folder names in stage order
     const rank = Object.fromEntries(chain.map((s, i) => [s, i]));
+    const stageOf = Object.fromEntries(docStages.map(s => [s.folder, s]));
+    // A document's **Status:** value, and the table's entry for it: "Superseded by RFC-0007" is
+    // Superseded. Null when the line is missing or names a value the stage does not list.
+    const statusOf = d => {
+        const line = d.lines.find(l => /^\**Status\**:/i.test(l));
+        const value = line ? line.replace(/^\**Status\**:\**\s*/i, "").trim().toLowerCase() : "";
+        // The value, then anything but a letter: "Accepted.", "Accepted, 2026-09-20", "Superseded by …".
+        return stageOf[d.folder].statuses.find(s => new RegExp(`^${s.value.toLowerCase()}(?![a-z])`).test(value)) || null;
+    };
     const prefixes = chain.map(s => s.toUpperCase());
 
     // 2. Check each document
     for (const [id, d] of docs) {
         const { lines, h1 } = d;
+        const cites = stageOf[d.folder].cites;
         if (!h1) say(d.file, "no level-1 heading");
         else if (!h1.startsWith(`# ${id}:`)) say(d.file, `first heading must start with "# ${id}:" (found "${h1.slice(0, 40)}")`);
 
@@ -189,29 +218,42 @@ function check(root, view = repoView.worktree(root)) {
         if (!derived) say(d.file, `missing a "**Derived from:**" line naming an upstream document or a source (${SOURCE_HELP})`);
         else {
             const tokens = referenceTokens(derived);
-            const cites = [...derived.matchAll(refRe)].map(m => `${m[1]}-${m[2]}`).filter(c => c !== id);
+            const upstream = [...derived.matchAll(refRe)].map(m => `${m[1]}-${m[2]}`).filter(c => c !== id);
             const sources = tokens.filter(t => isSource(t, view));
             const brokenPath = tokens.find(t => looksLikePath(t) && !view.exists(withoutLine(t)));
-            if (!cites.length && !sources.length) {
+            if (!upstream.length && !sources.length) {
                 const why = brokenPath ? `; ${brokenPath} does not exist` : "";
                 say(d.file, `"Derived from:" names no reference: cite an upstream document, or a source (${SOURCE_HELP})${why}`);
-            } else if (!cites.length && d.folder !== "adr") {
+            } else if (!upstream.length && cites === "backwards") {
                 // A source stands in for an upstream document only while there is nothing earlier
-                // to cite. An ADR is cross-cutting, so this never applies to it.
+                // to cite. An entry stage and a cross-cutting one may always start from a source.
                 const earlier = [...docs].find(([, o]) => rank[o.folder] < rank[d.folder]);
                 if (earlier) say(d.file, `"Derived from:" names only a source, but ${earlier[0]} exists; cite the upstream document instead`);
             }
         }
+
+        // A stage that lists statuses needs every document of it to carry one of them.
+        const listed = stageOf[d.folder].statuses;
+        if (listed.length && !statusOf(d))
+            say(d.file, `needs a "**Status:**" line with one of ${listed.map(s => s.value).join(", ")}`);
 
         for (const [ref, stage, num, item] of d.text.matchAll(refRe)) {
             const docId = `${stage}-${num}`;
             if (docId === id) continue;
             const target = docs.get(docId);
             if (!target) { say(d.file, `cites ${ref} but ${docId} does not exist`); continue; }
-            // An ADR records a decision forced at any point, so it cites, and is cited, in
-            // either direction; every other pair points backwards along the chain.
-            const crossCutting = d.folder === "adr" || target.folder === "adr";
+            // A cross-cutting stage (an ADR, an RFC) is written the moment something forces it, so
+            // it cites, and is cited, in either direction; every other pair points backwards.
+            const crossCutting = cites === "any" || stageOf[target.folder].cites === "any";
             if (!crossCutting && rank[target.folder] > rank[d.folder]) say(d.file, `cites ${ref}, which is later in the chain (${target.folder} after ${d.folder})`);
+            // A later stage builds only on a document its stage's Status marks as one to build on:
+            // no SPEC on an RFC still open or rejected. A cross-cutting document may cite any, since
+            // "we rejected RFC-0002" is itself a decision worth recording.
+            const status = rank[target.folder] < rank[d.folder] && cites !== "any" && stageOf[target.folder].statuses.length ? statusOf(target) : null;
+            if (status && !status.buildable) {
+                const want = stageOf[target.folder].statuses.filter(s => s.buildable).map(s => s.value).join(" or ");
+                say(d.file, `cites ${ref}, which is ${status.value}; ${stageOf[d.folder].stage} builds only on ${stageOf[target.folder].stage} documents that are ${want}`);
+            }
             if (item && !target.items.has(item)) say(d.file, `cites ${ref} but ${target.file} has no item ${item}`);
         }
     }
