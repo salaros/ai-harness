@@ -193,3 +193,92 @@ exports.repoEditMovesWhatIsAlreadyThere = function repoEditMovesWhatIsAlreadyThe
             "repo edit: a move on disk relocates the folder, parent made for it", `${JSON.stringify(r)} ${JSON.stringify(disk.view().list(".agents/skills"))}`);
     });
 };
+
+// A rename on disk is invisible to Git: the index goes on recording the path a folder was committed
+// at, and that index is what the harness invariant about .claude/skills reads. So a move stages its
+// own result -- the same reason `mark` goes through Git rather than chmod, that the disk cannot say
+// it. Narrowly, though: only a source Git was already tracking, because that is the only case where
+// the index and the disk now disagree. Anything else would sweep a repository's own uncommitted
+// work into whatever commit somebody makes next.
+exports.repoEditStagesAMoveItCannotOtherwiseRecord = function repoEditStagesAMoveItCannotOtherwiseRecord(t) {
+    if (repoEdit.kindOf({ file: "a", move: "b" }) !== "move") { t.skip("repo edit stage: this scripts/repo-edit.js does not move"); return; }
+    const git = (root, args) => spawnSync("git", ["-c", "core.longpaths=true", "-C", root, ...args], { encoding: "utf8" });
+    if (git(".", ["--version"]).status !== 0) { t.skip("repo edit stage: git is not installed"); return; }
+    const entry = { file: ".agents/skills/mine", move: ".claude/skills/mine" };
+
+    withRoot({ ".claude/skills/mine/SKILL.md": "mine\n", "README.md": "hi\n" }, root => {
+        git(root, ["init", "-q", "-b", "main", "."]);
+        git(root, ["config", "user.email", "a@b.c"]);
+        git(root, ["config", "user.name", "T"]);
+        git(root, ["add", "-A"]);
+        git(root, ["commit", "-qm", "initial"]);
+
+        const [r] = repoEdit.worktreeEdit(root).apply([entry]);
+        const staged = git(root, ["ls-files", "-s"]).stdout;
+        t.ok(r.done, "repo edit stage: the move itself is done", JSON.stringify(r));
+        t.ok(staged.includes(".agents/skills/mine/SKILL.md"),
+            "repo edit stage: the index records the skill where it now is", staged);
+        t.ok(!staged.includes(".claude/skills/mine"),
+            "repo edit stage: and no longer where it was, which is what the invariant reads", staged);
+    });
+
+    // The same repo and the same move, but nothing there was ever committed: no disagreement to
+    // settle, so the index is left exactly as its owner had it.
+    withRoot({ ".claude/skills/mine/SKILL.md": "mine\n", "README.md": "hi\n" }, root => {
+        git(root, ["init", "-q", "-b", "main", "."]);
+        const [r] = repoEdit.worktreeEdit(root).apply([entry]);
+        const staged = git(root, ["ls-files", "-s"]).stdout;
+        t.ok(r.done, "repo edit stage: an untracked skill still moves", JSON.stringify(r));
+        t.ok(staged.trim() === "", "repo edit stage: and nothing of the project's is staged on its behalf", staged);
+    });
+
+    // A target that is no checkout at all -- an extracted tarball, a folder somebody made -- has no
+    // index to keep in step, and answering that with a refusal would fail an install over nothing.
+    withRoot({ ".claude/skills/mine/SKILL.md": "mine\n" }, root => {
+        const [r] = repoEdit.worktreeEdit(root).apply([entry]);
+        t.ok(r.done && !r.why, "repo edit stage: a root with no index moves and refuses nothing", JSON.stringify(r));
+    });
+};
+
+// The two adapters have to answer the same question the same way, and "is something already there"
+// is where they could quietly differ: a map holds a link as an entry like any other, while
+// existsSync on disk follows a link and reports a dangling one's path free. Then the map refuses a
+// move the disk performs. The case that tells them apart is the one this harness makes most of all
+// -- a .claude/skills full of links, some of them pointing at skills that are gone.
+exports.repoEditAdaptersAgreeAboutSomethingInTheWay = function repoEditAdaptersAgreeAboutSomethingInTheWay(t) {
+    if (repoEdit.kindOf({ file: "a", move: "b" }) !== "move") { t.skip("repo edit dangling: this scripts/repo-edit.js does not move"); return; }
+    const entry = { file: ".agents/skills/mine", move: ".claude/skills/mine" };
+    const [onMap] = repoEdit.mapEdit({
+        ".claude/skills/mine/SKILL.md": "mine\n",
+        ".agents/skills/mine": { link: "../../nowhere" },
+    }).apply([entry]);
+
+    withRoot({ ".claude/skills/mine/SKILL.md": "mine\n" }, root => {
+        fs.mkdirSync(path.join(root, ".agents", "skills"), { recursive: true });
+        try { fs.symlinkSync(path.join("..", "..", "nowhere"), path.join(root, ".agents", "skills", "mine"), "dir"); }
+        catch { t.skip("repo edit dangling: this platform will not make a symlink"); return; }
+        const [onDisk] = repoEdit.worktreeEdit(root).apply([entry]);
+        t.ok(!onMap.done && !onDisk.done,
+            "repo edit: a dangling link is something in the way, whichever adapter is asked",
+            `${JSON.stringify(onMap)} ${JSON.stringify(onDisk)}`);
+        t.ok(onMap.why === onDisk.why, "repo edit: and both say so in the same words", `${onMap.why} | ${onDisk.why}`);
+    });
+};
+
+// SPEC-0001/W-2. A move is the one kind whose place in the list matters, since it is about a path
+// that is about to stop existing. The rule the ordering promise was really making is that getting
+// it wrong cannot cost anybody their work, so the case is worth pinning rather than trusting: put
+// the link first, on purpose, and the project's folder must still be there afterwards.
+exports.repoEditRefusesAnOutOfOrderLinkRatherThanLosingWork = function repoEditRefusesAnOutOfOrderLinkRatherThanLosingWork(t) {
+    if (repoEdit.kindOf({ file: "a", move: "b" }) !== "move") { t.skip("repo edit order: this scripts/repo-edit.js does not move"); return; }
+    withRoot({ ".claude/skills/mine/SKILL.md": "mine\n" }, root => {
+        const edit = repoEdit.worktreeEdit(root);
+        const [link, move] = edit.apply([
+            { file: ".claude/skills/mine", link: "../../.agents/skills/mine" },
+            { file: ".agents/skills/mine", move: ".claude/skills/mine" },
+        ]);
+        t.ok(!link.done, "repo edit: a link asked for before the move that clears its way is refused", JSON.stringify(link));
+        t.ok(move.done && edit.view().read(".agents/skills/mine/SKILL.md") === "mine\n",
+            "repo edit: and the skill is still whole, wherever the two entries left it", JSON.stringify(move));
+    });
+};

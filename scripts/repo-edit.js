@@ -20,6 +20,11 @@ const git = (root, args) => spawnSync("git", ["-c", "core.longpaths=true", "-C",
 
 const result = (file, kind, why) => ({ file, kind, done: !why, why: why || null });
 
+// A move's two refusals, worded once. Both adapters answer the same question and have to answer it
+// the same way, which is easier to keep true when there is one sentence rather than two copies.
+const noSource = e => `nothing at ${e.move} to move to ${e.file}`;
+const taken = e => `${e.file} is already there, so ${e.move} was left where it is`;
+
 // What an entry asks to have done, or null when it asks for nothing: a phase heading, or a path the
 // plan decided to leave exactly as it found it.
 function work(e) {
@@ -86,8 +91,8 @@ function mapEdit(files = {}, { links = true } = {}) {
             move: e => {
                 const under = rel => [rel, ...Object.keys(held).filter(k => k.startsWith(`${rel}/`))].filter(k => k in held);
                 const from = under(e.move);
-                if (!from.length) return `nothing at ${e.move} to move to ${e.file}`;
-                if (under(e.file).length) return `${e.file} is already there, so ${e.move} was left where it is`;
+                if (!from.length) return noSource(e);
+                if (under(e.file).length) return taken(e);
                 for (const key of from) {
                     held[`${e.file}${key.slice(e.move.length)}`] = held[key];
                     delete held[key];
@@ -121,6 +126,20 @@ function worktreeEdit(root) {
     const clear = rel => {
         try { fs.unlinkSync(at(rel)); } catch { try { fs.rmdirSync(at(rel)); } catch { /* nothing was in the way */ } }
     };
+    // Whether anything is at the path, the link itself counting rather than what it points at.
+    const there = rel => { try { fs.lstatSync(at(rel)); return true; } catch { return false; } };
+    // The rename is the filesystem's, but its record is Git's: moving a committed folder leaves the
+    // index recording the old path, and no amount of writing to disk corrects that. The same reason
+    // `mark` below goes through Git rather than chmod -- the disk cannot say it. Staged only when
+    // the source was committed, which is the only case where the index now contradicts the disk: a
+    // path nothing tracked leaves nothing to correct, so a repository mid-edit keeps its index, and
+    // a root with no index at all has nothing to keep in step.
+    const stage = e => {
+        const tracked = repoView.indexModes(root, [e.move]);
+        if (!tracked || !tracked.length) return null;
+        const r = git(root, ["add", "-A", "--", e.move, e.file]);
+        return r.status === 0 ? null : `could not stage the move of ${e.move} to ${e.file}: ${(r.stderr || "").trim()}`;
+    };
     const marked = [];
     // Git runs a hook only if it is executable and says nothing when it is not, so an installed
     // harness whose hooks are 644 looks installed and gates nothing. The upstream records them
@@ -135,17 +154,25 @@ function worktreeEdit(root) {
         ...editing({
             write: e => { parent(e.file); fs.writeFileSync(at(e.file), e.write); return null; },
             mkdir: e => { fs.mkdirSync(at(e.file), { recursive: true }); return null; },
-            // Git is not asked to do this: a skill being adopted is usually untracked, and `git mv`
-            // refuses that. The rename is the filesystem's, and whether the result is staged is the
-            // run's business afterwards. Nothing is overwritten, so a name already taken at the
-            // destination is a refusal rather than a project's work quietly replaced.
+            // Git is not asked to do the rename: a skill being adopted is usually untracked, and
+            // `git mv` refuses that. Nothing is overwritten, so a name already taken at the
+            // destination is a refusal rather than a project's work quietly replaced. Asked with
+            // lstat rather than existsSync, because a dangling symlink is something in the way and
+            // exists() follows the link and reports the path free -- and because the map adapter,
+            // holding a link as an entry like any other, answers that question the same way.
             move: e => {
-                if (!fs.existsSync(at(e.move))) return `nothing at ${e.move} to move to ${e.file}`;
-                if (fs.existsSync(at(e.file))) return `${e.file} is already there, so ${e.move} was left where it is`;
-                parent(e.file);
-                try { fs.renameSync(at(e.move), at(e.file)); }
+                if (!there(e.move)) return noSource(e);
+                if (there(e.file)) return taken(e);
+                // Inside the try with the rename, unlike the writes above: those go to the harness's
+                // own paths, while a move's destination is made under whatever the project already
+                // has there. A repository with a file where .agents/skills should be would take the
+                // whole install down mid-way through, and a refusal is this module's contract.
+                try {
+                    parent(e.file);
+                    fs.renameSync(at(e.move), at(e.file));
+                }
                 catch (err) { return `could not move ${e.move} to ${e.file}: ${err.code || err.message}`; }
-                return null;
+                return stage(e);
             },
             link: e => {
                 parent(e.file);

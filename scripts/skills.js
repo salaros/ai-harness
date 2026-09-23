@@ -323,31 +323,24 @@ function relink(root) {
     const edit = repoEdit.worktreeEdit(root);
     const report = { added: 0, fixed: 0, kept: plan.kept, whole: plan.whole, copies: plan.copies,
         dangling: plan.dangling, adopted: [], refused: [] };
-    // A move that was refused takes its link with it: linking into a folder the skill never left
-    // would replace the project's own work with a link to nothing.
+    // A move that was refused takes its links with it, in every harness folder rather than only the
+    // one the skill was going to leave: a link is planned for each of them, and pointing any of them
+    // at a skill that never arrived makes a link to nothing. At the folder it was leaving it would
+    // be worse than that, replacing the project's own work with one. Stalled by the skill's name,
+    // which is what the move and all of its links have in common.
     const stalled = new Set();
     for (const e of plan.entries) {
-        if (e.link !== undefined && stalled.has(e.file)) continue;
+        const name = path.posix.basename(e.file);
+        if (e.link !== undefined && stalled.has(name)) continue;
         const [result] = edit.apply([e]);
         if (result && !result.done) {
             report.refused.push(result.why);
-            if (e.move !== undefined) stalled.add(e.move);
+            if (e.move !== undefined) stalled.add(name);
             continue;
         }
         if (e.move !== undefined) report.adopted.push(e.move);
         else if (e.replace) report.fixed++;
         else report.added++;
-    }
-    // A skill that was already committed where it stood is still committed there: the rename
-    // happened on disk, and Git's index goes on recording two regular files under .claude/skills
-    // until somebody says otherwise. Which is what the harness invariant reads, so an install that
-    // adopted a skill would fail its own check and tell the reader to run the relink it just ran.
-    // Only the paths relink itself moved are staged, and only those: a repository mid-edit keeps
-    // the rest of its index.
-    for (const from of report.adopted) {
-        const to = `${SKILLS}/${path.posix.basename(from)}`;
-        const r = lib.run("git", ["-c", "core.longpaths=true", "-C", root, "add", "-A", "--", from, to]);
-        if (r.status !== 0) report.refused.push(`could not stage the move of ${from} to ${to}: ${(r.output || "").trim()}`);
     }
     return report;
 }
