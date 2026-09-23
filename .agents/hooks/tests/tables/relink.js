@@ -100,7 +100,7 @@ exports.relinkLooksInEveryHarnessFolderButItsOwn = function relinkLooksInEveryHa
 // and relink used to walk straight past it: the branch that names a copy asks whether
 // .agents/skills already holds that name, and for a skill only this folder has, it does not.
 // Which is how an install into a repo that vendored its skills the `npx skills` way came to exit 1
-// on its own self check: the folders stayed real folders, and every .claude/skills entry is meant to
+// on one of its own harness invariants: the folders stayed real folders, and every .claude/skills entry is meant to
 // be a link.
 exports.relinkAdoptsASkillOnlyOneHarnessHas = function relinkAdoptsASkillOnlyOneHarnessHas(t) {
     if (!skills.relinkPlan) { t.skip("relink adopt: this scripts/skills.js relinks without deciding first"); return; }
