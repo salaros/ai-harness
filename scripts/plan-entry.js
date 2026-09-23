@@ -61,7 +61,14 @@ const folder = (file, as) => at(file, as, { mkdir: true });
 // The run's line for an entry, or null for one that prints nothing. One function rather than a
 // format string at each consumer, so the widths and the rule for what is printed live with the
 // record they are about.
-const describe = e => (e.phase || e.silent ? null : `  ${e.policy.padEnd(9)}${e.mode}  ${e.outcome.padEnd(12)}${e.file}`);
+// A column is its word, a space, and then padding out to the width: padding alone lines the columns
+// up only while every word is shorter than its column, and "reconcile" filled a nine-wide policy
+// column exactly while "yours appended" overran a twelve-wide outcome, so both ran into what came
+// after them. A word too long now pushes its column out of line, which is a worse-looking line and
+// a readable one. Nothing noticed either way for as long as a run's lines could be read only as the
+// stdout of a real install.
+const column = (word, width) => `${word} `.padEnd(width);
+const describe = e => (e.phase || e.silent ? null : `  ${column(e.policy, 9)}${e.mode}  ${column(e.outcome, 12)}${e.file}`);
 
 // The entry as it turned out, when that is not what it planned. The only case is a symlink the
 // platform refused: the edit reports the link is not there, and which outcome word that deserves is

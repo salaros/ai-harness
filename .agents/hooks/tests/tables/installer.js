@@ -2,11 +2,10 @@
 // scripts/update-harness.js's decisions, every one of them in process: which arguments it refuses,
 // how a conflicted merge is settled, and the whole plan against an upstream and a target held in
 // memory. What each policy decides for one path is in install-policy.js beside this file.
-const fs = require("fs");
 const os = require("os");
-const path = require("path");
 const projectFacts = require("../../../../scripts/project-facts");
 const repoView = require("../../../../scripts/repo-view");
+const repoEdit = require("../../../../scripts/repo-edit");
 const { installer, INSTALLER } = require("../fixtures");
 
 // The installer writes whenever it runs, so an argument it does not know has to stop it: a --help it
@@ -205,20 +204,16 @@ exports.installPlanCoversEveryCase = function installPlanCoversEveryCase(t) {
         [null, asks([]), false, "a first install runs"],
     ]) t.ok(harness.upToDate(previous, "c2", options, ["astro-docs"]) === want, `install plan: ${why}`, JSON.stringify(previous));
 
-    // A dry run prints the plan's lines and touches nothing: apply is pointed at a root that does not
-    // exist, and still has to come back with every entry.
-    const nowhere = path.join(os.tmpdir(), `harness-dry-run-${process.pid}-${Date.now()}`);
-    const printed = [];
-    const log = console.log;
-    console.log = m => printed.push(m);
-    let done;
-    try { done = harness.apply(fresh.entries, nowhere, { dryRun: true, quiet: false }); }
-    finally { console.log = log; }
-    const out = printed.join("\n");
+    // A dry run says the plan's lines and touches nothing: apply is given an edit over an empty map,
+    // which has to come back as empty as it went in while every entry is still reported.
+    const edit = repoEdit.mapEdit({});
+    const said = [];
+    const done = harness.apply(fresh.entries, edit, { dryRun: true, quiet: false }, m => said.push(m));
+    const out = said.join("\n");
     t.ok(/merge\s+100755\s+written\s+\.githooks\/pre-commit/.test(out) && !out.includes("harness-lock.json"),
-        "install plan: a dry run prints each path's line, and nothing silent", out);
-    t.ok(!fs.existsSync(nowhere) && done.length === fresh.entries.filter(e => !e.phase).length,
-        "install plan: a dry run writes nothing", `${done.length} entries; ${nowhere} exists: ${fs.existsSync(nowhere)}`);
+        "install plan: a dry run says each path's line, and nothing silent", out);
+    t.ok(!edit.view().list("").length && done.length === fresh.entries.filter(e => !e.phase).length,
+        "install plan: a dry run writes nothing", `${done.length} entries; the map holds ${JSON.stringify(edit.view().list(""))}`);
 };
 
 // SPEC-0001, and the whole reason bytes() is a question of its own rather than a flag on read(). A

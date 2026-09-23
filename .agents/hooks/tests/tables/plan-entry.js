@@ -68,6 +68,11 @@ exports.whatIsPrintedIsDecidedByTheEntry = function whatIsPrintedIsDecidedByTheE
     t.ok(p.quiet("written").bucket === "written", "describe: a silent entry still joins its summary list", "");
     const line = p.describe(p.noted("AGENTS.md", p.shown("merge", "100644", "unchanged")));
     t.ok(/^ {2}merge {4}100644 {2}unchanged {3}AGENTS\.md$/.test(line), "describe: the four columns, padded to their widths", JSON.stringify(line));
+    // A word as wide as its column, or wider, still ends before the next one starts: padding on its
+    // own separated these only by accident, and "reconcile" and "yours appended" are both real.
+    const tight = p.describe(p.noted("AGENTS.md", p.shown("reconcile", "100644", "yours appended")));
+    t.ok(/^ {2}reconcile 100644 {2}yours appended AGENTS\.md$/.test(tight),
+        "describe: a word that fills its column is still separated from the next", JSON.stringify(tight));
 };
 
 // The link the platform would not make is the one case where what a run did is not what it planned:

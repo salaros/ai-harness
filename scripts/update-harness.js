@@ -511,17 +511,17 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
 // lands 100644 gates nothing and a skill link written as a regular file leaves the agent with no
 // skills, and both look installed. A dry run prints the same lines straight from the plan.
 //
-// The writing is scripts/repo-edit.js, an entry at a time: the line for a path is printed as the
-// path is written, and an edit handed the whole plan at once would leave a long install silent and
-// then print all of it at the end. What order the work inside an entry goes in -- the parent folder
-// before the file, the link's way cleared before the link, the mode after the content -- is the
-// edit's, so this loop takes the plan's order as given and adds nothing to it.
+// The writing is the repo-edit the run was handed, an entry at a time: the line for a path is said
+// as the path is written, and an edit given the whole plan at once would leave a long install silent
+// and then say all of it at the end. What order the work inside an entry goes in -- the parent
+// folder before the file, the link's way cleared before the link, the mode after the content -- is
+// the edit's, so this loop takes the plan's order as given and adds nothing to it. `out` is where a
+// line goes as it happens; the run collects them, and only the command line prints.
 // Returns the entries as they turned out, which the summary is built from.
-function apply(entries, root, options) {
+function apply(entries, edit, options, out = say) {
     const done = [];
-    const edit = repoEdit.worktreeEdit(root);
     for (const e of entries) {
-        if (e.phase) { if (!options.quiet) say(`\n${e.phase}`); continue; }
+        if (e.phase) { if (!options.quiet) out(`\n${e.phase}`); continue; }
         let actual = e;
         if (!options.dryRun) {
             const [result] = edit.apply([e]);
@@ -529,12 +529,12 @@ function apply(entries, root, options) {
             // target keeps whatever it already had, which is an outcome word and therefore this
             // run's to choose -- the edit says only that the link is not there and why.
             if (result && !result.done) {
-                say(result.why);
+                out(result.why);
                 if (result.kind === "link") actual = entry.turnedOut(e, "yours", "kept");
             }
         }
         const line = entry.describe(actual);
-        if (line && !options.quiet) say(line);
+        if (line && !options.quiet) out(line);
         done.push(actual);
     }
     return done;
@@ -550,17 +550,19 @@ function apply(entries, root, options) {
 // install leaves a harness that works rather than a list of commands to remember. Each run names the
 // target with --root: the shared resolver prefers a harness's project-dir variable to the checkout a
 // script sits in, and an install started from a session open on another repo would otherwise wire,
-// link and describe that repo instead. Returns whether the hooks were wired.
+// link and describe that repo instead.
+//   { hooks, lines }: whether the hooks were wired, and what the three steps had to say
 function finish(target, options) {
-    if (!options.quiet) say("\nGit hooks, links and notices");
+    const lines = [];
+    if (!options.quiet) lines.push("\nGit hooks, links and notices");
     const steps = [["git hooks", "scripts/githooks-init.js", []], ["links", "scripts/skills.js", ["relink"]], ["notices", "scripts/skills.js", ["notices"]]];
     let hooks = true;
     for (const [label, script, args] of steps) {
         const r = lib.node([path.join(target, script), ...args, `${lib.ROOT_FLAG}${target}`], { cwd: target });
-        say(r.status === 0 ? r.output : `${label}: ${r.output}`);
+        lines.push(r.status === 0 ? r.output : `${label}: ${r.output}`);
         if (label === "git hooks" && r.status !== 0) hooks = false;
     }
-    return hooks;
+    return { hooks, lines };
 }
 
 // Merging is not checking. The installer knows it wrote a file; it cannot know whether the result
@@ -572,16 +574,26 @@ function finish(target, options) {
 // to run them. The upstream's copy rather than the one just installed, so the check is the one that
 // matches the files this run wrote. The suite's fixtures stay upstream: they prove the harness
 // scripts, which the upstream's own CI has already done.
+//   { check, lines }: what the invariants made of the target, and what running them had to say
 function selfCheck(target, templateDir, options) {
     const script = path.join(templateDir, "scripts", "check-harness.js");
-    if (!fs.existsSync(script)) return { skipped: "this upstream ref has no scripts/check-harness.js" };
-    if (!options.quiet) say("\nself check: the harness invariants, run from the upstream against this repo");
+    if (!fs.existsSync(script)) return { check: { skipped: "this upstream ref has no scripts/check-harness.js" }, lines: [] };
+    const lines = options.quiet ? [] : ["\nself check: the harness invariants, run from the upstream against this repo"];
     const harness = require(script);
     // The root rather than a view of it: this is the upstream's copy of check-harness, at whichever
     // ref the run is installing, and a ref old enough to predate the view still expects a path.
     const r = harness.check(target);
-    return { failed: r.failed.length > 0, summary: r.summary, output: harness.format(r) };
+    return { check: { failed: r.failed.length > 0, summary: r.summary, output: harness.format(r) }, lines };
 }
+
+// The two steps above, which are the only ones that reach outside this process: three scripts
+// spawned in the target, and the upstream's own invariants required out of its checkout and run
+// against it. Behind one adapter, because a run that wants to know what it would do has no target to
+// spawn in and no checkout to require from -- and because every ordering fix this installer has
+// needed landed in exactly these two steps, where nothing short of a real install could reach them.
+//   wire(root, options)            -> { hooks, lines }
+//   invariants(root, upstreamDir, options) -> { check, lines }
+const onDisk = { wire: finish, invariants: selfCheck };
 
 // Which paths joined which summary list. The lists are install-policy's to name: it is where a
 // bucket is decided, and a second copy of the names here is a second place to forget one.
@@ -658,13 +670,6 @@ function summarise({ entries, base, head, ref, target, check, hooks = true, opti
     return out;
 }
 
-// The command line's half of the two above: prints the summary, and turns the verdict into the exit
-// code npx and CI read.
-function report(result) {
-    for (const line of summarise(result)) say(line);
-    return verdict(result).failed ? 1 : 0;
-}
-
 // ---------------------------------------------------------------- the run
 
 // Whether the run has nothing to do: the receipt already names the upstream's head, and neither
@@ -674,6 +679,68 @@ function upToDate(previous, head, options, optional) {
     return !!previous && previous.commit === head && !options.adopt && !optional.some(name => options.wants(name));
 }
 
+// The parts of the harness a project has to ask for by name, as the manifest names them.
+const optionalParts = rows => rows.filter(r => r.policy.startsWith("optional:")).map(r => r.policy.slice("optional:".length));
+
+// One install, end to end, as a value. It decides whether there is anything to do, plans it, applies
+// the plan through the target's repo-edit, takes the two steps that reach outside this process, and
+// works out what it all came to -- and it returns every one of those rather than printing any of
+// them. Which is the whole point: two-thirds of this file used to be reachable only by spawning the
+// installer at somebody's repository, so an ordering question could be asked only of stdout after an
+// eighteen-second install, and was therefore asked only after it had already gone wrong.
+//
+// `say` is where a line goes the moment it is produced, and defaults to nowhere. An install rewrites
+// someone else's repository and has to narrate itself while it does it, so the lines cannot simply
+// be handed over at the end; collecting them and passing them on at once is the same list either
+// way, which is why a check can assert on what a run said without watching a terminal.
+//   upstream { view, rows, head, ref, dir }   the upstream side, already checked out and read
+//   target   { view, edit, root, previous }   the target side: what to read, what to write through
+//   options, stamp                            the parsed command line, and what the receipt records
+//   after                                     the steps outside this process; see onDisk above
+//   -> { entries, notices, lines, base, head, ref, target, check, hooks, options, verdict }
+function run({ upstream, target, options, stamp = {}, after = onDisk, say: out = () => {} }) {
+    const lines = [];
+    const said = line => { lines.push(line); out(line); };
+
+    if (upToDate(target.previous, upstream.head, options, optionalParts(upstream.rows))) {
+        said(`harness is already at ${upstream.head.slice(0, 8)} (${upstream.ref}); nothing to update`);
+        return { entries: [], notices: [], lines, base: null, head: upstream.head, ref: upstream.ref,
+            target: target.root, check: null, hooks: true, options, verdict: { failed: false, why: [] } };
+    }
+
+    const planned = plan({
+        upstream: upstream.view, target: target.view, rows: upstream.rows,
+        head: upstream.head, ref: upstream.ref, previous: target.previous, options, stamp,
+    });
+    for (const notice of planned.notices) said(notice);
+    const entries = apply(planned.entries, target.edit, options, said);
+
+    let check = null;
+    let hooks = true;
+    // After the plan is applied, because relink needs the skills in place and the invariants check
+    // the links relink has just written. A dry run wrote nothing, so there is nothing to wire or
+    // check and both steps are the target's own business until it is installed for real.
+    if (!options.dryRun) {
+        const wired = after.wire(target.root, options);
+        hooks = wired.hooks;
+        for (const line of wired.lines) said(line);
+        if (options.check) {
+            const ran = after.invariants(target.root, upstream.dir, options);
+            check = ran.check;
+            for (const line of ran.lines) said(line);
+        }
+    }
+
+    const result = { entries, notices: planned.notices, base: planned.base, head: upstream.head,
+        ref: upstream.ref, target: target.root, check, hooks, options };
+    for (const line of summarise(result)) said(line);
+    return { ...result, lines, verdict: verdict(result) };
+}
+
+// The command line: the one adapter over the run above. It works out which upstream and which target
+// the arguments mean, clones if it has to, prints every line the run says as the run says it, and
+// turns the verdict into the exit code npx and CI read. Nothing here decides anything about an
+// install; everything it decides is about the process it is running in.
 // Returns the exit code, and throws Stop for a run that could not start.
 function main(args) {
     const options = parseOptions(args);
@@ -694,39 +761,29 @@ function main(args) {
     try {
         // Checked before anything is said about the target, so a bad argument is the only message.
         const rows = policies(templateDir);
-        const optional = rows.filter(r => r.policy.startsWith("optional:")).map(r => r.policy.slice("optional:".length));
-        const unknown = unknownArgs(args, optional);
+        const unknown = unknownArgs(args, optionalParts(rows));
         if (unknown.length) fail(`unknown argument(s): ${unknown.join(" ")}. Nothing was written; run with --help for the options.`);
         const head = git(templateDir, ["rev-parse", "HEAD"]).output.trim();
-        if (upToDate(previous, head, options, optional)) {
-            say(`harness is already at ${head.slice(0, 8)} (${ref}); nothing to update`);
-            return 0;
-        }
 
-        const planned = plan({
-            upstream: gitUpstream(templateDir), target: here, rows, head, ref, previous, options,
+        const result = run({
+            upstream: { view: gitUpstream(templateDir), rows, head, ref, dir: templateDir },
+            target: { view: here, edit: repoEdit.worktreeEdit(target), root: target, previous },
+            options,
             stamp: { ...installer(), updated: new Date().toISOString().slice(0, 10) },
+            say,
         });
-        for (const notice of planned.notices) say(notice);
-        const entries = apply(planned.entries, target, options);
-        let check = null;
-        let hooks = true;
-        if (!options.dryRun) {
-            // After the plan is applied, because relink needs the skills in place and the invariants
-            // check the links relink has just written.
-            hooks = finish(target, options);
-            if (options.check) check = selfCheck(target, templateDir, options);
-        }
-        return report({ entries, base: planned.base, head, ref, target, check, hooks, options });
+        return result.verdict.failed ? 1 : 0;
     } finally {
         if (temporary) fs.rmSync(templateDir, { recursive: true, force: true });
     }
 }
 
-// The plan and the decisions under it, so the suite can put a case in and read the answer out rather
-// than building a git checkout to reach one branch. apply() is here for its dry run, which prints and
-// writes nothing; main() writes to somebody's repository and is reached through the command line.
-module.exports = { cloneArgs, installerStamp, upToDate, settleDropped, unknownArgs, mistypedArgs, usage, parseOptions, plan, apply, verdict, summarise, lineCounts, overlap, NEAREST, skeletonLines };
+// run() is the interface: a whole install as a value, against whatever upstream, target and steps
+// the caller hands it. The rest are the decisions under it, exported so a case can go in and an
+// answer come out without a git checkout to reach one branch of one of them. main() is not among
+// them: it is the command line, it writes to somebody's repository, and it is reached by running
+// this file.
+module.exports = { run, cloneArgs, installerStamp, upToDate, settleDropped, unknownArgs, mistypedArgs, usage, parseOptions, plan, apply, verdict, summarise, lineCounts, overlap, NEAREST, skeletonLines };
 
 if (require.main === module) {
     try { process.exitCode = main(process.argv.slice(2)); }

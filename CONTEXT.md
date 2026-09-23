@@ -24,6 +24,10 @@ _Avoid_: unit test, fixture, test suite
 Everything one install or update will do to a target, path by path, decided before anything is written: what each path gets, its mode, and the outcome the run reports. A dry run prints it, and a real run applies it.
 _Avoid_: changeset, diff, manifest
 
+**Install run**:
+One install or update, end to end, as a value: whether there was anything to do, the plan, what applying it came to, the two steps that reach outside the process, every line the run said, and the verdict the exit code is taken from. It is given an upstream, a target with the repo-edit to write through, and the options; it returns all of the above and prints none of it. The command line is the one adapter that prints the lines and exits on the verdict.
+_Avoid_: session, execution, install process
+
 **Install policy**:
 What an install does with one kind of path, named by its row in `scripts/harness-files.tsv`: merge, reconcile, union, import, ignore, keyed, settings, seed, skip, skills or template. Each decides an outcome, summary bucket and content from what the target holds, the base and the run's flags, and the install plan is made of those decisions. All but one decide one path at a time; `skills` decides a whole folder, because a skill merges by name rather than by content and one line of output stands for its several hundred files.
 _Avoid_: strategy, mode, rule
