@@ -24,6 +24,9 @@ const result = (file, kind, why) => ({ file, kind, done: !why, why: why || null 
 // the same way, which is easier to keep true when there is one sentence rather than two copies.
 const noSource = e => `nothing at ${e.move} to move to ${e.file}`;
 const taken = e => `${e.file} is already there, so ${e.move} was left where it is`;
+// A link asked to go where something already is, without `replace` to say that was expected. Worded
+// as the filesystem words it, because that is what the disk adapter is reporting.
+const blocked = e => `could not create the symlink ${e.file} -> ${e.link}: EEXIST`;
 
 // What an entry asks to have done, or null when it asks for nothing: a phase heading, or a path the
 // plan decided to leave exactly as it found it.
@@ -47,7 +50,15 @@ function editing(act) {
     return {
         apply(entries) {
             const out = [];
-            for (const e of entries) {
+            // W-2. A move empties a path, and an entry that links something at where it came from
+            // reads naturally after it -- so a caller writes it that way and the edit, not the
+            // caller, is what makes the order safe. Left in the caller's order, the link ran first,
+            // `clear` took the project's own folder out of the way, and the move then carried the
+            // link off to the destination: work destroyed, with both entries reporting success.
+            // Moves go first instead, which is the order every caller already writes. The one thing
+            // it costs: a move's source has to be in the tree already, not written by the same plan.
+            const first = entries.filter(e => work(e) === "move");
+            for (const e of [...first, ...entries.filter(e => !first.includes(e))]) {
                 const kind = work(e);
                 if (!kind) continue;
                 let why = kind === "mark" ? null : act[kind](e);
@@ -75,11 +86,18 @@ function mapEdit(files = {}, { links = true } = {}) {
     const held = { ...files };
     const marked = [];
     const view = () => repoView.fromMap(held);
+    // Every key a path stands for: the file itself, and everything under it when it is a folder.
+    // A map has no directories, so this is what "something is at this path" means here.
+    const anyUnder = rel => [rel, ...Object.keys(held).filter(k => k.startsWith(`${rel}/`))].filter(k => k in held);
     return {
         ...editing({
             write: e => { held[e.file] = e.write; return null; },
             link: e => {
                 if (!links) return `could not create the symlink ${e.file} -> ${e.link}: EPERM`;
+                // A file or a link at the path is replaced and a folder holding anything is not,
+                // because that is what the disk does: `clear` unlinks, and its rmdir fallback fails
+                // on a folder with something in it, so the symlink then refuses with EEXIST.
+                if (anyUnder(e.file).some(k => k !== e.file)) return blocked(e);
                 held[e.file] = { link: e.link };
                 return null;
             },
@@ -89,10 +107,9 @@ function mapEdit(files = {}, { links = true } = {}) {
             // A folder in a map is a prefix, so moving one is re-keying every path under it, and a
             // file is the exact key. Whatever each one held travels with it, mode and all.
             move: e => {
-                const under = rel => [rel, ...Object.keys(held).filter(k => k.startsWith(`${rel}/`))].filter(k => k in held);
-                const from = under(e.move);
+                const from = anyUnder(e.move);
                 if (!from.length) return noSource(e);
-                if (under(e.file).length) return taken(e);
+                if (anyUnder(e.file).length) return taken(e);
                 for (const key of from) {
                     held[`${e.file}${key.slice(e.move.length)}`] = held[key];
                     delete held[key];
@@ -137,8 +154,20 @@ function worktreeEdit(root) {
     const stage = e => {
         const tracked = repoView.indexModes(root, [e.move]);
         if (!tracked || !tracked.length) return null;
-        const r = git(root, ["add", "-A", "--", e.move, e.file]);
-        return r.status === 0 ? null : `could not stage the move of ${e.move} to ${e.file}: ${(r.stderr || "").trim()}`;
+        // The destination on its own and first. Given both paths at once, `git add` stages the
+        // source's deletion and then fails on the destination -- a target whose .gitignore covers
+        // where the harness keeps its skills is enough -- which leaves the index recording the skill
+        // at neither path while the disk holds it at the new one. So the destination is offered
+        // alone, and if Git will not have it the rename goes back: a refusal this module makes
+        // leaves the repository as it found it, which is the whole of what a caller can rely on.
+        const added = git(root, ["add", "-A", "--", e.file]);
+        if (added.status !== 0) {
+            try { fs.renameSync(at(e.file), at(e.move)); }
+            catch { /* the way back is gone too; the message below is all there is to give */ }
+            return `could not stage the move of ${e.move} to ${e.file}: ${(added.stderr || "").trim()}`;
+        }
+        const dropped = git(root, ["add", "-A", "--", e.move]);
+        return dropped.status === 0 ? null : `could not stage the move of ${e.move} to ${e.file}: ${(dropped.stderr || "").trim()}`;
     };
     const marked = [];
     // Git runs a hook only if it is executable and says nothing when it is not, so an installed
@@ -198,6 +227,8 @@ function worktreeEdit(root) {
     };
 }
 
-// `kindOf` is exported for the plan's entries, which are built to be read by it: one name per
-// kind across the two, checked rather than kept in step by hand.
+// `kindOf` is exported for the plan's entries, which are built to be read by it: one name per kind
+// across the two, checked rather than kept in step by hand. It covers the four an install plan
+// builds; `move` is relink's alone, and relink assembles its entries directly rather than
+// through `scripts/plan-entry.js`.
 module.exports = { worktreeEdit, mapEdit, kindOf: work };

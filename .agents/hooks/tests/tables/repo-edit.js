@@ -200,6 +200,33 @@ exports.repoEditMovesWhatIsAlreadyThere = function repoEditMovesWhatIsAlreadyThe
 // it. Narrowly, though: only a source Git was already tracking, because that is the only case where
 // the index and the disk now disagree. Anything else would sweep a repository's own uncommitted
 // work into whatever commit somebody makes next.
+// SPEC-0001/W-1. `done` says whether the tree now holds what the entry asked for, so a move that
+// happened may not report otherwise -- and a refusal has to be one, rather than a half-done move
+// wearing a refusal's words. Git is asked for the destination on its own and first, because given
+// both paths at once it stages the source's deletion and then fails on the destination: a target
+// whose .gitignore covers where the harness keeps its skills was enough to leave a project's skill
+// recorded at neither path while the disk held it at the new one. The rename goes back instead.
+exports.repoEditPutsAMoveBackWhenGitWillNotRecordIt = function repoEditPutsAMoveBackWhenGitWillNotRecordIt(t) {
+    if (repoEdit.kindOf({ file: "a", move: "b" }) !== "move") { t.skip("repo edit rollback: this scripts/repo-edit.js does not move"); return; }
+    const git = (root, args) => spawnSync("git", ["-c", "core.longpaths=true", "-C", root, ...args], { encoding: "utf8" });
+    if (git(".", ["--version"]).status !== 0) { t.skip("repo edit rollback: git is not installed"); return; }
+
+    withRoot({ ".claude/skills/mine/SKILL.md": "mine\n", ".gitignore": ".agents/\n" }, root => {
+        git(root, ["init", "-q", "."]);
+        git(root, ["config", "user.email", "t@t"]);
+        git(root, ["config", "user.name", "t"]);
+        git(root, ["add", "-A"]);
+        git(root, ["commit", "-qm", "init"]);
+        const before = git(root, ["ls-files", "-s"]).stdout;
+
+        const [r] = repoEdit.worktreeEdit(root).apply([{ file: ".agents/skills/mine", move: ".claude/skills/mine" }]);
+        t.ok(!r.done && /could not stage/.test(r.why || ""), "repo edit rollback: a move Git will not record is a refusal", JSON.stringify(r));
+        t.ok(fs.existsSync(path.join(root, ".claude/skills/mine/SKILL.md")),
+            "repo edit rollback: and the skill is back where it was, not stranded at the destination", JSON.stringify(fs.readdirSync(path.join(root, ".claude/skills"))));
+        t.ok(git(root, ["ls-files", "-s"]).stdout === before,
+            "repo edit rollback: and the index still records it, rather than recording it nowhere", git(root, ["ls-files", "-s"]).stdout);
+    });
+};
 exports.repoEditStagesAMoveItCannotOtherwiseRecord = function repoEditStagesAMoveItCannotOtherwiseRecord(t) {
     if (repoEdit.kindOf({ file: "a", move: "b" }) !== "move") { t.skip("repo edit stage: this scripts/repo-edit.js does not move"); return; }
     const git = (root, args) => spawnSync("git", ["-c", "core.longpaths=true", "-C", root, ...args], { encoding: "utf8" });
@@ -265,20 +292,81 @@ exports.repoEditAdaptersAgreeAboutSomethingInTheWay = function repoEditAdaptersA
     });
 };
 
-// SPEC-0001/W-2. A move is the one kind whose place in the list matters, since it is about a path
-// that is about to stop existing. The rule the ordering promise was really making is that getting
-// it wrong cannot cost anybody their work, so the case is worth pinning rather than trusting: put
-// the link first, on purpose, and the project's folder must still be there afterwards.
-exports.repoEditRefusesAnOutOfOrderLinkRatherThanLosingWork = function repoEditRefusesAnOutOfOrderLinkRatherThanLosingWork(t) {
+// SPEC-0001/W-2. Ordering is the edit's job, and a move is where that was nearly untrue: it empties
+// a path, so an entry linking something at where it came from reads naturally after it, and read in
+// the caller's order the link went first. `clear` took the project's own work out of the link's way
+// and the move then carried the link off to the destination -- with both entries reporting done.
+// The rule W-2 is really making is that no order a caller writes can cost anybody their work, so
+// both shapes are put in the wrong order on purpose here and both have to come out whole.
+exports.repoEditOrdersAMoveBeforeALinkThatWouldEatIt = function repoEditOrdersAMoveBeforeALinkThatWouldEatIt(t) {
     if (repoEdit.kindOf({ file: "a", move: "b" }) !== "move") { t.skip("repo edit order: this scripts/repo-edit.js does not move"); return; }
+
+    // A folder: what an adopted skill is. This shape survived even before the edit ordered the
+    // entries, because rmdir will not clear a folder with anything in it, so it pins the promise
+    // rather than the bug.
     withRoot({ ".claude/skills/mine/SKILL.md": "mine\n" }, root => {
         const edit = repoEdit.worktreeEdit(root);
         const [link, move] = edit.apply([
             { file: ".claude/skills/mine", link: "../../.agents/skills/mine" },
             { file: ".agents/skills/mine", move: ".claude/skills/mine" },
         ]);
-        t.ok(!link.done, "repo edit: a link asked for before the move that clears its way is refused", JSON.stringify(link));
         t.ok(move.done && edit.view().read(".agents/skills/mine/SKILL.md") === "mine\n",
-            "repo edit: and the skill is still whole, wherever the two entries left it", JSON.stringify(move));
+            "repo edit order: a move written after the link that needs it still happens first", JSON.stringify(move));
+        if (!link.done && /symlink/.test(link.why || "")) t.skip("repo edit order: this platform refuses to create a symlink");
+        else t.ok(link.done, "repo edit order: and the link then lands on the path the move emptied", JSON.stringify(link));
+    });
+
+    // A file: the shape that was being destroyed. unlink clears a regular file without complaint, so
+    // nothing refused and nothing reported -- the content was simply gone, and the destination was a
+    // dangling link that exists() then called absent.
+    withRoot({ "notes.md": "the project's own work\n" }, root => {
+        const edit = repoEdit.worktreeEdit(root);
+        const [link, move] = edit.apply([
+            { file: "notes.md", link: ".agents/somewhere" },
+            { file: "kept/notes.md", move: "notes.md" },
+        ]);
+        t.ok(move.done && edit.view().read("kept/notes.md") === "the project's own work\n",
+            "repo edit order: a file a link was about to eat arrives at the move's destination instead",
+            JSON.stringify([move, edit.view().exists("kept/notes.md")]));
+        t.ok(!link.done || (edit.view().lstat("notes.md") || {}).link === ".agents/somewhere",
+            "repo edit order: and the link is a link, not the file that was standing there",
+            JSON.stringify(link));
+    });
+};
+
+// Both adapters answer for every kind the module names. `apply` reaches into the adapter by the kind
+// `work()` returned, so a sixth kind added to one of them and forgotten in the other is not a wrong
+// answer but a TypeError, thrown halfway through somebody else's repository at the entry that hits
+// it -- which is the failure plan-entry.js was written to stop happening at the other end of the
+// same plan. Adding `move` was the first time the vocabulary grew since the seam was built.
+exports.repoEditAdaptersAnswerForEveryKind = function repoEditAdaptersAnswerForEveryKind(t) {
+    // One path per kind. Sharing one tests nothing extra and does mislead: the link case leaves a
+    // dangling symlink, and mkdir over that fails ENOENT because it follows the link to a target that
+    // is not there -- an artefact of the fixture rather than anything the adapter got wrong.
+    const kinds = [
+        ["write", { file: "w", write: "x\n" }],
+        ["link", { file: "l", link: "b" }],
+        ["mkdir", { file: "d", mkdir: true }],
+        ["mark", { file: ".keep", exec: true }],
+        ["move", { file: "m", move: ".keep" }],
+    ].filter(([kind, entry]) => repoEdit.kindOf(entry) === kind);
+    t.ok(kinds.length >= 4, "repo edit kinds: the module names the kinds this check knows about", JSON.stringify(kinds.map(k => k[0])));
+
+    // Asked of a map holding nothing, so every kind either does its work or refuses: either is an
+    // answer. A kind an adapter does not implement cannot give one.
+    for (const [kind, entry] of kinds) {
+        let answered = false;
+        try { answered = repoEdit.mapEdit({}).apply([entry]).length === 1; }
+        catch (err) { answered = false; t.ok(false, `repo edit kinds: the map adapter answers for ${kind}`, err.message); continue; }
+        t.ok(answered, `repo edit kinds: the map adapter answers for ${kind}`, JSON.stringify(entry));
+    }
+    // A file rather than nothing, so the root itself exists: withRoot makes the folder for what it
+    // is given, and every kind here is about a path inside it.
+    withRoot({ ".keep": "\n" }, root => {
+        for (const [kind, entry] of kinds) {
+            try { repoEdit.worktreeEdit(root).apply([entry]); }
+            catch (err) { t.ok(false, `repo edit kinds: the worktree adapter answers for ${kind}`, err.message); continue; }
+            t.ok(true, `repo edit kinds: the worktree adapter answers for ${kind}`, JSON.stringify(entry));
+        }
     });
 };
