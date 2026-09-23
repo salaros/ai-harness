@@ -182,8 +182,11 @@ exports.skillRosterDecisions = function skillRosterDecisions(t) {
     }
 
     withRoot({ ".agents/skills/one/SKILL.md": skill("one"), ".cursor/skills/.keep": "" }, root => {
-        let first;
-        try { first = skills.relink(root); } catch (e) { t.skip(`skill roster: this OS refuses symlinks, so relink goes unchecked (${e.code})`); return; }
+        // What relink decides is checked from maps in tables/relink.js; what is left for this one is
+        // that the decision reaches the disk. A platform that refuses symlinks now says so as a
+        // refusal rather than a throw, so this stands down on the reason rather than on an exception.
+        const first = skills.relink(root);
+        if (first.refused.length) { t.skip(`skill roster: this OS refuses symlinks, so relink on disk goes unchecked (${first.refused[0]})`); return; }
         const link = path.join(root, ".cursor/skills/one");
         t.ok(first.added === 1 && fs.readlinkSync(link).split(path.sep).join("/") === "../../.agents/skills/one",
             "skill roster: relink links an unlinked skill into a per-skill folder, relative", JSON.stringify(first));

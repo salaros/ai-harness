@@ -98,7 +98,13 @@ function mapEdit(files = {}, { links = true } = {}) {
 function worktreeEdit(root) {
     const at = rel => path.resolve(root, String(rel));
     const parent = rel => fs.mkdirSync(path.dirname(at(rel)), { recursive: true });
-    const clear = rel => { try { fs.unlinkSync(at(rel)); } catch { /* nothing was in the way */ } };
+    // rmdir after unlink, because a directory symlink on Windows -- and a junction, which is what
+    // `npx skills` leaves behind -- is a directory to unlink and a link to rmdir, and only one of the
+    // two calls works on either. Without the second, replacing a junction with a relative symlink
+    // fails at the symlink for want of clearing its way.
+    const clear = rel => {
+        try { fs.unlinkSync(at(rel)); } catch { try { fs.rmdirSync(at(rel)); } catch { /* nothing was in the way */ } }
+    };
     const marked = [];
     // Git runs a hook only if it is executable and says nothing when it is not, so an installed
     // harness whose hooks are 644 looks installed and gates nothing. The upstream records them

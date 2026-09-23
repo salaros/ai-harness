@@ -20,6 +20,7 @@ const fs = require("fs");
 const path = require("path");
 const lib = require("./lib");
 const repoView = require("./repo-view");
+const repoEdit = require("./repo-edit");
 
 const SKILLS = ".agents/skills", AGENTS = ".agents/agents", LOCK = "skills-lock.json";
 const SHARED = ".agents/routing.md", SHARED_REF = "routing.md";
@@ -215,65 +216,91 @@ function writeNotices(root) {
     return { written: true, orphans: [] };
 }
 
-// `npx skills` creates absolute junctions on Windows; Git needs relative symlinks. It also only links
-// what it vendored, so a local skill written by hand has no link at all and the harness never sees
-// it. A directory that already holds skill links gets one per installed skill, which is what makes a
-// hand-written skill visible without anyone remembering to create the link. Directories are
-// discovered rather than listed: whichever harnesses this clone wires up, the ones with a skills/
-// folder are the ones that want links.
-//   { added, fixed, kept, whole, copies, dangling }: counts, then the paths each note is about
-function relink(root) {
-    const installed = readRoster(repoView.worktree(root)).skills.map(s => s.name);
-    const canonical = path.resolve(root, SKILLS);
-    const same = (a, b) => process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
-    const inside = p => same(p.slice(0, canonical.length), canonical);
-    const present = p => { try { fs.lstatSync(p); return true; } catch { return false; } };
-    const report = { added: 0, fixed: 0, kept: 0, whole: [], copies: [], dangling: [] };
-    for (const top of fs.readdirSync(root, { withFileTypes: true })) {
-        if (!top.isDirectory() || top.name === ".agents" || top.name === ".git") continue;
-        const dir = path.join(root, top.name, "skills");
-        if (!fs.existsSync(dir)) continue;
+// Where a link points, as a repo-relative path, or null when it points outside the repo. Absolute
+// is the shape relink exists to correct -- `npx skills` writes junctions on Windows, spelled back
+// with a \\?\ prefix, and Git needs relative symlinks -- so both spellings are resolved here and
+// the caller compares repo-relative paths with repo-relative paths.
+function pointsAt(dir, target, root) {
+    const clean = String(target).replace(/^\/\/\?\//, "");
+    if (!path.posix.isAbsolute(clean) && !/^[a-zA-Z]:/.test(clean)) return path.posix.normalize(path.posix.join(dir, clean));
+    if (!root) return null;
+    const rel = path.relative(root, clean.split("/").join(path.sep)).split(path.sep).join("/");
+    return rel && !rel.startsWith("..") ? rel : null;
+}
+
+// Which per-skill links a repo is missing, which point the wrong way, and which are somebody else's
+// business -- decided from one repo-view and written by nobody. `npx skills` creates absolute
+// junctions on Windows; Git needs relative symlinks. It also only links what it vendored, so a local
+// skill written by hand has no link at all and the harness never sees it. A directory that already
+// holds skill links gets one per installed skill, which is what makes a hand-written skill visible
+// without anyone remembering to create the link. Directories are discovered rather than listed:
+// whichever harnesses this clone wires up, the ones with a skills/ folder are the ones that want
+// links. `root` is needed only to read an absolute link target back as a repo-relative path.
+//   { entries, kept, whole, copies, dangling }: repo-edit entries, then the paths each note is about
+function relinkPlan(view, root = null) {
+    const installed = readRoster(view).skills.map(s => s.name);
+    const plan = { entries: [], kept: 0, whole: [], copies: [], dangling: [] };
+    const linkTo = (dir, name, replace) => plan.entries.push({
+        file: `${dir}/${name}`, link: path.posix.relative(dir, `${SKILLS}/${name}`), replace,
+    });
+    for (const top of view.list("")) {
+        if (top === ".agents" || top === ".git") continue;
+        const dir = `${top}/skills`;
+        if (!view.exists(dir)) continue;
         // A harness whose skills/ is itself a link to .agents/skills already sees every skill,
         // including one written by hand, and needs no per-skill link at all. Reading through it would
         // list the skills themselves, which are directories rather than links: the loop below would
         // call all of them copies and then try to link them into their own folder. .claude is this
         // form; the per-skill path stays for a harness that wants one link each.
-        if (fs.lstatSync(dir).isSymbolicLink()) { report.whole.push(`${top.name}/skills`); continue; }
-        for (const name of fs.readdirSync(dir)) {
-            const link = path.join(dir, name);
-            const st = fs.lstatSync(link);
-            if (!st.isSymbolicLink()) {
-                if (st.isDirectory() && fs.existsSync(path.join(canonical, name))) report.copies.push(`${top.name}/skills/${name}`);
+        if ((view.lstat(dir) || {}).link) { plan.whole.push(dir); continue; }
+        const held = new Set(view.list(dir));
+        for (const name of held) {
+            const at = `${dir}/${name}`;
+            const target = (view.lstat(at) || {}).link;
+            if (!target) {
+                // A folder someone copied a skill into rather than linked. Named for the reader to
+                // delete: overwriting it would throw away whatever they changed in it.
+                if (!view.isFile(at) && view.exists(`${SKILLS}/${name}`)) plan.copies.push(at);
                 continue;
             }
-            const target = fs.readlinkSync(link).replace(/^\\\\\?\\/, "");
-            const resolved = path.resolve(dir, target);
-            if (!inside(resolved)) continue;                    // points elsewhere: not ours
+            const points = pointsAt(dir, target, root);
+            if (!points || !points.startsWith(`${SKILLS}/`)) continue;      // points elsewhere: not ours
             // The skill it names is gone: uninstalled, or renamed. Reported, never deleted, because
             // the answer is a `npx skills` command rather than a guess made here.
-            if (!fs.existsSync(resolved)) { report.dangling.push(`${top.name}/skills/${name}`); continue; }
-            const rel = path.relative(dir, resolved).split(path.sep).join("/");
-            if (!path.isAbsolute(target) && target.split(path.sep).join("/") === rel) { report.kept++; continue; }
-            try { fs.unlinkSync(link); } catch { fs.rmdirSync(link); }   // dir symlinks and junctions on Windows need rmdir
-            fs.symlinkSync(rel, link, "dir");
-            report.fixed++;
+            if (!view.exists(points)) { plan.dangling.push(at); continue; }
+            const want = path.posix.relative(dir, points);
+            if (target.split(path.sep).join("/") === want) { plan.kept++; continue; }
+            linkTo(dir, path.posix.basename(points), true);
         }
-        for (const name of installed) {
-            const link = path.join(dir, name);
-            if (present(link)) continue;
-            fs.symlinkSync(path.relative(dir, path.join(canonical, name)).split(path.sep).join("/"), link, "dir");
-            report.added++;
-        }
+        for (const name of installed) if (!held.has(name)) linkTo(dir, name, false);
+    }
+    return plan;
+}
+
+// The plan above, written through the repo-edit seam. A symlink the platform refuses is a refusal
+// reported rather than a throw: Windows needs Developer Mode for one, and a harness missing a link
+// still works -- the skill is invisible to that agent harness, which is worth a line and not a
+// crashed install.
+//   { added, fixed, kept, whole, copies, dangling, refused }
+function relink(root) {
+    const plan = relinkPlan(repoView.worktree(root), root);
+    const edit = repoEdit.worktreeEdit(root);
+    const report = { added: 0, fixed: 0, kept: plan.kept, whole: plan.whole, copies: plan.copies, dangling: plan.dangling, refused: [] };
+    for (const e of plan.entries) {
+        const [result] = edit.apply([e]);
+        if (result && !result.done) { report.refused.push(result.why); continue; }
+        if (e.replace) report.fixed++; else report.added++;
     }
     return report;
 }
 
-module.exports = { readRoster, relink, writeNotices, frontmatter, LOCK, NOTICES, LICENCES };
+module.exports = { readRoster, relinkPlan, relink, writeNotices, frontmatter, LOCK, NOTICES, LICENCES };
 
 // ---------------------------------------------------------------- the command line
 
 function printRelink(r) {
     for (const c of r.copies) console.log(`${c} is a copy, not a link: delete it and re-run to link it`);
+    for (const why of r.refused || []) console.log(why);
     for (const d of r.whole) console.log(`${d} is one link to the skills folder: every skill is visible, nothing to link`);
     console.log(`skill links: ${r.added} created, ${r.fixed} rewritten as relative, ${r.kept} already relative`);
     for (const d of r.dangling) console.log(`${d} points at a skill that is not installed: remove the link, or restore the skill`);
