@@ -361,7 +361,13 @@ function relink(root) {
     return report;
 }
 
-module.exports = { readRoster, relinkPlan, relink, writeNotices, frontmatter, LOCK, NOTICES, LICENCES };
+// Two shapes of orphan, and they are fixed at different ends, so the message names both rather than
+// sending a skill with no lock entry off to add a licence row that would never be reached.
+const orphanMessage = orphans => `${NOTICES} cannot account for:\n  ${orphans.join("\n  ")}\n` +
+    `A skill the lock records needs a row in ${LICENCES}: source, SPDX id, copyright line, licence URL, and any restriction.\n` +
+    `A skill carrying a licence with no ${LOCK} entry was copied in by hand: record where it came from, or remove the licence if it really is this repository's own.`;
+
+module.exports = { readRoster, relinkPlan, relink, writeNotices, frontmatter, orphanMessage, LOCK, NOTICES, LICENCES };
 
 // ---------------------------------------------------------------- the command line
 
@@ -373,12 +379,6 @@ function printRelink(r) {
     console.log(`skill links: ${r.added} created, ${r.fixed} rewritten as relative, ${r.kept} already relative`);
     for (const d of r.dangling) console.log(`${d} points at a skill that is not installed: remove the link, or restore the skill`);
 }
-
-// Two shapes of orphan, and they are fixed at different ends, so the message names both rather than
-// sending a skill with no lock entry off to add a licence row that would never be reached.
-const orphanMessage = orphans => `${NOTICES} cannot account for:\n  ${orphans.join("\n  ")}\n` +
-    `A skill the lock records needs a row in ${LICENCES}: source, SPDX id, copyright line, licence URL, and any restriction.\n` +
-    `A skill carrying a licence with no ${LOCK} entry was copied in by hand: record where it came from, or remove the licence if it really is this repository's own.`;
 
 // Each command returns its exit code.
 const commands = {

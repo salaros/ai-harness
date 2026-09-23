@@ -248,9 +248,13 @@ function noSkillIsMissingFromDisk(t, repo, roster = rosterOf(repo)) {
 // scripts/skill-licences.tsv fails rather than shipping unattributed.
 function vendoredSkillsAreAttributed(t, repo, roster = rosterOf(repo)) {
     const { lock, notices } = roster();
-    if (!lock) { t.skip("licence notice check: no skills-lock.json, so nothing is vendored"); return; }
+    // A repo with no lock vendored nothing through `npx skills`, but it may still hold a skill
+    // somebody copied in by hand, which is the one the notice used to claim as this repo's own
+    // work. That skill is an orphan with no lock to record it, so the skip waits on the orphans
+    // rather than on the lock, and this gate says so in the same words the command does.
+    if (!lock && !notices.orphans.length) { t.skip("licence notice check: no skills-lock.json and no skill carrying a licence"); return; }
     const why = notices.orphans.length
-        ? `no row in ${skills.LICENCES} covers:\n  ${notices.orphans.join("\n  ")}`
+        ? skills.orphanMessage(notices.orphans)
         : !notices.current
             ? `${skills.NOTICES} is ${repo.isFile(skills.NOTICES) ? "out of date with " + skills.LOCK + " and " + skills.LICENCES : "missing"}`
             : "";

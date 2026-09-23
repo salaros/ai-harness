@@ -45,6 +45,11 @@ exports.stacksTableDecisions = function stacksTableDecisions(t) {
     t.ok(!skipping.length, "no format command hides an unparseable file behind --ignore-unknown",
         skipping.map(r => `${r.stack}: ${r.format}`).join("\n"));
 
+    // Two cells are taken apart below rather than read whole, so the taking apart is named once:
+    // formats is a list of patterns, and scaffold is commands joined by "&&".
+    const patternsOf = r => (r.formats || "").split(/\s+/).filter(Boolean);
+    const stepsOf = r => (r.scaffold || "").split("&&").map(s => s.trim());
+
     // Which leaves the other half of ADR-0003: an extension prettier cannot parse on its own is
     // listed only where the scaffold leaves the project able to parse it. That takes two commands,
     // not one. Prettier 3 dropped plugin auto-discovery, so an installed plugin it has not been
@@ -53,14 +58,14 @@ exports.stacksTableDecisions = function stacksTableDecisions(t) {
     // scaffold installs the plugin and names it in the config, and both are asserted, because
     // either one alone leaves the extension listed and unparseable. The pairing runs the other
     // way too: a plugin no row formats anything for is weight in every scaffolded project, paid
-    // for nothing.
+    // for nothing. Every row is asked, not only the rows formatting through prettier, because a
+    // row that installs the plugin and formats nothing at all is exactly that waste.
     const PLUGINS = { "*.astro": "prettier-plugin-astro" };
     const unpaired = [];
-    for (const r of rows.filter(r => (r.format || "").includes("prettier"))) {
-        const listed = (r.formats || "").split(/\s+/).filter(Boolean), scaffold = r.scaffold || "";
+    for (const r of rows) {
+        const listed = patternsOf(r), steps = stepsOf(r);
         for (const [pattern, plugin] of Object.entries(PLUGINS)) {
             const wants = listed.includes(pattern);
-            const steps = scaffold.split("&&").map(s => s.trim());
             const installs = steps.some(s => /\b(?:install|add)\b/.test(s) && s.split(/\s+/).includes(plugin));
             const declares = steps.some(s => s.includes("prettier.plugins") && s.includes(plugin));
             if (wants && !installs) unpaired.push(`${r.stack}: formats ${pattern} and its scaffold does not install ${plugin}`);
@@ -75,13 +80,13 @@ exports.stacksTableDecisions = function stacksTableDecisions(t) {
     // position rather than appending, so a second plugin declared at [0] as well replaces the
     // first without saying so, and the row is back to formatting an extension nothing can parse.
     // Two declarations in one scaffold have to name two positions.
+    const KEY = "prettier.plugins[";
     const collided = [];
     for (const r of rows) {
-        const key = "prettier.plugins[";
-        const at = (r.scaffold || "").split("&&").map(s => s.trim()).filter(s => s.includes(key))
-            .map(s => s.slice(s.indexOf(key) + key.length).split("]")[0]);
-        const twice = at.filter((slot, i) => at.indexOf(slot) !== i);
-        if (twice.length) collided.push(`${r.stack}: declares two prettier plugins at position ${twice[0]}`);
+        const positions = stepsOf(r).filter(s => s.includes(KEY))
+            .map(s => s.slice(s.indexOf(KEY) + KEY.length).split("]")[0]);
+        const repeated = [...new Set(positions.filter((slot, i) => positions.indexOf(slot) !== i))];
+        for (const slot of repeated) collided.push(`${r.stack}: two prettier plugins share position ${slot}`);
     }
     t.ok(!collided.length, "no scaffold declares two prettier plugins at the same position", collided.join("\n"));
 
@@ -89,7 +94,7 @@ exports.stacksTableDecisions = function stacksTableDecisions(t) {
     // prettier has no plugin for it, and dotnet format leaves a misformatted `.razor` byte-identical
     // while reformatting the same `@code` body written into a `.cs` file. So no row formats it, and
     // this is what keeps it that way once the reasoning behind D-1 has faded.
-    const unreadable = rows.filter(r => (r.formats || "").split(/\s+/).includes("*.razor"));
+    const unreadable = rows.filter(r => patternsOf(r).includes("*.razor"));
     t.ok(!unreadable.length, "no row claims to format an extension with no parser on either side",
         unreadable.map(r => r.stack).join(", "));
 };
