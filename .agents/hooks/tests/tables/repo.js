@@ -13,7 +13,7 @@ const { withRoot, text } = require("../fixtures");
 
 // A repo view answers the same four questions whichever adapter sits behind it. The map is what
 // the docs-check self-checks run on, so its answers about folders are pinned here.
-function repoViewDecisions(t) {
+exports.repoViewDecisions = function repoViewDecisions(t) {
     const map = repoView.fromMap({ "docs/brd/0001-a.md": "A\n", "docs/brd/0002-b.md": "B\n", "docs/prd/0001-c.md": "C\n", "AGENTS.md": "x" });
     const rows = [
         [map.exists("docs"), true, "a folder is whatever a path implies"],
@@ -37,11 +37,11 @@ function repoViewDecisions(t) {
         try { repoView.index(missing); } catch { threw = true; }
         t.ok(threw && repoView.indexModes(missing) === null, "repo view: an index nobody can read throws rather than reading empty");
     });
-}
+};
 
 // The pre-commit hook checks what the commit records. A real repo whose index and working tree
 // disagree, each way round, with a source the documents cite only on disk.
-function stagedChainDecisions(t) {
+exports.stagedChainDecisions = function stagedChainDecisions(t) {
     const git = (dir, ...args) => spawnSync("git", args, { cwd: dir, encoding: "utf8" });
     const agents = fs.readFileSync(path.join(lib.checkout, "AGENTS.md"), "utf8");
     const brd = text("# BRD-0001: Billing", "", "**Derived from:** .scratch/interview.md", "", "- BR-1: Bill monthly.");
@@ -88,13 +88,13 @@ function stagedChainDecisions(t) {
         t.ok(!r.problems.length && r.warnings.some(w => w.includes("could not read the staged documentation chain")),
             "staged chain: an unreadable index warns and lets the commit through", r.warnings.join("\n") || "(no warning)");
     });
-}
+};
 
 // SPEC-0001/R-1. A file's bytes are a question of their own, never a flag on read(): a stand-in
 // that holds text can answer read() honestly and has to be handed real bytes to answer this one.
 // The installer's own stand-in returned a string where production returns a Buffer, which is why
 // every branch it takes for binary content has never run in this suite.
-function repoViewReadsBytes(t) {
+exports.repoViewReadsBytes = function repoViewReadsBytes(t) {
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x0d, 0x0a, 0x1a]);   // a zero byte, so it is not text
     const map = repoView.fromMap({ "a.txt": "hi\n", "logo.png": png });
     const rows = [
@@ -115,13 +115,13 @@ function repoViewReadsBytes(t) {
         const staged = repoView.index(dir);
         t.ok(staged.bytes("logo.png").equals(png), "repo view: the index gives a blob's bytes, not its decoding", JSON.stringify(staged.bytes("logo.png")));
     });
-}
+};
 
 // SPEC-0001/R-1. What a link in the way is, which is the question the installer asks before it
 // writes a skill link: nothing there, the project's own file, or a link already pointing somewhere.
 // A link's target is POSIX whatever the platform spells it as, since the answer is compared against
 // the target the harness would write.
-function repoViewLstatsLinks(t) {
+exports.repoViewLstatsLinks = function repoViewLstatsLinks(t) {
     const map = repoView.fromMap({ "a.txt": "hi\n", ".claude/skills": { link: "../.agents/skills" } });
     const rows = [
         [JSON.stringify(map.lstat("a.txt")), `{"link":null}`, "a plain file is there and is not a link"],
@@ -141,13 +141,13 @@ function repoViewLstatsLinks(t) {
         t.ok(disk.lstat("link").link === "sub/b.txt", "repo view: a link on disk gives its target with forward slashes", JSON.stringify(disk.lstat("link")));
         t.ok(disk.exists("link"), "repo view: a link that resolves still exists");
     });
-}
+};
 
 // SPEC-0001/R-1. Every path the view holds, with the mode Git records for it, which is the listing
 // the installer walks to decide what to write and the invariants walk to decide what is executable.
 // A map answers it from its entries, so a case about a symlink or an executable needs neither a
 // checkout nor a platform that has an executable bit.
-function repoViewListsModes(t) {
+exports.repoViewListsModes = function repoViewListsModes(t) {
     const map = repoView.fromMap({
         "b.txt": "plain\n",
         ".githooks/pre-commit": { text: "#!/bin/sh\n", exec: true },
@@ -183,7 +183,7 @@ function repoViewListsModes(t) {
         t.ok(repoView.index(dir, ["sub"]).modes().map(r => r.file).join() === "sub/b.txt",
             "repo view: an index scoped to a path lists only what is under it");
     });
-}
+};
 
 // SPEC-0001/S-3. What a commit would record under a path, which is not what the disk shows: on
 // Windows the filesystem has no executable bit, so a hook's mode is only ever a fact about the
@@ -191,7 +191,7 @@ function repoViewListsModes(t) {
 // handed a root and reach for git themselves -- which is why neither had ever run against anything
 // but this repo. A view that is already a record -- a map, an index, a commit -- answers with its
 // own rows, so the same invariant reads a map on a machine with no git at all.
-function repoViewAnswersForWhatGitRecorded(t) {
+exports.repoViewAnswersForWhatGitRecorded = function repoViewAnswersForWhatGitRecorded(t) {
     const map = repoView.fromMap({
         ".githooks/pre-commit": { text: "#!/bin/sh\n", exec: true },
         ".githooks/pre-push": "#!/bin/sh\n",
@@ -214,13 +214,13 @@ function repoViewAnswersForWhatGitRecorded(t) {
         t.ok(rows.map(r => r.file).join() === ".githooks/pre-commit",
             "repo view: the disk asks the index, so a file it has not staged is not recorded", JSON.stringify(rows));
     });
-}
+};
 
 // SPEC-0001/R-2. One commit, answering the same questions as the disk does. This is how the
 // upstream is read during an install: not the checkout it happens to have on disk, which may hold a
 // half-finished edit, but the commit the receipt names. What the working tree does afterwards --
 // gaining a file, losing one -- is none of the view's business.
-function repoViewReadsACommit(t) {
+exports.repoViewReadsACommit = function repoViewReadsACommit(t) {
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x0d]);
     withRoot({ "a.txt": "first\n", "docs/b.md": "b\n", "logo.png": png }, dir => {
         const git = (...args) => spawnSync("git", args, { cwd: dir, encoding: "utf8" });
@@ -252,14 +252,4 @@ function repoViewReadsACommit(t) {
         try { repoView.commit(dir, "0000000000000000000000000000000000000000"); } catch { threw = true; }
         t.ok(threw, "repo view: a commit nobody can read throws rather than reading empty");
     });
-}
-
-module.exports = [
-    repoViewDecisions,
-    repoViewReadsBytes,
-    repoViewLstatsLinks,
-    repoViewListsModes,
-    repoViewAnswersForWhatGitRecorded,
-    repoViewReadsACommit,
-    stagedChainDecisions,
-];
+};

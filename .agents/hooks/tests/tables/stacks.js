@@ -8,7 +8,7 @@ const fs = require("fs");
 const path = require("path");
 const lib = require("../../lib");
 
-function stacksTableDecisions(t) {
+exports.stacksTableDecisions = function stacksTableDecisions(t) {
     const table = path.join(lib.checkout, "scripts", "stacks.tsv");
     if (!fs.existsSync(table) || !fs.existsSync(path.join(lib.checkout, "scripts", "stacks.js"))) {
         t.skip("stacks table: no table or no reader here"); return;
@@ -36,8 +36,4 @@ function stacksTableDecisions(t) {
     t.ok(stacks.matches("*.cs", ["src/App/Program.cs"]), "a pattern matches by basename");
     t.ok(stacks.matches("package-lock.json", ["package-lock.json"]), "a pattern matches by path");
     t.ok(!stacks.matches("*.cs", ["a.cs/b.txt"]), "a pattern does not match across a directory separator");
-}
-
-module.exports = [
-    stacksTableDecisions,
-];
+};

@@ -19,7 +19,7 @@ const { withRoot, text } = require("../fixtures");
 // this is its precedence: the flag, then the first project-dir variable that is set, then the
 // checkout the file lives in. root() reads argv and the environment, so each row is a real child
 // process; the probe sits in a throwaway directory and requires the checkout's copy of the library.
-function rootDecisions(t) {
+exports.rootDecisions = function rootDecisions(t) {
     const LIB = path.join(lib.checkout, "scripts", "lib");
     const probe = `const lib = require(${JSON.stringify(LIB)});\n`
         + "process.stdout.write(JSON.stringify({ root: lib.root(), args: lib.args() }));\n";
@@ -57,12 +57,12 @@ function rootDecisions(t) {
         const r = run([flag(dir), "--dry-run", "install"], {});
         t.ok(r.args.join(" ") === "--dry-run install", "root: args() hands on the command line without the flag", r.args.join(" "));
     });
-}
+};
 
 // .claude/settings.json wires the three hooks, and nothing read it back after an update merged it.
 // Each row is a settings file and the failure claudeHookLaunchersAreWired must report about it, run
 // through check() against a root holding nothing else, so every other invariant stands down.
-function hookLauncherDecisions(t) {
+exports.hookLauncherDecisions = function hookLauncherDecisions(t) {
     const entry = (script, matcher) => ({
         ...(matcher ? { matcher } : {}),
         hooks: [{ type: "command", command: checkHarness.launcher(script), timeout: 20 }],
@@ -102,12 +102,12 @@ function hookLauncherDecisions(t) {
         const said = checkHarness.check(repoView.worktree(dir)).failed.map(f => f.title).join("\n");
         t.ok(said.includes("readable JSON"), "hook launcher: a settings file that is not JSON fails rather than passing quietly", said);
     });
-}
+};
 
 // The skill roster of a repo built for it: what the lock records against what the disk holds, who
 // routes each skill and through which file, and whether the licence notice is current. The
 // upstream's own roster only ever shows the healthy case, so every odd shape lives here.
-function skillRosterDecisions(t) {
+exports.skillRosterDecisions = function skillRosterDecisions(t) {
     const skill = (name, extra = "") => text("---", `name: ${name}`, "description: Does one thing.", ...(extra ? [extra] : []), "---", "Body");
     const lock = names => JSON.stringify({ version: 1, skills: Object.fromEntries(Object.entries(names).map(([n, source]) => [n, { source }])) });
     const ACME = "acme/skills\tMIT\tCopyright (c) Acme\thttps://example.com/LICENSE\t-\n";
@@ -190,7 +190,7 @@ function skillRosterDecisions(t) {
         const again = skills.relink(root);
         t.ok(again.added === 0 && again.kept === 1, "skill roster: relink leaves a relative link alone", JSON.stringify(again));
     });
-}
+};
 
 // The upstream's own skills all pass the frontmatter check, so harnessInvariantsHoldHere proves only
 // that it passes. Each broken shape gets a skill of its own, and the check must name every one of
@@ -198,7 +198,7 @@ function skillRosterDecisions(t) {
 // SPEC-0001/S-3. The shapes are a map, not a directory: an invariant reads one repo-view now, so the
 // nine skills here are nine entries rather than a temporary tree, and the folder holding no SKILL.md
 // is a file beside the one that is missing rather than a mkdirSync the fixture could not express.
-function skillFrontmatterCheckNamesEachProblem(t) {
+exports.skillFrontmatterCheckNamesEachProblem = function skillFrontmatterCheckNamesEachProblem(t) {
     const bodies = {
         "plain-ok": "---\nname: plain-ok\ndescription: Does one thing.\n---\nBody\n",
         "quoted-ok": "---\nname: \"quoted-ok\"\ndescription: 'Does one thing.'\n---\n",
@@ -234,12 +234,12 @@ function skillFrontmatterCheckNamesEachProblem(t) {
     }
     const noise = found.filter(line => /^(plain-ok|quoted-ok|folded-ok):/.test(line) || line.startsWith("skip:"));
     t.ok(!noise.length, "the skill frontmatter check accepts plain, quoted and folded values", noise.join("\n"));
-}
+};
 
 // Invariants that bind the harness's own files, and must leave a project's files beside them alone:
 // a target's .githooks/ can hold a task runner's config, and a target's portal is its own once
 // installed. Each row runs one invariant against a throwaway repo and names the outcome it expects.
-function invariantScopeDecisions(t) {
+exports.invariantScopeDecisions = function invariantScopeDecisions(t) {
     const invariant = name => checkHarness.INVARIANTS.find(f => f.name === name);
     const run = (name, repo) => {
         const r = { passed: 0, failed: [], skipped: [] };
@@ -274,14 +274,14 @@ function invariantScopeDecisions(t) {
             : run(name, repoView.fromMap(files));
         t.ok(got === want, `invariant scope: ${why}`, `${name}: expected ${want}, got ${got}`);
     }
-}
+};
 
 // SPEC-0001/S-3. The .claude/skills link in each shape it comes in: one link to the whole folder,
 // one pointing at the wrong thing, and a folder of per-skill links with one skill left out. An
 // invariant reads a repo-view now, so a link is an entry in a map -- which is the only reason these
 // run at all. A real symlink needs a Windows session that happens to be elevated, and the branch
 // that reads the whole-folder link had never run in this suite on any platform.
-function skillLinkShapeDecisions(t) {
+exports.skillLinkShapeDecisions = function skillLinkShapeDecisions(t) {
     const invariant = checkHarness.INVARIANTS.find(f => f.name === "everyInstalledSkillIsLinked");
     const skill = name => text("---", `name: ${name}`, "description: Does one thing.", "---");
     const run = files => {
@@ -303,13 +303,4 @@ function skillLinkShapeDecisions(t) {
         const said = run(files);
         t.ok(wants === null ? !said : said.includes(wants), `skill links: ${why}`, said || "(nothing reported)");
     }
-}
-
-module.exports = [
-    rootDecisions,
-    hookLauncherDecisions,
-    skillRosterDecisions,
-    skillFrontmatterCheckNamesEachProblem,
-    skillLinkShapeDecisions,
-    invariantScopeDecisions,
-];
+};

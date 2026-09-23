@@ -6,7 +6,7 @@ const { withRoot, text } = require("../fixtures");
 
 // A ledger's verdict: blocked with a problem containing `blocks`, or accepted with a summary
 // containing `summary`. Sources that look like paths resolve against the root each row is given.
-function todoDecisions(t) {
+exports.todoDecisions = function todoDecisions(t) {
     const REPO = { "AGENTS.md": "# Agents\n", "scripts/githooks-init.js": "// init\n", "src/billing.cs": "// there\n" };
     const rows = [
         // ledger, blocks, summary, why
@@ -47,8 +47,4 @@ function todoDecisions(t) {
         const verdict = blocks ? r.problems.some(p => p.includes(blocks)) : !r.problems.length && r.summary.includes(summary);
         t.ok(verdict, `check-todo: ${why}`, r.problems.join("\n") || r.summary);
     }
-}
-
-module.exports = [
-    todoDecisions,
-];
+};

@@ -11,19 +11,19 @@ const repoEdit = require("../../../../scripts/repo-edit");
 const { withRoot } = require("../fixtures");
 
 // SPEC-0001/W-1. The smallest thing an edit does: it writes a file, and says it did.
-function repoEditWritesAFile(t) {
+exports.repoEditWritesAFile = function repoEditWritesAFile(t) {
     const edit = repoEdit.mapEdit({});
     const results = edit.apply([{ file: "docs/README.md", write: "hi\n" }]);
     t.ok(JSON.stringify(results) === JSON.stringify([{ file: "docs/README.md", kind: "write", done: true, why: null }]),
         "repo edit: a write is one result saying it was done", JSON.stringify(results));
     t.ok(edit.view().read("docs/README.md") === "hi\n", "repo edit: and the tree holds what it asked for");
-}
+};
 
 // SPEC-0001/W-1. The other two kinds, and the entries that ask for nothing. A plan is mostly
 // entries the run prints and does not act on -- a phase heading, a file the policy decided to leave
 // exactly as it found it -- and an edit that returned a result for those would make the caller
 // filter them back out to find what actually happened.
-function repoEditLinksAndMakesFolders(t) {
+exports.repoEditLinksAndMakesFolders = function repoEditLinksAndMakesFolders(t) {
     const edit = repoEdit.mapEdit({});
     const results = edit.apply([
         { phase: "Skills" },
@@ -37,7 +37,7 @@ function repoEditLinksAndMakesFolders(t) {
     t.ok(edit.view().lstat(".claude/agents").link === "../.agents/agents",
         "repo edit: a link is a link in the tree afterwards, not a file holding a path",
         JSON.stringify(edit.view().lstat(".claude/agents")));
-}
+};
 
 // SPEC-0001/W-4. Marking a file executable that already is executable is not work, and an edit that
 // did it anyway would stage the project's own file into the project's own index for no change --
@@ -45,7 +45,7 @@ function repoEditLinksAndMakesFolders(t) {
 // asks what the mode already is, rather than anybody filtering file names.
 // `marked()` is why this needs no checkout: the paths an edit actually marked are the difference
 // between "already right" and "made right", and nothing in the tree afterwards can tell them apart.
-function repoEditSkipsAMarkAlreadyCorrect(t) {
+exports.repoEditSkipsAMarkAlreadyCorrect = function repoEditSkipsAMarkAlreadyCorrect(t) {
     const edit = repoEdit.mapEdit({
         ".githooks/pre-commit": { text: "#!/bin/sh\n", exec: true },
         ".githooks/task-runner.json": "{}\n",
@@ -61,14 +61,14 @@ function repoEditSkipsAMarkAlreadyCorrect(t) {
         "repo edit: only the file that was not already executable is marked", JSON.stringify(edit.marked()));
     t.ok(edit.view().modes().every(r => r.exec), "repo edit: and both are executable afterwards",
         JSON.stringify(edit.view().modes()));
-}
+};
 
 // SPEC-0001/W-5. A target that cannot make symlinks is a target shape, not an accident: Windows
 // without Developer Mode refuses them outright, and the harness still works with the link missing --
 // it is just invisible to the agent harnesses that read it. So the refusal is a value the run reads
 // and decides about, and the edit neither throws it, prints it, nor relabels the entry the way
 // perform() did. What a refused link means for the summary is the install policy's business.
-function repoEditReportsARefusedLink(t) {
+exports.repoEditReportsARefusedLink = function repoEditReportsARefusedLink(t) {
     const edit = repoEdit.mapEdit({}, { links: false });
     const results = edit.apply([
         { file: ".claude/agents", link: "../.agents/agents" },
@@ -83,7 +83,7 @@ function repoEditReportsARefusedLink(t) {
         "repo edit: the rest of the plan still runs -- one refusal is not the end of the install", JSON.stringify(after));
     t.ok(Object.keys(refused).join() === "file,kind,done,why",
         "repo edit: a result carries no outcome word and no summary bucket: those are the policy's", Object.keys(refused).join());
-}
+};
 
 // SPEC-0001/W-2, W-4. The adapter that writes to a real checkout, against the two things only a
 // real one can show: that the edit orders its own work, and what the index looks like afterwards.
@@ -91,7 +91,7 @@ function repoEditReportsARefusedLink(t) {
 // working tree holds, so running it on a file whose mode was already right stages the project's own
 // unsaved edit to it along the way. That is what happened to a repo's `.githooks/task-runner.json`,
 // and it is invisible in the tree: only the index shows it.
-function repoEditWritesToAWorkingTree(t) {
+exports.repoEditWritesToAWorkingTree = function repoEditWritesToAWorkingTree(t) {
     withRoot({ ".githooks/task-runner.json": "{}\n", "keep.txt": "mine\n" }, dir => {
         const git = (...args) => spawnSync("git", args, { cwd: dir, encoding: "utf8" });
         if (git("init", "-q").status !== 0) { t.skip("repo edit: git is not available for the working-tree adapter"); return; }
@@ -120,14 +120,14 @@ function repoEditWritesToAWorkingTree(t) {
         const status = git("status", "--porcelain").stdout.split("\n").find(l => l.includes("task-runner.json")) || "";
         t.ok(status.startsWith(" M"), "repo edit: and the project's own unsaved edit stays unstaged", JSON.stringify(status));
     });
-}
+};
 
 // SPEC-0001/W-2. Whatever stands in a link's way is removed before the link is made, and the entry
 // does not have to say so. The installer's plan carried a `replace` flag for this, which meant the
 // plan had to have looked at the target to know whether to set it, and an entry built without that
 // look threw EEXIST from inside the write. Ordering is the edit's job: an entry says where the link
 // goes and what it points at, and nothing about what is there now.
-function repoEditClearsALinksWay(t) {
+exports.repoEditClearsALinksWay = function repoEditClearsALinksWay(t) {
     withRoot({ ".claude/agents": "the project's own file\n", ".claude/skills": "x\n" }, dir => {
         const edit = repoEdit.worktreeEdit(dir);
         const [onAFile, onALink] = edit.apply([
@@ -151,13 +151,4 @@ function repoEditClearsALinksWay(t) {
     t.ok(map.view().lstat(".claude/agents").link === "../.agents/agents",
         "repo edit: a map answers the same, so the case needs no platform that has symlinks",
         JSON.stringify(map.view().lstat(".claude/agents")));
-}
-
-module.exports = [
-    repoEditWritesAFile,
-    repoEditWritesToAWorkingTree,
-    repoEditClearsALinksWay,
-    repoEditLinksAndMakesFolders,
-    repoEditSkipsAMarkAlreadyCorrect,
-    repoEditReportsARefusedLink,
-];
+};

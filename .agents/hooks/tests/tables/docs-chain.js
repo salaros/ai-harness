@@ -12,7 +12,7 @@ const { withRoot } = require("../fixtures");
 
 // Which files are the chain. The edit hook and the pre-commit hook both ask inChain, so one table
 // pins what an edit and a commit check.
-function chainMembership(t) {
+exports.chainMembership = function chainMembership(t) {
     const rows = [
         ["docs/brd/0001-x.md", true, "a document under docs/"],
         ["docs/README.md", true, "any Markdown under docs/"],
@@ -29,10 +29,10 @@ function chainMembership(t) {
     const staged = rows.map(r => r[0]);
     t.ok(JSON.stringify(stagedDocs.chainFiles(staged)) === JSON.stringify(staged.filter(docsCheck.inChain)),
         "the pre-commit hook's staged filter is inChain", stagedDocs.chainFiles(staged).join(" "));
-}
+};
 
 // What counts as a source, the one rule "Derived from:", MEMORY.md's Requirements and TODO.md share.
-function sourceDecisions(t) {
+exports.sourceDecisions = function sourceDecisions(t) {
     const REPO = { "INTENT.md": "# INTENT.md\n", ".gitignore": "node_modules/\n", "src/billing.cs": "// there\n", "docs/brief.md": "# Brief\n" };
     const rows = [
         // token, is a source, why
@@ -58,7 +58,7 @@ function sourceDecisions(t) {
             t.ok(docsCheck.isSource(token, root) === want, `isSource: ${why}`, `${token} -> ${!want}`);
         }
     });
-}
+};
 
 // A repo as docs-check reads it, held in memory (scripts/repo-view.js): this checkout's AGENTS.md,
 // so the real stage table decides, an empty SKILL.md for each skill it names, and `files`
@@ -86,7 +86,7 @@ function checkDocs(docs, files = {}) {
 // Every document says where it came from. Where the chain holds nothing earlier that is a source:
 // a URL, an existing repo-relative path, or a Jira key. A missing line, a line naming nothing, and
 // a path that does not exist are each their own message.
-function docsCheckDerivedFromShapes(t) {
+exports.docsCheckDerivedFromShapes = function docsCheckDerivedFromShapes(t) {
     const r = checkDocs({
         "brd/9100-url.md": ["# BRD-9100: Url", "", "**Derived from:** https://example.com/brief"],
         "brd/9101-jira.md": ["# BRD-9101: Jira", "", "**Derived from:** jira:ABC-123"],
@@ -111,11 +111,11 @@ function docsCheckDerivedFromShapes(t) {
     t.ok(r.for("brd/9103-absent.md").some(p => p.includes("missing a")), "docs-check: no Derived from line at all", r.all);
     t.ok(r.for("brd/9104-words.md").some(p => p.includes("names no reference")), "docs-check: Derived from names nothing", r.all);
     t.ok(r.for("brd/9105-gone.md").some(p => p.includes("does not exist")), "docs-check: Derived from names a path that is not there", r.all);
-}
+};
 
 // A source stands in for an upstream document only while nothing earlier exists. Once it does, the
 // line must cite it — except on an ADR, which is cross-cutting and cites in either direction.
-function docsCheckSourceAndAdrExemption(t) {
+exports.docsCheckSourceAndAdrExemption = function docsCheckSourceAndAdrExemption(t) {
     const r = checkDocs({
         "brd/9200-real.md": ["# BRD-9200: Real", "", "**Derived from:** https://example.com/brief"],
         "prd/9200-stale.md": ["# PRD-9200: Stale", "", "**Derived from:** https://example.com/brief"],
@@ -129,10 +129,10 @@ function docsCheckSourceAndAdrExemption(t) {
     t.ok(r.for("adr/9200-forced.md").length === 0, "docs-check: an ADR may derive from a source at any time", r.all);
     t.ok(r.for("adr/9201-late.md").length === 0, "docs-check: an ADR may cite a later stage", r.all);
     t.ok(r.for("prd/9201-decided.md").length === 0, "docs-check: any document may cite an ADR", r.all);
-}
+};
 
 // MEMORY.md's Requirements takes part in traceability, so it follows the same reference rule.
-function docsCheckMemoryRequirements(t) {
+exports.docsCheckMemoryRequirements = function docsCheckMemoryRequirements(t) {
     const memory = lines => {
         const { problems } = docsCheck.check(lib.checkout, chainView({
             "docs/brd/9300-real.md": ["# BRD-9300: Real", "", "**Derived from:** https://example.com/brief"],
@@ -163,12 +163,12 @@ function docsCheckMemoryRequirements(t) {
         t.ok(want === 0 ? problems.length === 0 : problems.some(p => p.includes(needle)),
             `docs-check: MEMORY.md Requirements, ${title}`, detail);
     }
-}
+};
 
 // docs-check's citation logic, exercised directly rather than through a fixture: a duplicate
 // document number, a citation to an item that does not exist in its target, and a citation that
 // jumps forward in the chain.
-function docsCheckCitationEdgeCases(t) {
+exports.docsCheckCitationEdgeCases = function docsCheckCitationEdgeCases(t) {
     const r = checkDocs({
         "brd/9001-alpha.md": ["# BRD-9001: Alpha"],
         "brd/9001-beta.md": ["# BRD-9001: Beta"],
@@ -183,11 +183,11 @@ function docsCheckCitationEdgeCases(t) {
     t.ok(has("already used by"), "docs-check: duplicate document number", detail);
     t.ok(has("has no item BR-2"), "docs-check: citation to a missing item", detail);
     t.ok(has("later in the chain"), "docs-check: citation later in the chain", detail);
-}
+};
 
 // INTENT.md is optional, and when present docs-check holds it to the sections its specification
 // requires. Each broken shape gets its own message; a well-formed file and an absent one get none.
-function docsCheckIntentShape(t) {
+exports.docsCheckIntentShape = function docsCheckIntentShape(t) {
     const good = ["# INTENT.md", "", "_Written by hand._", "", "## Product", "", "**Acme Billing** invoices small firms monthly.",
         "", "## Personas", "", "### Dana, bookkeeper", "", "## MVP stories — build these first", "", "### Send an invoice", "",
         "*Done when:*", "- the customer receives a PDF", "", "## Release 2 — reminders", ""];
@@ -206,7 +206,7 @@ function docsCheckIntentShape(t) {
         const detail = problems.join("\n") || "(none)";
         t.ok(needle ? problems.some(p => p.includes(needle)) : problems.length === 0, `docs-check: INTENT.md, ${title}`, detail);
     }
-}
+};
 
 // The stage table in AGENTS.md has one parser, readChain(), and anything that needs the pipeline
 // builds on it rather than reading the table again. Pin what it promises those callers: every row
@@ -217,7 +217,7 @@ function docsCheckIntentShape(t) {
 // meaning to fails here. Reordering it on purpose is an edit to this line as well.
 const PIPELINE = ["BRD", "PRD", "EARS", "BDD", "ADR", "SPEC"];
 
-function chainIsParsedInPipelineOrder(t) {
+exports.chainIsParsedInPipelineOrder = function chainIsParsedInPipelineOrder(t) {
     const { stages, problems } = docsCheck.readChain(repoView.worktree(lib.checkout));
     const named = stages.map(s => s.stage);
     const detail = named.join(",");
@@ -227,13 +227,13 @@ function chainIsParsedInPipelineOrder(t) {
     t.ok(stages.some(s => !s.folder), "readChain returns the stages that are not documents too", detail);
     const wrong = stages.filter(s => s.folder && s.folder !== s.stage.toLowerCase());
     t.ok(!wrong.length, "every document stage's folder matches its name", wrong.map(s => `${s.stage} -> ${s.lives}`).join(","));
-}
+};
 
 // readDocs() is the one model of the chain: what check() validates is what the portal renders. Pin
 // the part that made two readers a bug rather than a duplication -- the file-name rule. A name the
 // rule rejects is a problem and not a document, so a second reader cannot render a file nothing
 // checked, which is what happened while the portal carried its own looser rule.
-function oneModelForValidatorAndPortal(t) {
+exports.oneModelForValidatorAndPortal = function oneModelForValidatorAndPortal(t) {
     const view = chainView({
         "docs/brd/9401-billing.md": ["# BRD-9401: Billing", "", "**Derived from:** jira:AB-42", "", "- BR-1: Bill monthly."],
         "docs/prd/9401-биллинг.md": ["# PRD-9401: Billing", "", "**Derived from:** BRD-9401"],
@@ -255,12 +255,12 @@ function oneModelForValidatorAndPortal(t) {
         doc && `${doc.title} | ${doc.link} | ${[...doc.items]}`);
     t.ok([...("Refines BRD-9401/BR-1.".matchAll(model.refRe))].length === 1, "the model's refRe matches a citation");
     t.ok(model.itemRe.test("- BR-1: Bill monthly."), "the model's itemRe matches an item");
-}
+};
 
 // tools/docs-site is optional: a repo that publishes straight to Jira can delete the folder and owes
 // this suite nothing, so the portal's end-to-end smoke runs only when it is installed. It needs no
 // Astro install of its own, since chain.mjs only reads.
-function docsSiteRendersTheChain(t) {
+exports.docsSiteRendersTheChain = function docsSiteRendersTheChain(t) {
     const entry = path.join("tools", "docs-site", "chain.mjs");
     if (!fs.existsSync(entry)) { t.skip("tools/docs-site smoke: the optional portal is not installed"); return; }
     const r = lib.node([entry]);
@@ -269,17 +269,4 @@ function docsSiteRendersTheChain(t) {
     const order = PIPELINE.map(s => r.output.indexOf(`${s}\t`));
     t.ok(order.every((at, i) => at >= 0 && (i === 0 || at > order[i - 1])),
         "docs-site reads the stages in pipeline order", r.output);
-}
-
-module.exports = [
-    chainMembership,
-    sourceDecisions,
-    docsCheckDerivedFromShapes,
-    docsCheckSourceAndAdrExemption,
-    docsCheckMemoryRequirements,
-    docsCheckCitationEdgeCases,
-    docsCheckIntentShape,
-    chainIsParsedInPipelineOrder,
-    oneModelForValidatorAndPortal,
-    docsSiteRendersTheChain,
-];
+};

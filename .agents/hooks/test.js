@@ -86,7 +86,7 @@ for (const [script, fixture, expect, setup, want, note] of lib.readTsv(".agents/
     else failed(`${script} < ${fixture}: exit ${status}, expected ${expect}, output must contain "${want}" (${note})`, output);
 }
 
-runner.runChecks([...selfChecks, ...tables], t, env);
+runner.runChecks([...Object.values(selfChecks), ...tables], t, env);
 
 for (const why of skipped) console.log(`SKIP ${why}`);
 console.log(`harness tests: ${pass} passed, ${fail} failed${skipped.length ? `, ${skipped.length} skipped` : ""}`);

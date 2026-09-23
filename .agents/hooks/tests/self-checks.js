@@ -27,7 +27,7 @@ const { withRoot, installer, INSTALLER } = require("./fixtures");
 // would have merged into every repo unread. The fallback stays; the gap is caught here. There is
 // deliberately no check the other way, that every row matches a file: MEMORY.md and TODO.md are
 // skip rows matching nothing in a clone that has neither, which is what skip means.
-function everyTrackedPathIsClassified(t) {
+exports.everyTrackedPathIsClassified = function everyTrackedPathIsClassified(t) {
     const manifest = "scripts/harness-files.tsv";
     if (!fs.existsSync(manifest)) { t.skip("manifest check: no harness-files.tsv"); return; }
     const r = lib.run("git", ["ls-files"]);
@@ -41,7 +41,7 @@ function everyTrackedPathIsClassified(t) {
     t.ok(!loose.length,
         "every tracked path matches a row in scripts/harness-files.tsv",
         loose.slice(0, 10).join(", "));
-}
+};
 
 // The upstream runs the same documentation chain it asks its projects to run, so its own docs/
 // holds real ADRs and SPECs -- about the harness, its installer, its seams. Those are the
@@ -50,7 +50,7 @@ function everyTrackedPathIsClassified(t) {
 // have. `.scratch/reviews/` already has this rule written down; the chain needs it too.
 // Read from AGENTS.md's table rather than from a list here, so a stage folder added later is
 // covered without anyone remembering this check exists.
-function noChainDocumentOfTheUpstreamTravels(t) {
+exports.noChainDocumentOfTheUpstreamTravels = function noChainDocumentOfTheUpstreamTravels(t) {
     const manifest = "scripts/harness-files.tsv";
     const r = lib.run("git", ["ls-files"]);
     if (!fs.existsSync(manifest) || r.status !== 0) { t.skip("chain manifest check: no harness-files.tsv in a git checkout"); return; }
@@ -68,18 +68,18 @@ function noChainDocumentOfTheUpstreamTravels(t) {
     t.ok(!travelling.length,
         "no document of the upstream's own chain is installed into a project",
         travelling.map(f => `${f} is ${policyOf(f)}`).join(", "));
-}
+};
 
 // root() must actually follow a harness's project-dir variable, not just fall back to this
 // checkout — the one branch no TSV fixture exercises, since they all run with these variables
 // cleared. Points CLAUDE_PROJECT_DIR at an unrelated directory with its own MEMORY.md and checks
 // that session-start.js reports on THAT directory.
-function sessionStartFollowsProjectDir(t, env) {
+exports.sessionStartFollowsProjectDir = function sessionStartFollowsProjectDir(t, env) {
     const r = withRoot({ "MEMORY.md": "# Project memory\n" }, other =>
         lib.node([".agents/hooks/session-start.js"], { env: { ...env, CLAUDE_PROJECT_DIR: other } }));
     t.ok(r.status === 0 && r.output.includes("facts in MEMORY.md") && !r.output.includes("not initialised"),
         "session-start.js follows CLAUDE_PROJECT_DIR", r.output);
-}
+};
 
 // The chain rule in check-edit.js must check the repo the harness is editing, the same one root()
 // answers for, and not whichever checkout the hook file sits in. The two were allowed to disagree
@@ -88,7 +88,7 @@ function sessionStartFollowsProjectDir(t, env) {
 // fixture reaches this, since test.js clears the project-dir variables before each one. Points
 // CLAUDE_PROJECT_DIR at a directory holding this chain table and one document with the wrong
 // heading, and requires the hook to object to THAT document.
-function checkEditFollowsProjectDir(t, env) {
+exports.checkEditFollowsProjectDir = function checkEditFollowsProjectDir(t, env) {
     const r = withRoot({
         "AGENTS.md": fs.readFileSync(path.join(lib.checkout, "AGENTS.md"), "utf8"),
         "docs/brd/0001-elsewhere.md": "# Wrong: not the ID its file name gives it\n\n**Derived from:** https://example.com/x\n",
@@ -98,11 +98,11 @@ function checkEditFollowsProjectDir(t, env) {
     }));
     t.ok(r.status === 2 && r.output.includes(`# BRD-0001:`),
         "check-edit.js checks the chain in CLAUDE_PROJECT_DIR, not in its own checkout", r.output);
-}
+};
 
 // MEMORY.md is in the chain, so an edit that breaks its Requirements line is reported at once rather
 // than at the commit, which is the only place it used to surface.
-function checkEditChecksMemoryRequirements(t, env) {
+exports.checkEditChecksMemoryRequirements = function checkEditChecksMemoryRequirements(t, env) {
     const r = withRoot({
         "AGENTS.md": fs.readFileSync(path.join(lib.checkout, "AGENTS.md"), "utf8"),
         "MEMORY.md": "# Project memory\n\n- **Requirements:** the notes we took\n",
@@ -112,12 +112,12 @@ function checkEditChecksMemoryRequirements(t, env) {
     }));
     t.ok(r.status === 2 && r.output.includes("Requirements names no reference"),
         "check-edit.js runs docs-check when MEMORY.md is edited", r.output);
-}
+};
 
 // check-edit.js runs the invariants after an edit to a path they read, in any repo, and that path
 // list is check-harness's own. Points CLAUDE_PROJECT_DIR at a directory whose routing file names an
 // agent nobody has, edits it, and requires the hook to object.
-function checkEditRunsTheInvariantsOnTheirPaths(t, env) {
+exports.checkEditRunsTheInvariantsOnTheirPaths = function checkEditRunsTheInvariantsOnTheirPaths(t, env) {
     const r = withRoot({
         ".agents/routing.md": "# Routing\n\n## Shared\n\nRead by `ghost`.\n",
         ".agents/agents/engineer.md": "---\nname: engineer\n---\nSee routing.md, Shared.\n",
@@ -128,7 +128,7 @@ function checkEditRunsTheInvariantsOnTheirPaths(t, env) {
     t.ok(harness.reads(".agents/routing.md"), "check-harness reads .agents/routing.md");
     t.ok(r.status === 2 && r.output.includes("is read by exactly the agents it names"),
         "check-edit.js runs the harness invariants after an edit to a path they read", r.output);
-}
+};
 
 // .claude/settings.json is read by more than Claude Code: Copilot (CLI and VS Code) reads it too, and
 // sets no CLAUDE_PROJECT_DIR. A command built on that variable pointed node at /.agents/hooks/...,
@@ -143,7 +143,7 @@ function checkEditRunsTheInvariantsOnTheirPaths(t, env) {
 // what this adds is that the text actually runs. Each command goes through the system shell and
 // every PowerShell installed, from a subfolder with the project-dir variables cleared: session-start
 // must print, and the guard must pass a safe command and block a force push with exit 2.
-function claudeHooksRunInEveryShell(t, env) {
+exports.claudeHooksRunInEveryShell = function claudeHooksRunInEveryShell(t, env) {
     const settings = path.join(lib.checkout, ".claude", "settings.json");
     if (!fs.existsSync(settings)) { t.skip("hook commands: no .claude/settings.json"); return; }
     const commands = Object.values(JSON.parse(fs.readFileSync(settings, "utf8")).hooks)
@@ -167,7 +167,7 @@ function claudeHooksRunInEveryShell(t, env) {
                 `safe ${safe.status} ${safe.output}\nforce ${force.status} ${force.output}`);
         }
     }
-}
+};
 
 // One real install, end to end, from this checkout into an empty repository: the plan and the table
 // above can agree with each other and still disagree with the disk. A dry run first, which must
@@ -177,7 +177,7 @@ function claudeHooksRunInEveryShell(t, env) {
 // target. Without the variable set here the check passed from a shell and failed only from a hook.
 // The repository's one file is a package.json declaring ES modules, as a JavaScript project's often
 // does: the harness scripts are CommonJS, and the install runs them in the target before it is done.
-function installerInstallsIntoAnEmptyRepo(t, env) {
+exports.installerInstallsIntoAnEmptyRepo = function installerInstallsIntoAnEmptyRepo(t, env) {
     if (!installer()) { t.skip("a real install: the installer is the upstream's own, not installed here"); return; }
     withRoot({ "package.json": JSON.stringify({ type: "module" }) }, dir => {
         const node = args => require("child_process").spawnSync(process.execPath, [INSTALLER, "--from", lib.checkout, "--target", dir, "--quiet", ...args], { encoding: "utf8", env: { ...env, CLAUDE_PROJECT_DIR: lib.checkout } });
@@ -199,12 +199,12 @@ function installerInstallsIntoAnEmptyRepo(t, env) {
         const second = node([]);
         t.ok(second.status === 0 && second.stdout.includes("nothing to update"), "a real install: a second run has nothing to do", `exit ${second.status}\n${second.stdout}${second.stderr}`);
     });
-}
+};
 
 // npx runs the installer from the published package, which holds only what package.json's `files`
 // lists. A script the installer requires and the list leaves out works from a checkout and breaks
 // for every project on the next release, so the requires are followed here, one file to the next.
-function installerShipsEverythingItRequires(t) {
+exports.installerShipsEverythingItRequires = function installerShipsEverythingItRequires(t) {
     if (!installer()) { t.skip("package files: the installer is the upstream's own, not installed here"); return; }
     const listed = new Set(JSON.parse(fs.readFileSync(path.join(lib.checkout, "package.json"), "utf8")).files || []);
     const seen = new Set();
@@ -221,51 +221,51 @@ function installerShipsEverythingItRequires(t) {
     const missing = [...seen].filter(rel => !listed.has(rel));
     t.ok(seen.size > 1 && !missing.length, "package.json ships every script the installer requires",
         missing.length ? `missing from "files": ${missing.join(", ")}` : [...seen].join(", "));
-}
+};
 
 // The harness invariants are scripts/check-harness.js's, because they travel: a target runs them after
 // an edit and the installer runs them against what it wrote. The upstream holds itself to the same
 // ones, with the suite's own t, so a regression here fails the suite the way it fails an install.
-function harnessInvariantsHoldHere(t) {
+exports.harnessInvariantsHoldHere = function harnessInvariantsHoldHere(t) {
     for (const invariant of harness.INVARIANTS) invariant(t, repoView.worktree(lib.checkout));
-}
+};
 
 // check-harness asserts the shape of the hooks githook.js handles and leaves a target's own hooks
 // alone. The upstream ships no hook of its own, so every file in its .githooks/ is one githook.js must
 // handle: a hook added there without a handler would reach every target and do nothing.
-function everyUpstreamHookIsHandled(t) {
+exports.everyUpstreamHookIsHandled = function everyUpstreamHookIsHandled(t) {
     const known = Object.keys(require("../../../scripts/githook.js").HOOKS);
     const unhandled = fs.readdirSync(path.join(lib.checkout, ".githooks")).filter(n => !known.includes(n));
     t.ok(!unhandled.length, "githook.js handles every hook in .githooks/", unhandled.join(", "));
-}
+};
 
-// A check runs because it is in an exported array, and nothing but this notices when one is not: an
-// unregistered function raises the pass count of the suite by zero and the failure count by zero, so
-// the tally reads exactly as it did before it was written. Caught by reading the files rather than by
-// any cleverness at run time, because a function nobody calls leaves no trace to inspect. Every table
-// under tests/tables/ is read the same way, so a module's own file cannot quietly stop running either.
-function everyCheckIsRegistered(t) {
-    const tables = path.join(__dirname, "tables");
-    const files = [__filename, ...fs.readdirSync(tables).filter(n => n !== "index.js").map(n => path.join(tables, n))];
-    const defined = files.flatMap(file => [...fs.readFileSync(file, "utf8").matchAll(/^function (\w+)\(t\b/gm)].map(m => m[1]));
-    const registered = new Set([...module.exports, ...require("./tables")].map(fn => fn.name));
-    const missing = defined.filter(name => !registered.has(name));
-    t.ok(defined.length > 0, "the suite defines checks", String(defined.length));
-    t.ok(files.length > 2, "every table file under tests/tables/ is read", files.length + " file(s)");
-    t.ok(!missing.length, "every check defined in self-checks.js and tests/tables/ is in its exported array", missing.join(", "));
-}
+// A check runs because something exported it, and an unregistered one raises the pass count by zero
+// and the failure count by zero, so the tally reads exactly as it did before it was written. There
+// used to be two places to say a check exists -- the declaration and an array at the foot of the file
+// -- and this read the source for declarations the array had missed. The pattern it read was
+// /^function (\w+)\(t\b/, so a check written `const foo = (t) =>` was invisible to the very check
+// that existed to catch it. Registration is now one statement, `exports.name = function name(t)`, and
+// the folder listing is the list of files, so neither array exists to fall out of. What is left is
+// the shape that makes that true: nothing but named checks exported, and nothing check-shaped left
+// unexported, in either spelling this time.
+exports.everyCheckIsExportedWhereItIsWritten = function everyCheckIsExportedWhereItIsWritten(t) {
+    const dir = path.join(__dirname, "tables");
+    const files = [__filename, ...require("./tables").FILES.map(n => path.join(dir, n))];
+    t.ok(files.length > 2, "every table file in tests/tables/ is in the list the folder gives", files.length + " file(s)");
+    t.ok(fs.readdirSync(dir).filter(n => n.endsWith(".js") && n !== "index.js").length === files.length - 1,
+        "the list of tables is the folder, with nothing added or held back", "");
 
-module.exports = [
-    everyCheckIsRegistered,
-    harnessInvariantsHoldHere,
-    everyUpstreamHookIsHandled,
-    everyTrackedPathIsClassified,
-    noChainDocumentOfTheUpstreamTravels,
-    sessionStartFollowsProjectDir,
-    checkEditFollowsProjectDir,
-    checkEditChecksMemoryRequirements,
-    claudeHooksRunInEveryShell,
-    checkEditRunsTheInvariantsOnTheirPaths,
-    installerInstallsIntoAnEmptyRepo,
-    installerShipsEverythingItRequires,
-];
+    const exported = [...Object.values(module.exports), ...require("./tables")];
+    t.ok(exported.length > 50, "the suite exports checks", String(exported.length));
+    const unnamed = exported.filter(fn => typeof fn !== "function" || !fn.name);
+    t.ok(!unnamed.length, "every check exported is a function with a name to report it by", String(unnamed.length));
+
+    // Both spellings of a top-level check, so the blind spot that made this necessary cannot come
+    // back in the other one. A helper takes anything but `t` and is not matched.
+    const shapes = [/^function (\w+)\(t\b/gm, /^const (\w+) = \(?t\b[^=]*=>/gm];
+    const loose = files.flatMap(file => {
+        const text = fs.readFileSync(file, "utf8");
+        return shapes.flatMap(re => [...text.matchAll(re)].map(m => `${path.basename(file)}:${m[1]}`));
+    });
+    t.ok(!loose.length, "no check is written as a bare declaration, unexported where it stands", loose.join(", "));
+};

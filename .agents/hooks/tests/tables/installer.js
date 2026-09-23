@@ -11,7 +11,7 @@ const { installer, INSTALLER } = require("../fixtures");
 
 // The installer writes whenever it runs, so an argument it does not know has to stop it: a --help it
 // ignored once installed the harness into the repo it was asked about.
-function installerRejectsUnknownArguments(t) {
+exports.installerRejectsUnknownArguments = function installerRejectsUnknownArguments(t) {
     const harness = installer();
     if (!harness) { t.skip("installer arguments: the installer is the upstream's own, not installed here"); return; }
     const cases = [
@@ -40,7 +40,7 @@ function installerRejectsUnknownArguments(t) {
     const run = require("child_process").spawnSync(process.execPath, [INSTALLER, "--help"], { cwd: os.tmpdir(), encoding: "utf8" });
     t.ok(run.status === 0 && run.stdout.includes("Usage:"), "--help prints the usage and exits 0 without a repository",
         `exit ${run.status}: ${run.stderr}`);
-}
+};
 
 // The install plan, from an upstream and a target held in memory: the upstream as a list of commits,
 // oldest first, each mapping a path to its text or to { text, exec } or { link }; the target as a
@@ -59,7 +59,7 @@ function memoryUpstream(commits) {
     };
 }
 
-function installPlanCoversEveryCase(t) {
+exports.installPlanCoversEveryCase = function installPlanCoversEveryCase(t) {
     const harness = installer();
     if (!harness) { t.skip("the install plan: the installer is the upstream's own, not installed here"); return; }
     const up = memoryUpstream([
@@ -212,7 +212,7 @@ function installPlanCoversEveryCase(t) {
         "install plan: a dry run prints each path's line, and nothing silent", out);
     t.ok(!fs.existsSync(nowhere) && done.length === fresh.entries.filter(e => !e.phase).length,
         "install plan: a dry run writes nothing", `${done.length} entries; ${nowhere} exists: ${fs.existsSync(nowhere)}`);
-}
+};
 
 // SPEC-0001, and the whole reason bytes() is a question of its own rather than a flag on read(). A
 // skill ships a logo, and until repo-view there was no way to put a file with a zero byte in it in
@@ -220,7 +220,7 @@ function installPlanCoversEveryCase(t) {
 // so decideBinary and planSkills' binary branch never once ran here. What they are guarding against
 // is a blob decoded as UTF-8 and written back, where every byte outside ASCII becomes U+FFFD -- the
 // logo installs broken, and no later run ever agrees with the upstream about it either.
-function installPlanHandlesBinaryContent(t) {
+exports.installPlanHandlesBinaryContent = function installPlanHandlesBinaryContent(t) {
     const harness = installer();
     if (!harness) { t.skip("binary content: the installer is the upstream's own, not installed here"); return; }
     // 0x00 is what makes it binary to Git and to the installer; 0xff is what a decode would destroy.
@@ -261,11 +261,11 @@ function installPlanHandlesBinaryContent(t) {
     // that needs the base read as bytes rather than as text.
     const moved = run({ "logo.png": v1 }, at);
     bytes(pick(moved, "logo.png"), v2, "a binary file nobody touched since the base takes the upstream's");
-}
+};
 
 // A --diff3 conflict whose project side shares no line with the base is a section the project
 // dropped or replaced, and stays so.
-function mergeSettlesDroppedSections(t) {
+exports.mergeSettlesDroppedSections = function mergeSettlesDroppedSections(t) {
     const harness = installer();
     if (!harness) { t.skip("settleDropped: the installer is the upstream's own, not installed here"); return; }
     const H = (ours, base, theirs) => `top\n<<<<<<< yours\n${ours}||||||| upstream (base)\n${base}=======\n${theirs}>>>>>>> upstream (new)\nend\n`;
@@ -278,12 +278,12 @@ function mergeSettlesDroppedSections(t) {
         const got = harness.settleDropped(merged);
         t.ok(got.text === text && got.conflicts === conflicts, `settleDropped: ${why}`, JSON.stringify(got));
     }
-}
+};
 
 // The installer lays down MEMORY.md's facts from the table the gate reads, every one a placeholder:
 // all of them in a plain repo, all but the name and purpose beside an INTENT.md. Either skeleton is
 // unanswered as a whole, so a fresh install is blocked until project-init runs.
-function memorySkeletonDefersToIntent(t) {
+exports.memorySkeletonDefersToIntent = function memorySkeletonDefersToIntent(t) {
     const inst = installer();
     if (!inst) { t.skip("memory skeleton: no scripts/update-harness.js"); return; }
     const header = ["# Project memory", ""];
@@ -296,12 +296,12 @@ function memorySkeletonDefersToIntent(t) {
     t.ok(besideFacts.Name === null && besideFacts.Purpose === null && besideFacts.Language === "" && beside.includes("INTENT.md"),
         "memory skeleton: no name or purpose beside an INTENT.md", beside);
     t.ok(inst.skeletonLines("TODO.md", header, false) === header, "memory skeleton: other skeletons are left as written", "");
-}
+};
 
 // The receipt names the released tool that wrote the tree. package.json says 0.0.0 everywhere but
 // inside the published package, so a checkout goes by its release tag, and a checkout on no tag, or
 // on a tag that is not a release, names no package at all.
-function installerStampNamesOnlyAReleasedVersion(t) {
+exports.installerStampNamesOnlyAReleasedVersion = function installerStampNamesOnlyAReleasedVersion(t) {
     const inst = installer();
     if (!inst) { t.skip("installer stamp: no scripts/update-harness.js"); return; }
     const name = "@salaros/ai-harness";
@@ -318,7 +318,7 @@ function installerStampNamesOnlyAReleasedVersion(t) {
         const got = inst.installerStamp(input);
         t.ok(got.installer === want && (want !== undefined || !("installer" in got)), `installer stamp: ${why}`, JSON.stringify({ input, got }));
     }
-}
+};
 
 // The command line the run clones the upstream with, which is how every install that did not pass
 // --from begins. Nothing in the suite clones, so for as long as the arguments were built inline the
@@ -326,7 +326,7 @@ function installerStampNamesOnlyAReleasedVersion(t) {
 // identifier left from a refactor made `npx @salaros/ai-harness` crash before it said anything, and
 // every check here still passed, because each one arrives holding a --from. Asking for the arguments
 // rather than the clone puts that line where a check can read it.
-function theUpstreamIsClonedWithArgumentsThatName(t) {
+exports.theUpstreamIsClonedWithArgumentsThatName = function theUpstreamIsClonedWithArgumentsThatName(t) {
     const inst = installer();
     if (!inst) { t.skip("clone arguments: no scripts/update-harness.js"); return; }
     const args = inst.cloneArgs("0.5.1", "/tmp/harness-x");
@@ -339,14 +339,4 @@ function theUpstreamIsClonedWithArgumentsThatName(t) {
     // clone without this reads as a checkout missing most of its files rather than as a failure.
     t.ok(args.slice(0, at("clone")).join(" ") === "-c core.longpaths=true",
         "clone arguments: core.longpaths is set before the subcommand, where git takes it", args.join(" "));
-}
-
-module.exports = [
-    installerRejectsUnknownArguments,
-    installPlanCoversEveryCase,
-    installPlanHandlesBinaryContent,
-    mergeSettlesDroppedSections,
-    memorySkeletonDefersToIntent,
-    installerStampNamesOnlyAReleasedVersion,
-    theUpstreamIsClonedWithArgumentsThatName,
-];
+};

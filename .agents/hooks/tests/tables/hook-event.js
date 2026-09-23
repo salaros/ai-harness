@@ -10,7 +10,7 @@ const lib = require("../../lib");
 const ROOT = path.resolve(os.tmpdir(), "harness-event-root");
 const at = rel => `${ROOT}/${rel}`;
 
-function hookEventDecisions(t) {
+exports.hookEventDecisions = function hookEventDecisions(t) {
     const copilot = args => ({ toolName: "edit", toolArgs: JSON.stringify(args) });
     const rows = [
         // payload (an object is sent as JSON, a string as it is), paths, command, note, why
@@ -52,8 +52,4 @@ function hookEventDecisions(t) {
             && e.raw === raw && e.root === ROOT;
         t.ok(ok, `hook event: ${why}`, `${raw}\n-> ${JSON.stringify(got)}`);
     }
-}
-
-module.exports = [
-    hookEventDecisions,
-];
+};

@@ -21,7 +21,7 @@ function formatChanged() {
 // check written against the host's value asserts the cutting on one platform and nothing on the
 // other. Whether 338 files happen to need cutting here is not what this is about.
 const LIMIT = 7500;
-function batchesFitTheCommandLine(t) {
+exports.batchesFitTheCommandLine = function batchesFitTheCommandLine(t) {
     const fmt = formatChanged();
     if (!fmt) { t.skip(`batches: ${SKIP}`); return; }
     const files = Array.from({ length: 338 }, (_, i) => `src/components/some/deep/path/component-${i}.astro`);
@@ -42,10 +42,10 @@ function batchesFitTheCommandLine(t) {
     // and CANNOT_RUN reports it as such rather than as a verdict on the file.
     t.ok(fmt.batches(TEMPLATE, ["a.ts", "b.ts"], TEMPLATE.length).length === 2,
         "batches: a file too long for any command line is still its own batch", "");
-}
+};
 
 // A formatter that could not run must never be reported as a formatter that found something.
-function aRunThatCouldNotStartIsNotAVerdict(t) {
+exports.aRunThatCouldNotStartIsNotAVerdict = function aRunThatCouldNotStartIsNotAVerdict(t) {
     const fmt = formatChanged();
     if (!fmt) { t.skip(`cannot run: ${SKIP}`); return; }
     const cases = [
@@ -57,11 +57,11 @@ function aRunThatCouldNotStartIsNotAVerdict(t) {
     ];
     for (const [output, why] of cases)
         t.ok(fmt.cannotRun(output) === why, `cannot run: ${why || "a list of files is a verdict, not a failure"}`, `${output.split("\n")[0]} -> ${fmt.cannotRun(output)}`);
-}
+};
 
 // One verdict from the batches of one alternative: misformatted if any batch said so, and the output
 // is what those batches said. A batch that passed has nothing to add.
-function batchVerdictsCombineIntoOne(t) {
+exports.batchVerdictsCombineIntoOne = function batchVerdictsCombineIntoOne(t) {
     const fmt = formatChanged();
     if (!fmt) { t.skip(`combine: ${SKIP}`); return; }
     t.ok(fmt.combine([{ status: 0, output: "" }, { status: 0, output: "" }]).status === 0,
@@ -69,10 +69,4 @@ function batchVerdictsCombineIntoOne(t) {
     const bad = fmt.combine([{ status: 0, output: "" }, { status: 1, output: "a.ts" }, { status: 1, output: "b.ts" }]);
     t.ok(bad.status === 1 && bad.output === "a.ts\nb.ts", "combine: the failing batches' output is what the run reports", JSON.stringify(bad));
     t.ok(fmt.combine([]).status === 0, "combine: no batches is nothing to report", "");
-}
-
-module.exports = [
-    batchesFitTheCommandLine,
-    aRunThatCouldNotStartIsNotAVerdict,
-    batchVerdictsCombineIntoOne,
-];
+};

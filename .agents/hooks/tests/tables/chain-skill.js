@@ -17,7 +17,7 @@ const STAGES = [
 // A path belongs to the stage whose folder it sits under, and to no stage at all when it sits
 // outside every one of them. A stage living in a folder as broad as src/ owns everything under it,
 // which is the point: a new module is the Code stage whatever it is called.
-function chainStageOfAPath(t) {
+exports.chainStageOfAPath = function chainStageOfAPath(t) {
     const rows = [
         ["docs/prd/0001-billing.md", "PRD", "a document in a stage's folder"],
         ["docs/prd/README.md", "PRD", "any file in it, not only a numbered document"],
@@ -34,12 +34,12 @@ function chainStageOfAPath(t) {
         const got = chainSkill.stageFor(file, STAGES);
         t.ok((got ? got.stage : null) === want, `chain skill: ${why}`, JSON.stringify(got && got.stage));
     }
-}
+};
 
 // Whether the session has the skill. The transcript is whatever the harness wrote, so the markers
 // are read generously: a wrong "no" would block the file from ever being created, while a wrong
 // "yes" only costs a reminder nobody needed.
-function chainSkillIsRecognisedInATranscript(t) {
+exports.chainSkillIsRecognisedInATranscript = function chainSkillIsRecognisedInATranscript(t) {
     const rows = [
         [`{"name":"Skill","input":{"skill":"prd"}}`, true, "the skill tool naming it"],
         [`{"name":"Skill","input":{"skill":"some-plugin:prd"}}`, true, "the same, qualified by a plugin"],
@@ -51,12 +51,12 @@ function chainSkillIsRecognisedInATranscript(t) {
         [``, false, "an empty transcript"],
     ];
     for (const [text, want, why] of rows) t.ok(chainSkill.used(text, "prd") === want, `chain skill: ${why}`, text);
-}
+};
 
 // The whole decision. A creation in a stage's folder without its skill is blocked and told which
 // skill to load; with it, nothing is said. A transcript the harness never named leaves the hook
 // unable to tell, and a hook that cannot read its input fails open, as every other one here does.
-function chainSkillDecisions(t) {
+exports.chainSkillDecisions = function chainSkillDecisions(t) {
     const loaded = `{"name":"Skill","input":{"skill":"prd"}}`;
     const rows = [
         // files, transcript, verdict, what the message must name, why
@@ -80,10 +80,4 @@ function chainSkillDecisions(t) {
     const d = chainSkill.decide(["docs/prd/0001-billing.md"], STAGES, "");
     for (const want of ["docs/prd/0001-billing.md", "PRD", "prd", "AGENTS.md"])
         t.ok(d.message.includes(want), `chain skill: the message names ${want}`, d.message);
-}
-
-module.exports = [
-    chainStageOfAPath,
-    chainSkillIsRecognisedInATranscript,
-    chainSkillDecisions,
-];
+};

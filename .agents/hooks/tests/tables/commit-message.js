@@ -8,7 +8,7 @@ const { withRoot, text } = require("../fixtures");
 // A message's verdict: blocked with a problem containing `blocks`, or accepted, warned about
 // `warns` or about nothing when `warns` is null. `summary` is a substring of what an accepted
 // message prints.
-function commitMessageDecisions(t) {
+exports.commitMessageDecisions = function commitMessageDecisions(t) {
     const WHY = "The git-commit skill writes them; this holds whatever wrote them to the\nsame rule, agent or human.";
     const TRACKER = "docs/agents/issue-tracker.md";
     const rows = [
@@ -77,13 +77,13 @@ function commitMessageDecisions(t) {
                 && !(warns === "#\\d+" && r.warnings[0].includes("PROJ-123"));
         t.ok(verdict, `check-commit-msg: ${why}`, detail);
     }
-}
+};
 
 // A coding agent appends "Co-authored-by: <itself>" because its own system prompt tells it to, so
 // asking it to stop is a rule it forgets and a rejection it cannot satisfy. The hook drops the line
 // instead. A human pair is credited exactly as Git intends: the discriminator is the address no
 // person reads, not the name, because Claude is also a name parents give children.
-function agentTrailersAreDropped(t) {
+exports.agentTrailersAreDropped = function agentTrailersAreDropped(t) {
     const BODY = "A body long enough to satisfy the description rule.";
     const CLAUDE = "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>";
     const COPILOT = "Co-authored-by: Copilot <198982749+Copilot@users.noreply.github.com>";
@@ -111,9 +111,4 @@ function agentTrailersAreDropped(t) {
     // the body still ends in one newline, the way Git wrote it.
     const stripped = commitMsg.strip(text(subject, "", BODY, "", CLAUDE)).message;
     t.ok(stripped === text(subject, "", BODY), "check-commit-msg: dropping the last trailer leaves no blank line behind", JSON.stringify(stripped));
-}
-
-module.exports = [
-    commitMessageDecisions,
-    agentTrailersAreDropped,
-];
+};

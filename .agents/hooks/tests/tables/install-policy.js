@@ -10,7 +10,7 @@ const never = () => { throw new Error("should not have been consulted"); };
 // First match wins, a row ending in / covers everything under it, and an `optional:<flag>` row is
 // seeded only when the run asked for that flag. The real table is checked elsewhere; what is pinned
 // here is how a table is read, against one written for the purpose.
-function manifestPoliciesAreReadInOrder(t) {
+exports.manifestPoliciesAreReadInOrder = function manifestPoliciesAreReadInOrder(t) {
     const policy = installPolicy();
     if (!policy) { t.skip(`policyFor: ${SKIP}`); return; }
     const rows = [
@@ -37,12 +37,12 @@ function manifestPoliciesAreReadInOrder(t) {
     let threw = false;
     try { policy.decide("nonsense", {}); } catch { threw = true; }
     t.ok(threw, "decide: a policy nobody defined is an error, not a silent skip", "");
-}
+};
 
 // merge and reconcile, on a text file the target already has. Every branch used to need a git
 // checkout, an upstream history and a temp tree to reach even once; the reads are fakes here.
 // `held` is what is on disk, `theirs` the upstream's, always LF.
-function mergeDecisionCoversEveryOutcome(t) {
+exports.mergeDecisionCoversEveryOutcome = function mergeDecisionCoversEveryOutcome(t) {
     const policy = installPolicy();
     if (!policy) { t.skip(`merge decision: ${SKIP}`); return; }
     const OURS = "one\ntwo edited\n";
@@ -99,10 +99,10 @@ function mergeDecisionCoversEveryOutcome(t) {
         const got = decide("merge", {}, reads);
         t.ok(got.outcome === outcome && got.write === write, `merge decision: ${why}`, JSON.stringify(got));
     }
-}
+};
 
 // A file with no lines to merge is the upstream's copy or the project's, and the base decides.
-function binaryDecisionFollowsTheBase(t) {
+exports.binaryDecisionFollowsTheBase = function binaryDecisionFollowsTheBase(t) {
     const policy = installPolicy();
     if (!policy) { t.skip(`binary decision: ${SKIP}`); return; }
     const bin = (held, theirs, was, adopt = false) => policy.decide("merge",
@@ -118,10 +118,10 @@ function binaryDecisionFollowsTheBase(t) {
     for (const [got, outcome, bucket, writes, why] of cases)
         t.ok(got.outcome === outcome && got.bucket === bucket && Buffer.isBuffer(got.write) === writes,
             `binary decision: ${why}`, `got ${got.outcome} ${got.bucket}, expected ${outcome} ${bucket}`);
-}
+};
 
 // A union table merged as a set of rows, never in conflict, with or without a base.
-function unionDecisionMergesByRow(t) {
+exports.unionDecisionMergesByRow = function unionDecisionMergesByRow(t) {
     const policy = installPolicy();
     if (!policy) { t.skip(`union decision: ${SKIP}`); return; }
     const T = (...rows) => ["# t", ...rows, ""].join("\n");
@@ -148,12 +148,12 @@ function unionDecisionMergesByRow(t) {
         { held: () => T("a\t1", "b\t1").replace(/\n/g, "\r\n"), base: () => T("a\t1", "b\t1"), recoverBase: never, merge: never });
     t.ok(crlf.outcome === "merged" && crlf.write === T("a\t2", "b\t1").replace(/\n/g, "\r\n"),
         "union decision: a CRLF table is merged in LF and written back in CRLF", JSON.stringify(crlf));
-}
+};
 
 // A first install into a project that already had its own agent files, ignore list or MCP servers:
 // no receipt, so nothing to merge against. The project's file is never lost, and the part of the
 // upstream's the harness cannot work without comes in beside it.
-function noBaseDecisionsBringInWhatTheHarnessNeeds(t) {
+exports.noBaseDecisionsBringInWhatTheHarnessNeeds = function noBaseDecisionsBringInWhatTheHarnessNeeds(t) {
     const policy = installPolicy();
     if (!policy) { t.skip(`no-base decisions: ${SKIP}`); return; }
     const decide = (name, held, theirs, facts = {}) => policy.decide(name,
@@ -186,12 +186,12 @@ function noBaseDecisionsBringInWhatTheHarnessNeeds(t) {
     const based = policy.decide("keyed", { exists: true, theirs: mcpTheirs, hasBase: true, adopt: false, asked: false },
         { held: () => mcpOurs, base: () => mcpOurs, recoverBase: never, merge: never });
     t.ok(based.outcome === "written" && based.write === mcpTheirs, "keyed decision: with a base it is a plain merge", JSON.stringify(based));
-}
+};
 
 // CLAUDE.md, the file Claude Code reads before anything else: whatever a run does with the rest of
 // it, it comes out importing AGENTS.md. A project that wrote its own before it had the harness has no
 // base; one that dropped the line since has a receipt and a clean merge, and both end up with it.
-function importDecisionAlwaysLeavesTheAgentsLine(t) {
+exports.importDecisionAlwaysLeavesTheAgentsLine = function importDecisionAlwaysLeavesTheAgentsLine(t) {
     const policy = installPolicy();
     if (!policy) { t.skip(`import decision: ${SKIP}`); return; }
     const theirs = "@AGENTS.md\n";
@@ -217,11 +217,11 @@ function importDecisionAlwaysLeavesTheAgentsLine(t) {
     const open = decide("<<<<<<< yours\na\n", { hasBase: true }, { base: () => theirs });
     t.ok(open.outcome === "STILL OPEN" && open.write === undefined,
         "import decision: a file left with conflict markers is reported, not added to", JSON.stringify(open));
-}
+};
 
 // .claude/settings.json, merged by key on every run: the harness's hook launchers are the upstream's,
 // everything else the project's.
-function settingsDecisionReplacesOnlyTheHarnessHooks(t) {
+exports.settingsDecisionReplacesOnlyTheHarnessHooks = function settingsDecisionReplacesOnlyTheHarnessHooks(t) {
     const policy = installPolicy();
     if (!policy) { t.skip(`settings decision: ${SKIP}`); return; }
     const hook = command => ({ type: "command", command });
@@ -257,11 +257,11 @@ function settingsDecisionReplacesOnlyTheHarnessHooks(t) {
     t.ok(crlf.outcome === "merged by key" && crlf.write.includes("\r\n") && !/[^\r]\n/.test(crlf.write), "settings decision: a CRLF file is written back in CRLF", JSON.stringify(crlf.write));
     t.ok(decide("{ nope").outcome === "yours, not JSON", "settings decision: settings that are not JSON are left for someone to read", "");
     t.ok(decide("<<<<<<< yours\n{}\n").outcome === "STILL OPEN", "settings decision: markers an earlier run left are named first", "");
-}
+};
 
 // seed, skeleton, skip and template: the policies that never merge. What the project deleted stays
 // deleted, unless the run asked for an optional part by name.
-function layDownDecisionsKeepWhatIsThere(t) {
+exports.layDownDecisionsKeepWhatIsThere = function layDownDecisionsKeepWhatIsThere(t) {
     const policy = installPolicy();
     if (!policy) { t.skip(`lay-down decisions: ${SKIP}`); return; }
     const shipped = yes => ({ shippedBefore: () => yes });
@@ -283,15 +283,4 @@ function layDownDecisionsKeepWhatIsThere(t) {
         t.ok(got.outcome === outcome && got.bucket === bucket && got.write === write, `${name} decision: ${why}`, JSON.stringify(got));
     }
     t.ok(policy.decide("template", {}).silent === true, "template decision: counted in the summary, never printed as a line", "");
-}
-
-module.exports = [
-    manifestPoliciesAreReadInOrder,
-    mergeDecisionCoversEveryOutcome,
-    binaryDecisionFollowsTheBase,
-    unionDecisionMergesByRow,
-    noBaseDecisionsBringInWhatTheHarnessNeeds,
-    importDecisionAlwaysLeavesTheAgentsLine,
-    settingsDecisionReplacesOnlyTheHarnessHooks,
-    layDownDecisionsKeepWhatIsThere,
-];
+};

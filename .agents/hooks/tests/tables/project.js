@@ -9,7 +9,7 @@ const { withRoot, text } = require("../fixtures");
 
 // What every reader of project facts sees, from the texts of MEMORY.md and INTENT.md (null: no such
 // file). A label reads null when nothing gives it, "" when it is unanswered, and its value otherwise.
-function projectFactDecisions(t) {
+exports.projectFactDecisions = function projectFactDecisions(t) {
     const INTENT = text("# INTENT.md", "", "## Product", "", "**Acme Billing** invoices small firms monthly.", "", "## MVP stories", "");
     const rows = [
         // memory, intent, label, expected, why
@@ -61,13 +61,13 @@ function projectFactDecisions(t) {
     withRoot({ "MEMORY.md": text("- **Language:** C#") }, root => {
         t.ok(facts.readFactsAt(root).Language === "C#", "project facts: readFactsAt reads MEMORY.md at the root");
     });
-}
+};
 
 // The project-init gate. Exercised against a throwaway repo rather than this checkout, whose own
 // answer depends on whether the developer running the suite has created the marker file. How a line
 // is read is projectFactDecisions'; this is what the gate makes of the answer: which file it blames,
 // what it names as missing, and the marker.
-function initialisationGateAnswersEveryState(t) {
+exports.initialisationGateAnswersEveryState = function initialisationGateAnswersEveryState(t) {
     const init = require("../../../../scripts/check-initialised");
     const full = ["# Project memory", "", "- **Name:** Acme Billing", "- **Purpose:** Invoices customers monthly.",
         "- **Requirements:** jira:AB-1", "- **Unit type:** service", "- **Language:** C#",
@@ -112,13 +112,13 @@ function initialisationGateAnswersEveryState(t) {
         write(".skip-project-init", "");
         t.ok(init.check(dir).ok, "the marker file passes a clone with no MEMORY.md at all", init.check(dir).reason);
     });
-}
+};
 
 // The project-init skill writes MEMORY.md from a template of its own, which the installer's skeleton
 // and the gate never read. The labels are what every reader agrees on, so the template must list
 // exactly the facts scripts/project-facts.js holds, in the same order; its placeholders are the
 // skill's to word.
-function projectInitTemplateMatchesFacts(t) {
+exports.projectInitTemplateMatchesFacts = function projectInitTemplateMatchesFacts(t) {
     const skill = path.join(lib.checkout, ".agents", "skills", "project-init", "SKILL.md");
     if (!fs.existsSync(skill)) { t.skip("project-init template: no project-init skill here"); return; }
     const block = fs.readFileSync(skill, "utf8").match(/```md\r?\n\s*# Project memory[\s\S]*?```/);
@@ -129,10 +129,4 @@ function projectInitTemplateMatchesFacts(t) {
     t.ok(labels.join("|") === wanted.join("|"),
         "project-init: the template lists the facts scripts/project-facts.js holds, in order",
         `template: ${labels.join(", ")}\nfacts:    ${wanted.join(", ")}`);
-}
-
-module.exports = [
-    projectFactDecisions,
-    initialisationGateAnswersEveryState,
-    projectInitTemplateMatchesFacts,
-];
+};
