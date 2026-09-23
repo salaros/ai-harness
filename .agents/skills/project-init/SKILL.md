@@ -21,7 +21,7 @@ The template knows nothing about the project it hosts. This skill asks the devel
    | Write an `INTENT.md` with the product and its MVP stories? | INTENT.md | Only when none exists. Options: `yes` (recommended, first) or `no`. `no` is a complete answer: the harness never requires the file, and the rest of this skill runs as if it did not exist |
    | Which stories must the MVP deliver, and when is each done? | MVP stories | Only after `yes`. At least one story, each a title, a priority (`must`, `should`, `could`) and one or more *Done when* criteria, each a single verifiable statement. Ask for personas and the user journey as optional follow-ups |
    | Which language is this project's prose written in? | Prose language | A language name (`English`, `Russian`, `Ukrainian`). It governs everything the project authors -- the `docs/` chain, `CONTEXT.md`, `TODO.md`, this file's own values and the README Project section -- and the language you answer the developer in. The harness stays English whatever the answer: `AGENTS.md`, `docs/agents/` and every `SKILL.md` are merged from upstream, so a translation is overwritten or collides |
-   | Where do the requirements live? | Requirements | One or more sources, comma-separated: a repo-relative path that exists, a URL, or `jira:KEY-123`; `none yet` is allowed and means the `brd` skill runs next |
+   | Where do the requirements live? | Requirements | One or more sources, comma-separated: a repo-relative path that exists, a URL, or `jira:KEY-123`; `none yet` is allowed and means the `pdd` skill runs next for an idea still in question, or `brd` for a settled need |
    | What kind of unit is it? | Unit type | Options: `library`, `cli`, `service`, `microservices`, `monolith`, `frontend`. `service` is one deployable service; `microservices` is several services in this one repo, orchestrated together (Aspire for .NET), each with its own domain context |
    | Which language? | Language | One language (`C#`, `TypeScript`, `Python`) |
    | Which runtime and package manager? | Runtime / package manager | Version included (`.NET 9 / NuGet`, `Node 22 / pnpm`, `Python 3.13 / uv`) |
@@ -153,7 +153,7 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
    Done when `CONTEXT-MAP.md` exists and names `CONTEXT.md`. Skip this step for every other unit type.
 
-10. **Close the loop.** Ask the developer to commit (`git add -A`, then a commit such as `initialise <name>`). If Requirements was `none yet`, hand off to the `brd` skill; otherwise point out that the `business-analyst` agent can start the documentation chain from the requirements location now on record. The post-merge Git hook restores whatever `scripts/stacks.tsv` says for the changed manifests, so the row added in step 7 is all it needs.
+10. **Close the loop.** Ask the developer to commit (`git add -A`, then a commit such as `initialise <name>`). If Requirements was `none yet`, hand off to the `pdd` skill when the idea is still in question, or to `brd` when the need is settled; otherwise point out that the `business-analyst` agent can start the documentation chain from the requirements location now on record. The post-merge Git hook restores whatever `scripts/stacks.tsv` says for the changed manifests, so the row added in step 7 is all it needs.
 
 ## Report
 

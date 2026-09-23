@@ -4,8 +4,8 @@
 **Date:** 2026-09-23
 **Participant:** Yaroslav Zhmayev, maintainer of the harness
 **Interviewer:** Claude, running the `grilling` skill
-**Record:** transcript of the session
 **Context:** the maintainer asked to add TRD and RFC document types to the chain in `AGENTS.md`, and asked first to be told why that is a bad idea and what an ideal chain looks like.
+**Record:** transcript of the session
 
 ## The case put against it
 

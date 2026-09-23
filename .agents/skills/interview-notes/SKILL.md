@@ -55,4 +55,4 @@ Real names are allowed. Leave out anything the participant asked to keep off the
 - One conversation per file. A dump covering several is split, one file each.
 - No invented interviews: a role-played or simulated conversation is not evidence and is not recorded here.
 
-Some of the method here (one record per conversation, an addenda for what fits no question, blanks marked honestly, the market-guru flag) follows `asb-interview-debrief` from [asmartbear/asb-skills](https://github.com/asmartbear/asb-skills) (CC BY 4.0), and the list of what to capture follows `mom-test` from [wondelai/skills](https://github.com/wondelai/skills) (MIT).
+This skill is written for this repository and copies no text. Its method (one record per conversation, a section for what fits no question, blanks marked honestly, answers about "most people" flagged) is adapted from `asb-interview-debrief` by Jason Cohen, in [asmartbear/asb-skills](https://github.com/asmartbear/asb-skills), licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The list of what to capture follows `mom-test` from [wondelai/skills](https://github.com/wondelai/skills) (MIT).

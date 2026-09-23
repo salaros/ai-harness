@@ -84,4 +84,4 @@ After Marty Cagan's opportunity assessment (*Inspired*):
 - Every `OUT-n` has a number and a date, so the BRD's success factors can refine it.
 - A `No-go` is a result, not a failure: it saves the cost of every stage after it.
 
-Some of the structure here (the one-page assessment, and a verdict of pursue, defer or decline) follows `inspired-product` from [wondelai/skills](https://github.com/wondelai/skills) (MIT).
+This skill is written for this repository and copies no text. Its one-page assessment follows the one in `inspired-product` from [wondelai/skills](https://github.com/wondelai/skills) (MIT), whose verdicts of pursue, defer and decline become `Go`, `Parked` and `No-go` here.
