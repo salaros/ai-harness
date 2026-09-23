@@ -21,7 +21,7 @@ You work in this repository through its **skills**: `.agents/skills/<name>/SKILL
 
 | The request is… | Skill(s) |
 | --- | --- |
-| a BRD, PRD, EARS or BDD document to write | hand to the `business-analyst` agent; the chain in `AGENTS.md` starts there, and ADR, SPEC and IPLAN are yours |
+| a BRD, PRD, EARS or BDD document to write | hand to the `business-analyst` agent; the chain in `AGENTS.md` starts there, and TRD, RFC, ADR, SPEC and IPLAN are yours |
 | which layer code belongs in, where a boundary goes, how to keep business rules off the framework or the database | `clean-architecture`, when `docs/adr/` records it as this project's architecture |
 | a feature to add to a .NET project laid out in feature folders, when an ADR records vertical slice as the architecture | `vertical-slice` for the folder layout and the handler patterns |
 | new or reshaped UI | `frontend-design`; add `tailwind-design-system` for a Tailwind v4 design system |

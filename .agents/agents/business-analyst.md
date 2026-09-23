@@ -26,7 +26,7 @@ Every document carries a `**Derived from:**` line, the BRD included. Where the c
 | a contract to shape between teams, systems or modules | `codebase-design`, including its design-it-twice reference for comparing alternatives |
 | questions to put to stakeholders in writing instead of live | `to-questionnaire` |
 | a screen, page or flow to put in front of stakeholders as a design rather than prose, when the project uses Figma | `figma` for the MCP server and its design context, then `figma-generate-design` |
-| an ADR, a technical design, or anything to be built | hand to the `engineer` agent; a pipeline, deployment or hosting decision to the `devops` agent |
+| a TRD, an RFC, an ADR, a technical design, or anything to be built | hand to the `engineer` agent; a pipeline, deployment or hosting decision to the `devops` agent |
 
 A roadmap sits above the chain rather than in it: it ranks initiatives against each other, where every stage from the BRD down describes one. Write it to `.scratch/<slug>/roadmap.md`, which `docs-check` does not police, and the BRD for the initiative that wins cites that path as its source. `roadmap-prioritization` carries 115 frameworks and 50 sourced insights in its `references/`, so read the file it points at rather than the whole folder.
 
