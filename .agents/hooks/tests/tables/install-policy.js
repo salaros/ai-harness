@@ -284,3 +284,75 @@ exports.layDownDecisionsKeepWhatIsThere = function layDownDecisionsKeepWhatIsThe
     }
     t.ok(policy.decide("template", {}).silent === true, "template decision: counted in the summary, never printed as a line", "");
 };
+
+// `skills` was the one policy the seam did not answer for. CONTEXT.md listed it beside merge and
+// union as though it were decided here like the rest, while the installer collected the paths itself
+// and decided fifty lines' worth of folder in the caller. A skill is the unit a project installs --
+// it merges by name rather than by content, and one line of output stands for its several hundred
+// files -- so what the seam takes for it is the roster, not a path.
+exports.theSkillsPolicyDecidesAWholeRoster = function theSkillsPolicyDecidesAWholeRoster(t) {
+    const policy = installPolicy();
+    if (!policy) { t.skip(`skills roster: ${SKIP}`); return; }
+    if (!policy.decideRoster) { t.skip("skills roster: this install-policy decides paths only"); return; }
+
+    const S = ".agents/skills/";
+    // The upstream's side: a skill it ships and updates, one it ships unchanged, and the lock naming both.
+    const theirs = {
+        [`${S}mine/SKILL.md`]: "new\n",
+        [`${S}same/SKILL.md`]: "settled\n",
+        [`${S}same/run.sh`]: "#!/bin/sh\n",
+        "skills-lock.json": JSON.stringify({ skills: { mine: { source: "upstream" }, same: { source: "upstream" } } }),
+    };
+    // The target's: one file behind, one identical but checked out CRLF, and a skill of the project's
+    // own under a name the upstream does not ship.
+    const held = {
+        [`${S}mine/SKILL.md`]: "old\n",
+        [`${S}same/SKILL.md`]: "settled\r\n",
+        [`${S}same/run.sh`]: "#!/bin/sh\n",
+        "skills-lock.json": JSON.stringify({ skills: { ours: { source: "vendored" }, same: { source: "pinned elsewhere" } } }),
+    };
+    const roster = [
+        { file: ".claude/skills/mine", link: true, exec: false, mode: "120000" },
+        { file: `${S}mine/SKILL.md`, link: false, exec: false, mode: "100644" },
+        { file: `${S}same/SKILL.md`, link: false, exec: false, mode: "100644" },
+        { file: `${S}same/run.sh`, link: false, exec: true, mode: "100755" },
+        { file: `${S}ours/SKILL.md`, link: false, exec: false, mode: "100644" },
+    ];
+    const out = policy.decideRoster("skills", roster, {
+        exists: f => f in held,
+        theirs: f => (f in theirs ? theirs[f] : null),
+        held: f => (f in held ? Buffer.from(held[f]) : null),
+    });
+    const pick = f => out.find(e => e.file === f) || {};
+
+    t.ok(pick(".claude/skills/mine").mkdir === true && pick(".claude/skills/mine").link === undefined,
+        "skills roster: a per-skill link is left to relink, its folder made", JSON.stringify(pick(".claude/skills/mine")));
+    t.ok(pick(`${S}mine/SKILL.md`).write === "new\n" && pick(`${S}mine/SKILL.md`).silent === true,
+        "skills roster: a file behind the upstream is taken, without a line of its own", JSON.stringify(pick(`${S}mine/SKILL.md`)));
+    // Vendored files differ byte-for-byte on Windows, where Git checked them out with CRLF. Compared
+    // raw, every skill in the repo would report as updated on every run.
+    t.ok(!out.some(e => e.file === `${S}same/SKILL.md` && e.write !== undefined),
+        "skills roster: a file that differs only in its line endings is not rewritten", JSON.stringify(pick(`${S}same/SKILL.md`)));
+    t.ok(pick(`${S}same/run.sh`).exec === true, "skills roster: a script the skill runs keeps its executable bit", JSON.stringify(pick(`${S}same/run.sh`)));
+    t.ok(pick(`${S}ours/SKILL.md`).write === undefined, "skills roster: a skill the project vendored is never written over", JSON.stringify(pick(`${S}ours/SKILL.md`)));
+
+    const line = name => out.find(e => (e.file || "").startsWith(`${S}${name}  (`)) || {};
+    t.ok(line("mine").outcome === "updated" && line("mine").policy === "skills",
+        "skills roster: a skill is reported once, by name", JSON.stringify(line("mine")));
+    t.ok(line("same").outcome === "unchanged", "skills roster: only an untouched folder reads unchanged", JSON.stringify(line("same")));
+    t.ok(line("ours").outcome === "yours", "skills roster: a name the project already used stays the project's", JSON.stringify(line("ours")));
+
+    const lock = JSON.parse(out.find(e => e.file === "skills-lock.json").write);
+    t.ok(lock.skills.ours && lock.skills.mine, "skills roster: the lock is the union of both sides", JSON.stringify(lock));
+    t.ok(lock.skills.same.source === "pinned elsewhere", "skills roster: a skill the project pinned elsewhere keeps its source", JSON.stringify(lock));
+};
+
+// The per-path seam and the folder seam are separate questions, and asking the wrong one is a
+// mistake worth a sentence rather than a record with every key undefined.
+exports.aFolderPolicyIsNotAskedAboutOnePath = function aFolderPolicyIsNotAskedAboutOnePath(t) {
+    const policy = installPolicy();
+    if (!policy) { t.skip(`skills decide: ${SKIP}`); return; }
+    let why = null;
+    try { policy.decide("skills", { exists: false, theirs: "x" }, {}); } catch (e) { why = e.message; }
+    t.ok(why && why.includes("skills"), "skills decision: a policy decided for a folder is refused one path, by name", String(why));
+};

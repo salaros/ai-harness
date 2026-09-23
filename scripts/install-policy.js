@@ -5,6 +5,7 @@
 //   const policy = require("./install-policy");
 //   const { policy: name, asked } = policy.policyFor(rows, file, wants);
 //   const { outcome, bucket, write, silent } = policy.decide(name, facts, reads);
+//   const entries = policy.decideRoster(name, roster, reads);
 // `facts` is what the caller already knows about the path; `reads` holds the things a decision may
 // need and costs something to find out, called only when the decision gets that far:
 //   facts  exists     the target has something at the path
@@ -21,7 +22,18 @@
 // for a path nothing happened to), `write` the content to write when there is any, `silent`
 // when the path is counted in the summary but never printed as a line, and `notice` a sentence the
 // run prints before its summary, for a result someone has to finish by hand.
+//
+// One policy is decided for a folder rather than for a path: skills, where the unit a project
+// installs is the skill and one line of output stands for its several hundred files. decideRoster
+// takes every path the manifest gave that policy, each as the upstream's listing holds it
+// ({ file, link, exec }), and answers in plan entries, because a folder's answer is several paths
+// whose reporting differs between them. Its `reads` are the same kinds of thing by another shape,
+// one path at a time:
+//   reads  exists(file)   the target has something at the path
+//          theirs(file)   the upstream's content at the head: LF text, a Buffer, or null
+//          held(file)     the target's copy as bytes, or null when it has none
 const lib = require("./lib");
+const entry = require("./plan-entry");
 
 // ---------------------------------------------------------------- the manifest
 
@@ -315,10 +327,81 @@ const POLICIES = {
     template: () => ({ outcome: "template", bucket: "template", silent: true }),
 };
 
+// ---------------------------------------------------------------- deciding a whole folder
+
+const SKILLS = ".agents/skills/";
+const SKILLS_LOCK = "skills-lock.json";
+
+// Skills merge by name, not by content: the upstream's are added and updated, and a skill the
+// project vendored itself is never removed. skills-lock.json is the union, the project's entry
+// winning where both name the same skill, so a project that pinned a different source keeps it.
+function skills(roster, reads) {
+    const theirLock = JSON.parse(reads.theirs(SKILLS_LOCK) || '{"skills":{}}');
+    const ourBytes = reads.held(SKILLS_LOCK);
+    const ourLock = ourBytes === null ? { skills: {} } : JSON.parse(ourBytes.toString("utf8"));
+    ourLock.skills = ourLock.skills || {};
+    const mine = new Set(Object.keys(ourLock.skills));
+
+    const out = [];
+    // One line per skill, not per file. Outcome is decided across the whole folder: a skill counts as
+    // changed the moment any file in it did, and only an untouched folder reads "unchanged".
+    const outcomes = new Map();
+    const seen = name => outcomes.get(name) || outcomes.set(name, { added: 0, updated: 0, files: 0 }).get(name);
+    for (const { file, link, exec } of roster) {
+        // A skill link is relink's to make, once the directory it lives in exists: relink knows which
+        // skills this project actually has, where the upstream only knows its own.
+        if (link) { out.push(entry.folder(file, entry.quiet())); continue; }
+        if (!file.startsWith(SKILLS)) continue;
+        const name = file.slice(SKILLS.length).split("/")[0];
+        const tally = seen(name);
+        tally.files++;
+        const exists = reads.exists(file);
+        // A script the skill runs keeps its executable bit whoever owns the content, as a hook does.
+        if (exec && exists) out.push(entry.marked(file, entry.quiet()));
+        // A skill the project installed under a name the upstream also uses stays the project's.
+        if (mine.has(name) && !theirLock.skills[name]) { tally.yours = true; continue; }
+        const theirs = reads.theirs(file);
+        if (theirs === null) continue;
+        // A vendored file the project has not touched still differs byte-for-byte on Windows, where
+        // Git checked it out with CRLF. Compared raw, every skill would report as updated every run.
+        const held = exists ? reads.held(file) : null;
+        let write;
+        if (Buffer.isBuffer(theirs)) {
+            if (lib.sameContent(held, theirs)) continue;
+            write = theirs;
+        } else {
+            const ours = held === null ? null : held.toString("utf8");
+            if (ours !== null && lib.toLf(ours) === theirs) continue;
+            write = lib.asFound(theirs, ours !== null && lib.isCrlf(ours));
+        }
+        if (exists) tally.updated++; else tally.added++;
+        out.push(entry.written(file, write, entry.quiet(exists ? "merged" : "written"), { exec: exec && !exists }));
+    }
+    for (const [name, t] of [...outcomes].sort()) {
+        const what = t.yours ? "yours" : t.added ? "added" : t.updated ? "updated" : "unchanged";
+        out.push(entry.noted(`${SKILLS}${name}  (${t.files} file(s))`, entry.shown("skills", "100644", what)));
+    }
+    for (const [name, pinned] of Object.entries(theirLock.skills)) {
+        if (!ourLock.skills[name]) ourLock.skills[name] = pinned;
+    }
+    out.push(entry.written(SKILLS_LOCK, JSON.stringify(ourLock, null, 2) + "\n", entry.quiet()));
+    return out;
+}
+
+const ROSTER_POLICIES = { skills };
+
 function decide(policy, facts, reads = {}) {
+    if (ROSTER_POLICIES[policy]) throw new Error(`install-policy: "${policy}" is decided for a whole folder, so ask decideRoster for its roster`);
     const rule = POLICIES[policy];
     if (!rule) throw new Error(`install-policy: no policy named "${policy}"`);
     return rule(facts, reads);
 }
 
-module.exports = { policyFor, decide };
+// `roster` is every path the manifest gave this policy, as the upstream's listing holds it.
+function decideRoster(policy, roster, reads = {}) {
+    const rule = ROSTER_POLICIES[policy];
+    if (!rule) throw new Error(`install-policy: no policy named "${policy}" is decided for a whole folder`);
+    return rule(roster, reads);
+}
+
+module.exports = { policyFor, decide, decideRoster };

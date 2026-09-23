@@ -376,8 +376,6 @@ function settleDropped(text) {
 // one path, and what an entry may be is scripts/plan-entry.js: written, linked, marked, folder,
 // noted or heading, each reported by shown(...) or quiet(...). Nothing here builds an entry by hand,
 // so the rules are the ones that module enforces rather than the ones this comment used to list.
-const SKILLS = ".agents/skills/";
-
 // `previous` is the target's harness-lock.json, or null; `stamp` is what the receipt records about
 // this run besides the upstream commit, passed in so a plan is the same whenever it is made.
 function plan({ upstream, target, rows, head, ref, previous, options, stamp = {} }) {
@@ -445,10 +443,11 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
             return add(bit ? entry.marked(file, as) : entry.noted(file, as));
         };
 
+        // Skills are decided for the folder rather than for the path: a skill merges by name, and
+        // one line of output stands for its several hundred files. Collected here and handed to the
+        // seam below, links and all, so this loop leaks around its own policy seam nowhere.
+        if (policy === "skills") { skills.push(row); continue; }
         if (isLink && policy !== "template") {
-            // A skill link is relink's to make, once the directory it lives in exists: it knows which
-            // skills this project actually has, where the upstream only knows its own.
-            if (policy === "skills") { add(entry.folder(file, entry.quiet())); continue; }
             const to = theirs.trim();
             const found = target.lstat(file);
             // Something of the project's in the way -- or, in a repo whose harness predates the lock
@@ -460,9 +459,6 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
             else line("merged", "merged", { link: to, replace: true });
             continue;
         }
-        // Reported one line per skill by planSkills below, not one per reference file: a skill is the
-        // unit a project installs, and its files run to several hundred.
-        if (policy === "skills") { skills.push(row); continue; }
         const { outcome, bucket, notice, silent, ...act } = installPolicy.decide(policy,
             { exists, theirs, hasBase: base !== null, adopt: options.adopt, asked }, {
                 held: () => Buffer.isBuffer(theirs) ? target.bytes(file) : target.read(file),
@@ -492,7 +488,13 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
     }
 
     add(entry.heading("skills, merged by name"));
-    entries.push(...planSkills(atHead, target, skills));
+    // Everything the roster is decided from, read through the two views the run already holds: the
+    // policy reads nothing itself, as it reads nothing for one path.
+    entries.push(...installPolicy.decideRoster("skills", skills, {
+        exists: file => target.exists(file),
+        theirs: file => contentOf(atHead, file),
+        held: file => (target.isFile(file) ? target.bytes(file) : null),
+    }));
 
     // A list of strings on one line, as Prettier writes it: a project formatting its JSON with it
     // would otherwise reject the receipt at every push, and the next update would undo the fix.
@@ -500,59 +502,6 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
         .replace(/\[\n\s+("[^"\n]*"(?:,\n\s+"[^"\n]*")*)\n\s*\]/g, (all, items) => `[${items.split(/,\n\s+/).join(", ")}]`);
     add(entry.written(LOCK, receipt + "\n", entry.quiet()));
     return { entries, notices, base };
-}
-
-// Skills merge by name, not by content: the upstream's are added and updated, and a skill the
-// project vendored itself is never removed. skills-lock.json is the union, the project's entry
-// winning where both name the same skill, so a project that pinned a different source keeps it.
-function planSkills(atHead, target, files) {
-    const LOCKFILE = "skills-lock.json";
-    const theirLock = JSON.parse(atHead.read(LOCKFILE) || '{"skills":{}}');
-    const ourLock = target.isFile(LOCKFILE) ? JSON.parse(target.read(LOCKFILE)) : { skills: {} };
-    ourLock.skills = ourLock.skills || {};
-    const mine = new Set(Object.keys(ourLock.skills));
-
-    const out = [];
-    // One line per skill, not per file. Outcome is decided across the whole folder: a skill counts as
-    // changed the moment any file in it did, and only an untouched folder reads "unchanged".
-    const outcomes = new Map();
-    const seen = name => outcomes.get(name) || outcomes.set(name, { added: 0, updated: 0, files: 0 }).get(name);
-    for (const { file, exec } of files) {
-        if (!file.startsWith(SKILLS)) continue;                 // .claude/skills links are rebuilt, not copied
-        const name = file.slice(SKILLS.length).split("/")[0];
-        const tally = seen(name);
-        tally.files++;
-        const exists = target.exists(file);
-        // A script the skill runs keeps its executable bit whoever owns the content, as a hook does.
-        if (exec && exists) out.push(entry.marked(file, entry.quiet()));
-        // A skill the project installed under a name the upstream also uses stays the project's.
-        if (mine.has(name) && !theirLock.skills[name]) { tally.yours = true; continue; }
-        const text = contentOf(atHead, file);
-        if (text === null) continue;
-        // A vendored file the project has not touched still differs byte-for-byte on Windows, where
-        // Git checked it out with CRLF. Compared raw, every skill would report as updated every run.
-        const held = exists ? target.bytes(file) : null;
-        let write;
-        if (Buffer.isBuffer(text)) {
-            if (lib.sameContent(held, text)) continue;
-            write = text;
-        } else {
-            const ourText = held === null ? null : held.toString("utf8");
-            if (ourText !== null && lib.toLf(ourText) === text) continue;
-            write = lib.asFound(text, ourText !== null && lib.isCrlf(ourText));
-        }
-        if (exists) tally.updated++; else tally.added++;
-        out.push(entry.written(file, write, entry.quiet(exists ? "merged" : "written"), { exec: exec && !exists }));
-    }
-    for (const [name, t] of [...outcomes].sort()) {
-        const what = t.yours ? "yours" : t.added ? "added" : t.updated ? "updated" : "unchanged";
-        out.push(entry.noted(`${SKILLS}${name}  (${t.files} file(s))`, entry.shown("skills", "100644", what)));
-    }
-    for (const [name, entry] of Object.entries(theirLock.skills)) {
-        if (!ourLock.skills[name]) ourLock.skills[name] = entry;
-    }
-    out.push(entry.written(LOCKFILE, JSON.stringify(ourLock, null, 2) + "\n", entry.quiet()));
-    return out;
 }
 
 // ---------------------------------------------------------------- applying it
