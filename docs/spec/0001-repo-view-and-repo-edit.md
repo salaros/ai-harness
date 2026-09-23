@@ -10,7 +10,7 @@ ADR-0001 settles where the seam goes. This document designs the two modules.
 
 **Goals:** any target shape becomes a decision-table row; one read seam for the whole repo; every target write in one implementation with a substitutable adapter; the run reports what was done rather than what was planned.
 
-**Non-goals for v1:** the spawned finishers (`githooks-init`, `skills.js relink`, `skills.js notices`) stay processes and keep their own `fs` calls — `relink` is candidate 6 of the review. `threeWay` keeps its temp directory and its `git merge-file`. The named constructors for a plan entry are candidate 3; this document states only what `apply()` requires of an entry.
+**Non-goals for v1:** the spawned finishers (`githooks-init`, `skills.js relink`, `skills.js notices`) stay processes. `threeWay` keeps its temp directory and its `git merge-file`; ADR-0002 records why it stays there rather than going behind a seam. Two of this list's original entries have since been done and are no longer non-goals: `relink` writes through `worktreeEdit` alone, and the named constructors for a plan entry live in `scripts/plan-entry.js`, so an entry's shape is that module's to state and this one says only what `apply()` requires of one.
 
 ## The read interface
 
@@ -39,7 +39,7 @@ ADR-0001 settles where the seam goes. This document designs the two modules.
 
 ### R-3 What it replaces
 
-`fsTarget()` and `gitUpstream()` in `scripts/update-harness.js`, and `memoryTarget()` and `memoryUpstream()` in `.agents/hooks/tests/tables/installer.js`, are deleted. `hasCommit(sha)` and `history(file)` become a two-function history reader, the only place left that asks the commit graph a question.
+`fsTarget()` in `scripts/update-harness.js` and `memoryTarget()` in `.agents/hooks/tests/tables/installer.js` are deleted: the target is read through this view. `gitUpstream()` and `memoryUpstream()` stay, narrowed to what a view cannot answer on its own -- which commit is which. Each keeps `at(sha)`, vending `repoView.commit` and `repoView.fromMap` rather than reading trees itself, beside `has(sha)` and `history(file)`, the two questions that are about the commit graph rather than about a tree.
 
 ## The write interface
 
@@ -57,13 +57,13 @@ ADR-0001 settles where the seam goes. This document designs the two modules.
 
 ### W-2 Ordering is the edit's job
 
-`apply` creates a parent directory before writing into it, removes what stands in the way before creating a symlink, and marks a mode after the content it applies to exists. A caller orders entries for readability, never to work around the filesystem.
+`apply` creates a parent directory before writing into it, removes what stands in the way before creating a symlink, marks a mode after the content it applies to exists, and performs a `move` before anything else. A caller orders entries for readability, never for correctness.
 
-`move` is the exception, and the only one: it is about a path that is about to stop existing, so an entry that links something at where it came from has to come after it. A caller that gets this wrong is refused rather than obeyed: the link finds the project's folder still standing in its way and reports `EEXIST`, leaving it exactly as it was, and the move then goes through. What an ordering mistake costs is the link, and it is reported; the promise the rule was really making, that no ordering mistake silently destroys work, still holds.
+`move` is why that last clause is not free. A move empties a path, so an entry linking something at where it came from reads naturally after it -- and read in that order the link went first, took the project's own work out of its way, and the move then carried the link off to the destination, with both entries reporting `done`. The order is the edit's to get right, so the edit sorts moves to the front rather than asking a caller to. The one thing this costs, and the only ordering fact a caller has to know: a move's source is a path already in the tree, never one an earlier entry in the same plan writes.
 
 ### W-3 The adapters
 
-`worktreeEdit(root)` writes with `fs` and marks with `fs.chmodSync` followed by `git add --chmod=+x`, as `carryMode` does today. `mapEdit(files)` applies the same entries to a map and exposes the resulting tree, so a check asserts on files rather than on a directory.
+`worktreeEdit(root)` writes with `fs` and marks with `fs.chmodSync` followed by `git add --chmod=+x`, as `carryMode` does today. A `move` is `fs.renameSync`, and then `git add` when the source was one Git already tracked: the rename is the filesystem's but its record is Git's, and an index still naming the old path contradicts the disk until somebody says otherwise. The destination is offered to Git first and alone, because `git add` given both paths stages the source's deletion before it fails on the destination; if Git refuses it the rename goes back, so a refusal leaves the repository as it was found. A source nothing tracked leaves nothing to correct and a root with no index has nothing to keep in step, so neither is staged and neither is an error. `mapEdit(files)` applies the same entries to a map and exposes the resulting tree, so a check asserts on files rather than on a directory.
 
 ### W-4 A mark that is already correct is not a write
 
