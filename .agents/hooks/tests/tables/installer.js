@@ -116,9 +116,9 @@ exports.installPlanCoversEveryCase = function installPlanCoversEveryCase(t) {
     is(pick(fresh, ".githooks/pre-commit"), { outcome: "written", bucket: "written", write: "hook v2\n", exec: true }, "a first install writes a hook, executable");
     is(pick(fresh, "src/README.md"), { outcome: "created", bucket: "seeded", write: "src\n" }, "a seed file is created when absent");
     is(pick(fresh, "README.md"), { outcome: "absent", bucket: null, write: undefined }, "a skipped file the target lacks is named, not written");
-    is(pick(fresh, "tests/fixtures/x.md"), { outcome: "template", bucket: "template", silent: true, write: undefined }, "the upstream's own files are never installed");
-    is(pick(fresh, "tools/docs-site/astro.mjs"), { outcome: "template", write: undefined }, "an optional part nobody asked for is not installed");
-    is(pick(fresh, ".claude/agents"), { outcome: "written", link: ".agents/agents", replace: undefined }, "a link is planned as a link");
+    is(pick(fresh, "tests/fixtures/x.md"), { bucket: "template", silent: true, write: undefined }, "the upstream's own files are never installed");
+    is(pick(fresh, "tools/docs-site/astro.mjs"), { bucket: "template", silent: true, write: undefined }, "an optional part nobody asked for is not installed");
+    is(pick(fresh, ".claude/agents"), { outcome: "written", link: ".agents/agents", replace: false }, "a link is planned as a link");
     is(pick(fresh, ".claude/skills/a"), { mkdir: true, link: undefined }, "a per-skill link is left to relink, its folder made");
     is(pick(fresh, ".agents/skills/a/SKILL.md"), { bucket: "written", write: "skill a\n", silent: true }, "a skill's files are written without a line each");
     is(pick(fresh, ".agents/skills/a/run.sh"), { exec: true }, "a skill's script lands executable");
@@ -128,6 +128,13 @@ exports.installPlanCoversEveryCase = function installPlanCoversEveryCase(t) {
     const receipt = JSON.parse(pick(fresh, "harness-lock.json").write || "{}");
     t.ok(receipt.commit === "c2" && receipt.ref === "master" && receipt.installer === "test", "install plan: the receipt records the upstream commit and the run", JSON.stringify(receipt));
     t.ok(fresh.base === null && fresh.notices.length === 0, "install plan: a first install has no base and nothing to warn about", fresh.notices.join("\n"));
+    // What plan-entry.js promises, checked against a whole plan rather than a constructed entry: an
+    // install is halfway through somebody's repository by the time apply() reaches the line it cannot
+    // print, so the plan is wrong before it is applied or it is not wrong at all.
+    const malformed = fresh.entries.filter(e => !e.phase && !e.silent
+        && !(typeof e.policy === "string" && typeof e.mode === "string" && typeof e.outcome === "string"));
+    t.ok(!malformed.length, "install plan: every entry that is printed carries the columns it prints", malformed.map(show).join("\n"));
+    t.ok(!fresh.entries.some(e => !e.phase && !e.file), "install plan: every entry that is not a heading is about a path", "");
 
     const target = {
         ".githooks/pre-commit": "hook v1\n",

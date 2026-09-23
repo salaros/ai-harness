@@ -137,4 +137,6 @@ function worktreeEdit(root) {
     };
 }
 
-module.exports = { worktreeEdit, mapEdit };
+// `kindOf` is exported for the plan's entries, which are built to be read by it: one name per
+// kind across the two, checked rather than kept in step by hand.
+module.exports = { worktreeEdit, mapEdit, kindOf: work };

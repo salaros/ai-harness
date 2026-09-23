@@ -5,6 +5,7 @@
 //   text("# TODO", "", "- [ ] ...")                        lines, newline-terminated
 //   installer()                                            the installer module, or null
 //   installPolicy()                                        scripts/install-policy.js, or null
+//   planEntry()                                            scripts/plan-entry.js, or null
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -31,5 +32,8 @@ const installer = () => fs.existsSync(INSTALLER) ? require(INSTALLER) : null;
 // The installer's policy decisions, the upstream's own for the same reason.
 const INSTALL_POLICY = path.join(__dirname, "..", "..", "..", "scripts", "install-policy.js");
 const installPolicy = () => fs.existsSync(INSTALL_POLICY) ? require(INSTALL_POLICY) : null;
+// The plan's entries, the upstream's own for the same reason.
+const PLAN_ENTRY = path.join(__dirname, "..", "..", "..", "scripts", "plan-entry.js");
+const planEntry = () => fs.existsSync(PLAN_ENTRY) ? require(PLAN_ENTRY) : null;
 
-module.exports = { withRoot, text, installer, INSTALLER, installPolicy };
+module.exports = { withRoot, text, installer, INSTALLER, installPolicy, planEntry };

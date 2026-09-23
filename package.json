@@ -12,6 +12,7 @@
     "scripts/project-facts.js",
     "scripts/repo-view.js",
     "scripts/repo-edit.js",
+    "scripts/plan-entry.js",
     "README.md",
     "LICENSE"
   ],

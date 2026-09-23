@@ -36,6 +36,7 @@ const projectFacts = require("./project-facts");
 const repoView = require("./repo-view");
 const repoEdit = require("./repo-edit");
 const installPolicy = require("./install-policy");
+const entry = require("./plan-entry");
 
 const TEMPLATE = "https://github.com/salaros/ai-harness.git";
 const LOCK = "harness-lock.json";
@@ -372,14 +373,9 @@ function settleDropped(text) {
 // someone else's repository, and deciding and writing in the same loop left every branch but the
 // per-file decision reachable only through a git checkout and a temp tree. A dry run prints the plan;
 // a real run applies it. Each entry is one line of the run's output and at most one thing done to
-// one path:
-//   file, policy, mode, outcome, bucket   what the run prints, and the summary list the path joins
-//   write                                 the path's new content, text or a Buffer
-//   link, replace                         a symlink to `link`, replacing what is there when `replace`
-//   exec                                  mark the path executable, whether or not it is written
-//   mkdir                                 create the path's folder and nothing else
-//   silent                                counted in the summary, never printed as a line
-// and a { phase } entry heads each section of the output.
+// one path, and what an entry may be is scripts/plan-entry.js: written, linked, marked, folder,
+// noted or heading, each reported by shown(...) or quiet(...). Nothing here builds an entry by hand,
+// so the rules are the ones that module enforces rather than the ones this comment used to list.
 const SKILLS = ".agents/skills/";
 
 // `previous` is the target's harness-lock.json, or null; `stamp` is what the receipt records about
@@ -425,27 +421,34 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
     // the mode column says.
     const files = atHead.modes();
     const skills = [];
-    add({ phase: `${files.length} path(s) in ${ref} at ${head.slice(0, 8)}` });
-    for (const entry of files) {
-        const { file, link: isLink, exec, mode: m } = entry;
+    add(entry.heading(`${files.length} path(s) in ${ref} at ${head.slice(0, 8)}`));
+    for (const row of files) {
+        const { file, link: isLink, exec, mode: m } = row;
         const { policy, asked } = installPolicy.policyFor(rows, file, options.wants);
         const theirs = contentOf(atHead, file);
         // Git listed the path a moment ago, so failing to read it is the checkout being unhappy
         // rather than the file being absent. Said out loud: skipped quietly, the run reports a clean
         // install of a harness missing whichever files the reader was never told about.
-        if (theirs === null) { add({ file, policy, mode: m, outcome: "UNREADABLE", bucket: "unreadable" }); continue; }
+        if (theirs === null) { add(entry.noted(file, entry.shown(policy, m, "UNREADABLE", "unreadable"))); continue; }
         const exists = target.exists(file);
         // The executable bit is not the project's content, so a file kept for its content still has
         // its mode corrected. Git runs a hook only if it is executable and says nothing when it is
         // not, so a hook kept at 100644 by an install that had no merge base looks installed and
         // gates nothing at all -- the failure the mode column exists to catch.
-        const line = (outcome, bucket, act = {}) =>
-            add({ file, policy, mode: m, outcome, bucket, ...act, exec: exec && (exists || act.write !== undefined) });
+        const line = (outcome, bucket, act = {}, silent = false) => {
+            // The upstream's own files are counted and never printed: sixty of them are the suite's
+            // fixtures, and the rule is worth a sentence in the summary rather than sixty lines.
+            const as = silent ? entry.quiet(bucket) : entry.shown(policy, m, outcome, bucket);
+            if (act.link !== undefined) return add(entry.linked(file, act.link, as, { replace: !!act.replace }));
+            const bit = exec && (exists || act.write !== undefined);
+            if (act.write !== undefined) return add(entry.written(file, act.write, as, { exec: bit }));
+            return add(bit ? entry.marked(file, as) : entry.noted(file, as));
+        };
 
         if (isLink && policy !== "template") {
             // A skill link is relink's to make, once the directory it lives in exists: it knows which
             // skills this project actually has, where the upstream only knows its own.
-            if (policy === "skills") { add({ file, mkdir: true, silent: true }); continue; }
+            if (policy === "skills") { add(entry.folder(file, entry.quiet())); continue; }
             const to = theirs.trim();
             const found = target.lstat(file);
             // Something of the project's in the way -- or, in a repo whose harness predates the lock
@@ -459,8 +462,8 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
         }
         // Reported one line per skill by planSkills below, not one per reference file: a skill is the
         // unit a project installs, and its files run to several hundred.
-        if (policy === "skills") { skills.push(entry); continue; }
-        const { outcome, bucket, notice, ...act } = installPolicy.decide(policy,
+        if (policy === "skills") { skills.push(row); continue; }
+        const { outcome, bucket, notice, silent, ...act } = installPolicy.decide(policy,
             { exists, theirs, hasBase: base !== null, adopt: options.adopt, asked }, {
                 held: () => Buffer.isBuffer(theirs) ? target.bytes(file) : target.read(file),
                 base: () => contentOf(upstream.at(base), file),
@@ -471,10 +474,10 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
                 merge: threeWay,
             });
         if (notice) notices.push(`${file}: ${notice}`);
-        line(outcome, bucket, act);
+        line(outcome, bucket, act, silent);
     }
 
-    add({ phase: "skeletons a project starts with" });
+    add(entry.heading("skeletons a project starts with"));
     const hasIntent = target.exists(projectFacts.INTENT);
     // The receipt lists the skeletons its run knew, so one missing on an update is one the project
     // deleted, and it stays deleted; a skeleton added since still arrives. A receipt from before the
@@ -482,18 +485,20 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
     const known = new Set(previous && base !== null ? previous.skeletons || Object.keys(SKELETONS) : []);
     for (const [file, lines] of Object.entries(SKELETONS)) {
         const theirs = skeletonLines(file, lines, hasIntent).join("\n");
-        const decision = installPolicy.decide("skeleton", { exists: target.exists(file), theirs, asked: false }, { shippedBefore: () => known.has(file) });
-        add({ file, policy: "seed", mode: "100644", ...decision });
+        const { outcome, bucket, write } = installPolicy.decide("skeleton",
+            { exists: target.exists(file), theirs, asked: false }, { shippedBefore: () => known.has(file) });
+        const as = entry.shown("seed", "100644", outcome, bucket);
+        add(write === undefined ? entry.noted(file, as) : entry.written(file, write, as));
     }
 
-    add({ phase: "skills, merged by name" });
+    add(entry.heading("skills, merged by name"));
     entries.push(...planSkills(atHead, target, skills));
 
     // A list of strings on one line, as Prettier writes it: a project formatting its JSON with it
     // would otherwise reject the receipt at every push, and the next update would undo the fix.
     const receipt = JSON.stringify({ template: TEMPLATE, ref, commit: head, ...stamp, skeletons: Object.keys(SKELETONS) }, null, 2)
         .replace(/\[\n\s+("[^"\n]*"(?:,\n\s+"[^"\n]*")*)\n\s*\]/g, (all, items) => `[${items.split(/,\n\s+/).join(", ")}]`);
-    add({ file: LOCK, silent: true, write: receipt + "\n" });
+    add(entry.written(LOCK, receipt + "\n", entry.quiet()));
     return { entries, notices, base };
 }
 
@@ -519,7 +524,7 @@ function planSkills(atHead, target, files) {
         tally.files++;
         const exists = target.exists(file);
         // A script the skill runs keeps its executable bit whoever owns the content, as a hook does.
-        if (exec && exists) out.push({ file, silent: true, exec: true });
+        if (exec && exists) out.push(entry.marked(file, entry.quiet()));
         // A skill the project installed under a name the upstream also uses stays the project's.
         if (mine.has(name) && !theirLock.skills[name]) { tally.yours = true; continue; }
         const text = contentOf(atHead, file);
@@ -537,16 +542,16 @@ function planSkills(atHead, target, files) {
             write = lib.asFound(text, ourText !== null && lib.isCrlf(ourText));
         }
         if (exists) tally.updated++; else tally.added++;
-        out.push({ file, silent: true, write, bucket: exists ? "merged" : "written", exec: exec && !exists });
+        out.push(entry.written(file, write, entry.quiet(exists ? "merged" : "written"), { exec: exec && !exists }));
     }
     for (const [name, t] of [...outcomes].sort()) {
         const what = t.yours ? "yours" : t.added ? "added" : t.updated ? "updated" : "unchanged";
-        out.push({ file: `${SKILLS}${name}  (${t.files} file(s))`, policy: "skills", mode: "100644", outcome: what, bucket: null });
+        out.push(entry.noted(`${SKILLS}${name}  (${t.files} file(s))`, entry.shown("skills", "100644", what)));
     }
     for (const [name, entry] of Object.entries(theirLock.skills)) {
         if (!ourLock.skills[name]) ourLock.skills[name] = entry;
     }
-    out.push({ file: LOCKFILE, silent: true, write: JSON.stringify(ourLock, null, 2) + "\n" });
+    out.push(entry.written(LOCKFILE, JSON.stringify(ourLock, null, 2) + "\n", entry.quiet()));
     return out;
 }
 
@@ -568,7 +573,7 @@ function apply(entries, root, options) {
     const edit = repoEdit.worktreeEdit(root);
     for (const e of entries) {
         if (e.phase) { if (!options.quiet) say(`\n${e.phase}`); continue; }
-        let shown = e;
+        let actual = e;
         if (!options.dryRun) {
             const [result] = edit.apply([e]);
             // The edit reports; the policy decides. A symlink this platform will not make means the
@@ -576,11 +581,12 @@ function apply(entries, root, options) {
             // run's to choose -- the edit says only that the link is not there and why.
             if (result && !result.done) {
                 say(result.why);
-                if (result.kind === "link") shown = { ...e, outcome: "yours", bucket: "kept" };
+                if (result.kind === "link") actual = entry.turnedOut(e, "yours", "kept");
             }
         }
-        if (!shown.silent && !options.quiet) say(`  ${shown.policy.padEnd(9)}${shown.mode}  ${shown.outcome.padEnd(12)}${shown.file}`);
-        done.push(shown);
+        const line = entry.describe(actual);
+        if (line && !options.quiet) say(line);
+        done.push(actual);
     }
     return done;
 }
