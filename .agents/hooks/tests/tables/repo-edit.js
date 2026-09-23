@@ -152,3 +152,44 @@ exports.repoEditClearsALinksWay = function repoEditClearsALinksWay(t) {
         "repo edit: a map answers the same, so the case needs no platform that has symlinks",
         JSON.stringify(map.view().lstat(".claude/agents")));
 };
+
+// A skill a project keeps under .claude/skills and nowhere else is invisible to every other agent
+// harness in the clone, and the harness's answer is to move it into .agents/skills and link back.
+// Which is a fourth thing an install does to a repository: it relocates what is already there,
+// rather than writing something new. The destination is the entry's path, because that is what
+// exists afterwards; a move onto something already there is refused rather than performed, since
+// the whole point is that nothing is lost.
+exports.repoEditMovesWhatIsAlreadyThere = function repoEditMovesWhatIsAlreadyThere(t) {
+    if (repoEdit.kindOf({ file: "a", move: "b" }) !== "move") { t.skip("repo edit: this scripts/repo-edit.js does not move"); return; }
+
+    const edit = repoEdit.mapEdit({
+        ".claude/skills/mine/SKILL.md": "mine\n",
+        ".claude/skills/mine/run.sh": { text: "run\n", exec: true },
+        ".agents/skills/theirs/SKILL.md": "theirs\n",
+    });
+    const [moved] = edit.apply([{ file: ".agents/skills/mine", move: ".claude/skills/mine" }]);
+    t.ok(moved.done && moved.kind === "move", "repo edit: a move is one result about the path it made", JSON.stringify(moved));
+    t.ok(edit.view().read(".agents/skills/mine/SKILL.md") === "mine\n",
+        "repo edit: a folder arrives whole, every file under it", JSON.stringify(edit.view().list(".agents/skills/mine")));
+    t.ok(!edit.view().exists(".claude/skills/mine"), "repo edit: and is gone from where it was", JSON.stringify(edit.view().list(".claude/skills")));
+    t.ok(edit.view().modes().some(r => r.file === ".agents/skills/mine/run.sh" && r.exec),
+        "repo edit: a script that arrived executable is still executable", JSON.stringify(edit.view().modes().map(r => r.file + " " + r.mode)));
+
+    const onto = repoEdit.mapEdit({ ".claude/skills/mine/SKILL.md": "mine\n", ".agents/skills/mine/SKILL.md": "theirs\n" });
+    const [refused] = onto.apply([{ file: ".agents/skills/mine", move: ".claude/skills/mine" }]);
+    t.ok(!refused.done && /already/.test(refused.why || ""), "repo edit: a move onto something already there is refused", JSON.stringify(refused));
+    t.ok(onto.view().read(".agents/skills/mine/SKILL.md") === "theirs\n" && onto.view().exists(".claude/skills/mine"),
+        "repo edit: and neither side is touched", JSON.stringify(onto.view().list("")));
+
+    const missing = repoEdit.mapEdit({});
+    const [nothing] = missing.apply([{ file: ".agents/skills/mine", move: ".claude/skills/mine" }]);
+    t.ok(!nothing.done && /nothing/.test(nothing.why || ""), "repo edit: a move of nothing says so rather than throwing", JSON.stringify(nothing));
+
+    // The same on a real tree, which is where a rename crosses a filesystem rather than a map.
+    withRoot({ ".claude/skills/mine/SKILL.md": "mine\n" }, root => {
+        const disk = repoEdit.worktreeEdit(root);
+        const [r] = disk.apply([{ file: ".agents/skills/mine", move: ".claude/skills/mine" }]);
+        t.ok(r.done && disk.view().read(".agents/skills/mine/SKILL.md") === "mine\n" && !disk.view().exists(".claude/skills/mine"),
+            "repo edit: a move on disk relocates the folder, parent made for it", `${JSON.stringify(r)} ${JSON.stringify(disk.view().list(".agents/skills"))}`);
+    });
+};

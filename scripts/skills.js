@@ -236,31 +236,63 @@ function pointsAt(dir, target, root) {
 // without anyone remembering to create the link. Directories are discovered rather than listed:
 // whichever harnesses this clone wires up, the ones with a skills/ folder are the ones that want
 // links. `root` is needed only to read an absolute link target back as a repo-relative path.
-//   { entries, kept, whole, copies, dangling }: repo-edit entries, then the paths each note is about
+//   { entries, kept, whole, copies, dangling, adopted }: repo-edit entries, then the paths each
+//   note is about
 function relinkPlan(view, root = null) {
-    const installed = readRoster(view).skills.map(s => s.name);
-    const plan = { entries: [], kept: 0, whole: [], copies: [], dangling: [] };
+    const plan = { entries: [], kept: 0, whole: [], copies: [], dangling: [], adopted: [] };
     const linkTo = (dir, name, replace) => plan.entries.push({
         file: `${dir}/${name}`, link: path.posix.relative(dir, `${SKILLS}/${name}`), replace,
     });
+    // Which folders are looked in at all, decided once: whichever agent harnesses this clone wires
+    // up, the ones with a skills/ folder are the ones that want links, and a folder that is itself
+    // one link to the skills folder already sees everything. Reading through such a link would list
+    // the skills themselves, which are directories rather than links, and the loop below would call
+    // every one of them a copy and then try to link it into its own folder. .claude is this form;
+    // the per-skill path stays for a harness that wants one link each.
+    const folders = [];
     for (const top of view.list("")) {
         if (top === ".agents" || top === ".git") continue;
         const dir = `${top}/skills`;
         if (!view.exists(dir)) continue;
-        // A harness whose skills/ is itself a link to .agents/skills already sees every skill,
-        // including one written by hand, and needs no per-skill link at all. Reading through it would
-        // list the skills themselves, which are directories rather than links: the loop below would
-        // call all of them copies and then try to link them into their own folder. .claude is this
-        // form; the per-skill path stays for a harness that wants one link each.
         if ((view.lstat(dir) || {}).link) { plan.whole.push(dir); continue; }
+        folders.push(dir);
+    }
+
+    // Adoption is decided before any link is planned, because a skill moving into the skills folder
+    // is a skill every other harness folder then wants a link to -- and one of those folders may
+    // already have been walked by the time the move is found. A skill a harness folder has and the
+    // skills folder does not is how a repo that vendored its skills the `npx skills` way arrives:
+    // real folders under .claude/skills and nothing under .agents/skills, invisible to every other
+    // harness in the clone. It moves to the one home they all read. A folder with no SKILL.md is not
+    // a skill and is somebody else's business, and the first folder to claim a name is the one that
+    // moves: a second copy of it elsewhere stays a copy for the reader to settle.
+    const adopting = new Map();
+    for (const dir of folders) {
+        for (const name of view.list(dir)) {
+            const at = `${dir}/${name}`;
+            if ((view.lstat(at) || {}).link || view.isFile(at)) continue;
+            if (view.exists(`${SKILLS}/${name}`) || adopting.has(name)) continue;
+            if (!view.isFile(`${at}/SKILL.md`)) continue;
+            adopting.set(name, at);
+            plan.entries.push({ file: `${SKILLS}/${name}`, move: at });
+            plan.adopted.push(at);
+        }
+    }
+
+    const installed = [...readRoster(view).skills.map(s => s.name), ...adopting.keys()];
+    for (const dir of folders) {
         const held = new Set(view.list(dir));
         for (const name of held) {
             const at = `${dir}/${name}`;
             const target = (view.lstat(at) || {}).link;
             if (!target) {
+                if (view.isFile(at)) continue;                              // a plain file, not a skill
+                // Moving out from under this very path, decided above: the link that replaces it is
+                // planned by the pass below, after the move.
+                if (adopting.get(name) === at) continue;
                 // A folder someone copied a skill into rather than linked. Named for the reader to
                 // delete: overwriting it would throw away whatever they changed in it.
-                if (!view.isFile(at) && view.exists(`${SKILLS}/${name}`)) plan.copies.push(at);
+                if (view.exists(`${SKILLS}/${name}`) || adopting.has(name)) plan.copies.push(at);
                 continue;
             }
             const points = pointsAt(dir, target, root);
@@ -272,7 +304,11 @@ function relinkPlan(view, root = null) {
             if (target.split(path.sep).join("/") === want) { plan.kept++; continue; }
             linkTo(dir, path.posix.basename(points), true);
         }
-        for (const name of installed) if (!held.has(name)) linkTo(dir, name, false);
+        // Every installed skill this folder has no link for, the ones just adopted included: what
+        // makes a hand-written skill visible without anyone remembering to create the link. The
+        // folder a skill was adopted out of holds its name and is linked here all the same, because
+        // by then the move has taken the folder away.
+        for (const name of installed) if (!held.has(name) || adopting.get(name) === `${dir}/${name}`) linkTo(dir, name, false);
     }
     return plan;
 }
@@ -281,15 +317,26 @@ function relinkPlan(view, root = null) {
 // reported rather than a throw: Windows needs Developer Mode for one, and a harness missing a link
 // still works -- the skill is invisible to that agent harness, which is worth a line and not a
 // crashed install.
-//   { added, fixed, kept, whole, copies, dangling, refused }
+//   { added, fixed, kept, whole, copies, dangling, adopted, refused }
 function relink(root) {
     const plan = relinkPlan(repoView.worktree(root), root);
     const edit = repoEdit.worktreeEdit(root);
-    const report = { added: 0, fixed: 0, kept: plan.kept, whole: plan.whole, copies: plan.copies, dangling: plan.dangling, refused: [] };
+    const report = { added: 0, fixed: 0, kept: plan.kept, whole: plan.whole, copies: plan.copies,
+        dangling: plan.dangling, adopted: [], refused: [] };
+    // A move that was refused takes its link with it: linking into a folder the skill never left
+    // would replace the project's own work with a link to nothing.
+    const stalled = new Set();
     for (const e of plan.entries) {
+        if (e.link !== undefined && stalled.has(e.file)) continue;
         const [result] = edit.apply([e]);
-        if (result && !result.done) { report.refused.push(result.why); continue; }
-        if (e.replace) report.fixed++; else report.added++;
+        if (result && !result.done) {
+            report.refused.push(result.why);
+            if (e.move !== undefined) stalled.add(e.move);
+            continue;
+        }
+        if (e.move !== undefined) report.adopted.push(e.move);
+        else if (e.replace) report.fixed++;
+        else report.added++;
     }
     return report;
 }
@@ -299,6 +346,7 @@ module.exports = { readRoster, relinkPlan, relink, writeNotices, frontmatter, LO
 // ---------------------------------------------------------------- the command line
 
 function printRelink(r) {
+    for (const a of r.adopted || []) console.log(`${a} was a skill only that harness could see: moved to ${SKILLS}/ and linked back, so every agent reads it`);
     for (const c of r.copies) console.log(`${c} is a copy, not a link: delete it and re-run to link it`);
     for (const why of r.refused || []) console.log(why);
     for (const d of r.whole) console.log(`${d} is one link to the skills folder: every skill is visible, nothing to link`);

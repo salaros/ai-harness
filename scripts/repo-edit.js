@@ -5,7 +5,7 @@
 //   apply(entries)  carry out a finished plan, and return what became of it
 // Each entry that asks for work gets one result:
 //   { file, kind, done, why }
-// `kind` is write, link, mkdir or mark; `done` is whether the tree now holds what the entry asked
+// `kind` is write, link, mkdir, mark or move; `done` is whether the tree now holds what the entry asked
 // for; `why` is the mechanical reason it does not, or null. No outcome word and no summary bucket
 // appears here: those are the install policy's, and the run translates these results into them.
 // Nothing here prints or exits, so a refusal is a value the caller reads rather than a message a
@@ -23,6 +23,9 @@ const result = (file, kind, why) => ({ file, kind, done: !why, why: why || null 
 // What an entry asks to have done, or null when it asks for nothing: a phase heading, or a path the
 // plan decided to leave exactly as it found it.
 function work(e) {
+    // Before the rest, because a move is about a path that does not exist yet and the entry naming
+    // it may well go on to link something at where it came from.
+    if (e.move !== undefined) return "move";
     if (e.link !== undefined) return "link";
     if (e.write !== undefined) return "write";
     if (e.mkdir) return "mkdir";
@@ -78,6 +81,19 @@ function mapEdit(files = {}, { links = true } = {}) {
             // A map holds files, and a folder in it is whatever a path implies, so there is nothing
             // to make: the entry is satisfied the moment anything is written under it.
             mkdir: () => null,
+            // A folder in a map is a prefix, so moving one is re-keying every path under it, and a
+            // file is the exact key. Whatever each one held travels with it, mode and all.
+            move: e => {
+                const under = rel => [rel, ...Object.keys(held).filter(k => k.startsWith(`${rel}/`))].filter(k => k in held);
+                const from = under(e.move);
+                if (!from.length) return `nothing at ${e.move} to move to ${e.file}`;
+                if (under(e.file).length) return `${e.file} is already there, so ${e.move} was left where it is`;
+                for (const key of from) {
+                    held[`${e.file}${key.slice(e.move.length)}`] = held[key];
+                    delete held[key];
+                }
+                return null;
+            },
             mark: e => {
                 const row = view().modes().find(r => r.file === e.file);
                 if (!row) return `nothing at ${e.file} to mark executable`;
@@ -119,6 +135,18 @@ function worktreeEdit(root) {
         ...editing({
             write: e => { parent(e.file); fs.writeFileSync(at(e.file), e.write); return null; },
             mkdir: e => { fs.mkdirSync(at(e.file), { recursive: true }); return null; },
+            // Git is not asked to do this: a skill being adopted is usually untracked, and `git mv`
+            // refuses that. The rename is the filesystem's, and whether the result is staged is the
+            // run's business afterwards. Nothing is overwritten, so a name already taken at the
+            // destination is a refusal rather than a project's work quietly replaced.
+            move: e => {
+                if (!fs.existsSync(at(e.move))) return `nothing at ${e.move} to move to ${e.file}`;
+                if (fs.existsSync(at(e.file))) return `${e.file} is already there, so ${e.move} was left where it is`;
+                parent(e.file);
+                try { fs.renameSync(at(e.move), at(e.file)); }
+                catch (err) { return `could not move ${e.move} to ${e.file}: ${err.code || err.message}`; }
+                return null;
+            },
             link: e => {
                 parent(e.file);
                 clear(e.file);
