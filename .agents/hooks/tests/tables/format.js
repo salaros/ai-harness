@@ -16,20 +16,28 @@ function formatChanged() {
 // no file. A push of a few hundred files passed that length and the failure was reported as "not
 // formatted", blocking a push whose files were fine. Every batch has to fit, and no file may be lost
 // between them.
+// The limit is asked for rather than taken from the host: fmt.LIMIT is 7500 where cmd.exe is the
+// shell and 120000 elsewhere, so this push is four command lines on Windows and one on Linux, and a
+// check written against the host's value asserts the cutting on one platform and nothing on the
+// other. Whether 338 files happen to need cutting here is not what this is about.
+const LIMIT = 7500;
 function batchesFitTheCommandLine(t) {
     const fmt = formatChanged();
     if (!fmt) { t.skip(`batches: ${SKIP}`); return; }
     const files = Array.from({ length: 338 }, (_, i) => `src/components/some/deep/path/component-${i}.astro`);
-    const groups = fmt.batches(TEMPLATE, files);
+    const groups = fmt.batches(TEMPLATE, files, LIMIT);
     const longest = Math.max(...groups.map(g => fmt.fill(TEMPLATE, g).length));
-    t.ok(groups.length > 1 && longest <= fmt.LIMIT, "batches: a push of 338 files is cut into command lines that fit", `${groups.length} batch(es), longest ${longest} of ${fmt.LIMIT}`);
+    t.ok(groups.length > 1 && longest <= LIMIT, "batches: a push of 338 files is cut into command lines that fit", `${groups.length} batch(es), longest ${longest} of ${LIMIT}`);
     t.ok(groups.flat().join("\n") === files.join("\n"), "batches: every file is checked, once, in order", `${groups.flat().length} of ${files.length}`);
-    t.ok(fmt.batches(TEMPLATE, ["a.ts"]).length === 1 && fmt.batches(TEMPLATE, []).length === 0,
+    t.ok(fmt.batches(TEMPLATE, ["a.ts"], LIMIT).length === 1 && fmt.batches(TEMPLATE, [], LIMIT).length === 0,
         "batches: one file is one batch and no files is no batch", "");
     // The template is part of the command, so a long one leaves less room for paths.
     const long = `${"x".repeat(200)} {files}`;
-    t.ok(Math.max(...fmt.batches(long, files).map(g => fmt.fill(long, g).length)) <= fmt.LIMIT,
+    t.ok(Math.max(...fmt.batches(long, files, LIMIT).map(g => fmt.fill(long, g).length)) <= LIMIT,
         "batches: the command's own length is counted against the limit", "");
+    // And the limit the script uses by default is the shell's, which is what the cutting is for.
+    t.ok(fmt.LIMIT < 8191 === (process.platform === "win32"),
+        "batches: the default limit is cmd.exe's ceiling on Windows and the roomier one elsewhere", String(fmt.LIMIT));
     // A limit smaller than one path still yields that path: one file alone is the shell's problem,
     // and CANNOT_RUN reports it as such rather than as a verdict on the file.
     t.ok(fmt.batches(TEMPLATE, ["a.ts", "b.ts"], TEMPLATE.length).length === 2,
