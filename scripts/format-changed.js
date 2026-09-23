@@ -18,8 +18,8 @@
 // A format cell may list fallbacks separated by " ?? ", tried in order until one's tool is
 // installed; that is this script's syntax, not the shell's. The dotnet row uses it to prefer a
 // project's Husky.NET task runner and fall back to dotnet format.
-const fs = require("fs");
 const lib = require("./lib");
+const repoView = require("./repo-view");
 const stacks = require("./stacks");
 
 const ZERO = /^0{40,}$/;
@@ -88,6 +88,14 @@ function pathsFromRefUpdates(lines) {
     return [...out];
 }
 
+// Which of the changed paths a formatter can actually be handed: the ones that are a real file
+// here and now. A path a commit deleted is gone, a folder is not a file, and a symlink is neither --
+// prettier refuses one named on its command line, and the refusal arrives looking exactly like
+// "this file is badly formatted", so a push of perfectly good files was blocked by .claude/skills
+// pointing at .agents/skills. Both questions are asked because either alone lets a link through:
+// that folder link is not a file, and a link to a file is one.
+const formattable = (view, paths) => paths.filter(p => view.isFile(p) && !(view.lstat(p) || {}).link);
+
 // Reads the paths from stdin, runs each active stack's formatter over them and prints what it found.
 // Returns the exit code: 1 while a file a push would publish is misformatted.
 function main(argv) {
@@ -96,7 +104,7 @@ function main(argv) {
     const fromPush = argv.includes("--push");
     const input = lib.stdin().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
-    const changed = (fromPush ? pathsFromRefUpdates(input) : input).filter(p => fs.existsSync(p));
+    const changed = formattable(repoView.worktree(root), fromPush ? pathsFromRefUpdates(input) : input);
     if (!changed.length) { console.log("nothing to format-check"); return 0; }
 
     let status = 0, ran = false;
@@ -148,6 +156,6 @@ function main(argv) {
 
 // The batching is this script's own decision, so the suite reads it here rather than through a shell:
 // a command line that was too long is a failure the formatter's output cannot show.
-module.exports = { batches, fill, combine, cannotRun, LIMIT, CANNOT_RUN };
+module.exports = { batches, fill, combine, cannotRun, formattable, LIMIT, CANNOT_RUN };
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));

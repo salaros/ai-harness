@@ -335,6 +335,10 @@ function skeletonLines(file, lines, hasIntent) {
 
 // git merge-file writes the merged result and reports the number of conflicts, or a negative status
 // for trouble. Used rather than a hand-rolled diff3 because the target already needs Git.
+// This is the one thing a policy decision does that reaches outside the process: it makes a temp
+// directory and spawns Git, which is why the otherwise in-memory decision table touches real disk.
+// That is deliberate, and ADR-0002 is why: a seam here would run the table against a stand-in for
+// diff3, and what diff3 really does to a conflict is the only thing worth checking.
 function threeWay(base, ours, theirs) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "merge-"));
     const f = n => path.join(dir, n);

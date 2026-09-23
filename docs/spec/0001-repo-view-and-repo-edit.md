@@ -4,13 +4,13 @@
 
 ## Context and motivation
 
-An install is files in, files out, and today it cannot be exercised that way. The installer reads the target through `fsTarget()` (`scripts/update-harness.js:263`) and writes to it through raw `fs` calls in `perform()` (`:612`) and `carryMode()` (`:604`), neither of which is exported or reachable except by spawning the installer at a real checkout. The suite therefore has exactly one end-to-end install, against an empty repo (`.agents/hooks/tests/self-checks.js:151`), costing 18.5s of an 18.5s run — while every install bug of the last ten commits came from a target that already held files.
+An install is files in, files out, and today it cannot be exercised that way. The installer reads the target through `fsTarget()` in `scripts/update-harness.js` and writes to it through raw `fs` calls in `perform()` and `carryMode()` beside it, neither of which is exported or reachable except by spawning the installer at a real checkout. The suite therefore has exactly one end-to-end install, against an empty repo (`.agents/hooks/tests/self-checks.js`, `installerInstallsIntoAnEmptyRepo`), costing 18.5s of an 18.5s run — while every install bug of the last ten commits came from a target that already held files.
 
 ADR-0001 settles where the seam goes. This document designs the two modules.
 
 **Goals:** any target shape becomes a decision-table row; one read seam for the whole repo; every target write in one implementation with a substitutable adapter; the run reports what was done rather than what was planned.
 
-**Non-goals for v1:** the spawned finishers (`githooks-init`, `skills.js relink`, `skills.js notices`) stay processes and keep their own `fs` calls — `relink` is candidate 6 of the review. `threeWay` keeps its temp directory and its `git merge-file`. The named constructors for a plan entry are candidate 3; this document states only what `apply()` requires of an entry.
+**Non-goals for v1:** the spawned finishers (`githooks-init`, `skills.js relink`, `skills.js notices`) stay processes. `threeWay` keeps its temp directory and its `git merge-file`; ADR-0002 records why it stays there rather than going behind a seam. Two of this list's original entries have since been done and are no longer non-goals: `relink` writes through `worktreeEdit` alone, and the named constructors for a plan entry live in `scripts/plan-entry.js`, so an entry's shape is that module's to state and this one says only what `apply()` requires of one.
 
 ## The read interface
 
@@ -39,7 +39,7 @@ ADR-0001 settles where the seam goes. This document designs the two modules.
 
 ### R-3 What it replaces
 
-`fsTarget()` and `gitUpstream()` in `scripts/update-harness.js`, and `memoryTarget()` and `memoryUpstream()` in `.agents/hooks/tests/tables/installer.js`, are deleted. `hasCommit(sha)` and `history(file)` become a two-function history reader, the only place left that asks the commit graph a question.
+`fsTarget()` in `scripts/update-harness.js` and `memoryTarget()` in `.agents/hooks/tests/tables/installer.js` are deleted: the target is read through this view. `gitUpstream()` and `memoryUpstream()` stay, narrowed to what a view cannot answer on its own -- which commit is which. Each keeps `at(sha)`, vending `repoView.commit` and `repoView.fromMap` rather than reading trees itself, beside `has(sha)` and `history(file)`, the two questions that are about the commit graph rather than about a tree.
 
 ## The write interface
 
@@ -53,15 +53,21 @@ ADR-0001 settles where the seam goes. This document designs the two modules.
 { file, kind, done, why }
 ```
 
-`kind` is `write`, `link`, `mkdir` or `mark`; `done` is whether the tree now holds what the entry asked for; `why` is the mechanical reason it does not, or `null`. No outcome word and no summary bucket appears anywhere in this module: those belong to the install policy, and the run translates the results into them.
+`kind` is `write`, `link`, `mkdir`, `mark` or `move`; `done` is whether the tree now holds what the entry asked for; `why` is the mechanical reason it does not, or `null`. No outcome word and no summary bucket appears anywhere in this module: those belong to the install policy, and the run translates the results into them.
 
 ### W-2 Ordering is the edit's job
 
-`apply` creates a parent directory before writing into it, removes what stands in the way before creating a symlink, and marks a mode after the content it applies to exists. A caller orders entries for readability, never for correctness.
+`apply` creates a parent directory before writing into it, removes what stands in the way before creating a symlink, marks a mode after the content it applies to exists, and performs a `move` before anything else. A caller orders entries for readability; the correctness of the order is the edit's, bar the two facts about moves below.
+
+`move` is why that last clause is not free. A move empties a path, so an entry linking something at where it came from reads naturally after it -- and read in that order the link went first, took the project's own work out of its way, and the move then carried the link off to the destination, with both entries reporting `done`. The order is the edit's to get right, so the edit sorts moves to the front rather than asking a caller to.
+
+Sorting them to the front is not free either, and the rest of the rule is what pays for it. A move that now runs before an entry written above it lands on a path that entry was about to land on, and if that entry is a link the same clearing destroys the same work, one end of the move further along. So a move owns both ends of its path: an entry other than a `mark` naming a move's destination is refused rather than performed, because a plan saying two things about one path contradicts itself. Two ordering facts are left for a caller, both about moves alone: a move's source is a path already in the tree, never one an earlier entry in the same plan writes, and moves keep the caller's order among themselves, so a chain that moves one path onto another is still the caller's to sequence.
+
+This is the seam's guarantee rather than one the installer leans on. `relink` hands `apply` a single entry at a time, because it reads each result before deciding the next -- a refused move has to suppress that skill's links in every harness folder -- so its own plan is already written move-first. The guarantee is for the caller that does pass a whole plan, and for the next one.
 
 ### W-3 The adapters
 
-`worktreeEdit(root)` writes with `fs` and marks with `fs.chmodSync` followed by `git add --chmod=+x`, as `carryMode` does today. `mapEdit(files)` applies the same entries to a map and exposes the resulting tree, so a check asserts on files rather than on a directory.
+`worktreeEdit(root)` writes with `fs` and marks with `fs.chmodSync` followed by `git add --chmod=+x`, as `carryMode` does today. A `move` is `fs.renameSync`, and then `git add` when the source was one Git already tracked: the rename is the filesystem's but its record is Git's, and an index still naming the old path contradicts the disk until somebody says otherwise. The destination is offered to Git first and alone, because `git add` given both paths stages the source's deletion before it fails on the destination; if Git refuses the destination the rename goes back and the index is left untouched, which is the refusal a real target produces and the one that has to cost nothing. Dropping the source afterwards has no way back, since the destination is staged by then; no input was found that makes it fail, and `TODO.md` carries the gap rather than this carrying a rollback nothing can exercise. A source nothing tracked leaves nothing to correct and a root with no index has nothing to keep in step, so neither is staged and neither is an error. `mapEdit(files)` applies the same entries to a map and exposes the resulting tree, so a check asserts on files rather than on a directory.
 
 ### W-4 A mark that is already correct is not a write
 
@@ -69,7 +75,7 @@ An entry marking a file executable is satisfied without touching the index when 
 
 ### W-5 A failure is a value, not a rewrite
 
-A symlink the platform refuses leaves `{ done: false, why: "symlink refused" }`. The edit does not catch-and-relabel the entry the way `perform()` does at `:621`, and `apply()` at `:642` no longer overwrites the plan's outcome. The run decides that a refused link means the target keeps its own copy.
+A symlink the platform refuses leaves `{ done: false, why: "symlink refused" }`. The edit does not catch-and-relabel the entry the way `perform()` did, and `apply()` no longer overwrites the plan's outcome. The run decides that a refused link means the target keeps its own copy.
 
 ## How it lands
 
@@ -83,10 +89,10 @@ Add `scripts/repo-edit.js` with both adapters, move `perform` and `carryMode` be
 
 ### S-3 Migrate the readers
 
-The receipt read at `:756` and the target discovery at `:124`/`:753` go through a view; `check-harness.check` and `skills.readRoster` take one, and `docs-check.readChain` drops the root it never used. `check-harness` then reads no files itself at all.
+The receipt read in `main()` and the target discovery in `targetRoot()` go through a view; `check-harness.check` and `skills.readRoster` take one, and `docs-check.readChain` drops the root it never used. `check-harness` then reads no files itself at all.
 
 Two invariants ask what Git's index records rather than what the disk shows, which is the whole point of them on Windows, so the view answers that too: `recorded(paths)` above. `check()` still accepts a root string, because it is the one interface here that crosses a version boundary -- the installer runs the upstream's copy against a target, and the `update-harness.js` doing the running is the target's.
 
 ## Tests
 
-Replacement, not layering. The hand-written stand-ins go with the modules they imitated. New rows sit at the two interfaces: a target that already holds its own `CLAUDE.md`, an ESM `package.json`, a data file beside the hooks, a file whose mode is already right, a symlink the platform refuses, and binary content — which becomes reachable for the first time, since `plan()`'s binary branch at `:507` and `planSkills`' at `:572` have never run in the suite. The single end-to-end install in `self-checks.js` stays as the one check that the real adapters are wired up.
+Replacement, not layering. The hand-written stand-ins go with the modules they imitated. New rows sit at the two interfaces: a target that already holds its own `CLAUDE.md`, an ESM `package.json`, a data file beside the hooks, a file whose mode is already right, a symlink the platform refuses, and binary content — which becomes reachable for the first time, since `plan()`'s binary branch and `planSkills`' have never run in the suite. The single end-to-end install in `self-checks.js` stays as the one check that the real adapters are wired up.

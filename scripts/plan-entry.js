@@ -8,8 +8,9 @@
 // marked silent, so a producer that left the column out would have thrown halfway through somebody's
 // repo, at print time, with no way to tell which producer built the entry.
 //
-// The kinds below are the whole vocabulary. Each says what is done to the path -- the same four
-// words repo-edit.js reads, write, link, mkdir and mark, plus doing nothing at all -- and carries
+// The kinds below are the whole vocabulary an install plan needs. Each says what is done to the path
+// -- four of the five words repo-edit.js reads, write, link, mkdir and mark, plus doing nothing at
+// all -- and carries
 // how it is reported, which is either `shown(...)`, four columns demanded where the entry is made,
 // or `quiet(...)`, counted in the summary and never printed. Nothing here touches a repo, prints, or
 // decides an outcome word: repo-edit does the first, the run does the second, install-policy the

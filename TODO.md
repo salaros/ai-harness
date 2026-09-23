@@ -1,9 +1,6 @@
 # TODO
 
-- [ ] Installing into a repo that already has a `.claude/skills` folder of vendored skills fails, with `--adopt` and without it #deferred (scripts/update-harness.js:542)
-  - [ ] The fix in mind: drop the existing folder, reinstall from the merged lock, and commit the `.claude/skills` symlink before `docs-check.js` runs
-  - [ ] A skill the project wrote itself, recorded in neither file, must survive that reinstall rather than being wiped with the rest
-  - [ ] Read `skills.json` as well as `skills-lock.json`, transforming the former into a lock while adopting
-- [ ] `threeWay` creates a temp directory and spawns `git merge-file` from inside a policy decision, which is why the in-memory decision table still touches real disk #deferred (scripts/update-harness.js:381)
-- [ ] Six deepening candidates from the 22 Sep architecture review are still open, candidate 2 having become ADR-0001 and SPEC-0001 #deferred (.scratch/reviews/architecture-2026-09-22.md)
-- [ ] `format-changed.js` filters the changed paths with `existsSync`, which says yes to the `.claude/skills` symlink; prettier refuses a symlink named on its command line, so a push that touches it fails as "not formatted". umnico-crm had written `lstatSync().isFile()` locally and the 0.5.2 merge conflicted with it #deferred (scripts/format-changed.js:99)
+- [ ] `.astro` is format-checked by nobody: prettier needs `prettier-plugin-astro` to parse it, and the harness installs no prettier plugin, so a project wanting it must install the plugin and extend its own row #deferred (scripts/stacks.tsv)
+- [ ] `.razor` is format-checked by nobody: prettier has no plugin for it at all, so it would belong on the dotnet row, and whether `dotnet format` formats Razor markup rather than only the `@code` C# was never established #question (scripts/stacks.tsv)
+- [ ] An adopted skill that no `skills-lock.json` records is attributed as written for this repo, so `THIRD-PARTY-NOTICES.md` leaves out a skill that was in fact copied from somewhere; only a skill a project hand-copied rather than vendoring with `npx skills` is affected, since that tool writes the lock entry adoption reads #deferred (scripts/skills.js:197)
+- [ ] A move whose destination Git accepts and whose source Git then refuses leaves the rename done and the index rewritten, with the entry reporting `done: false`; no input was found that makes the second `git add` fail, so the rollback the first one has is unwritten and uncheckable #deferred (scripts/repo-edit.js:207)

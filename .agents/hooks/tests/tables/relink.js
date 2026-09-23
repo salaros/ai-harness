@@ -7,10 +7,11 @@
 // to reach any of it was with real symlinks -- which Windows refuses unless the session is elevated,
 // so the one check that existed skipped on the maintainer's own machine. The decision is a value
 // now, made from a repo-view, and these are maps: five link shapes, none of them asked of the OS.
+const fs = require("fs");
 const path = require("path");
 const repoView = require("../../../../scripts/repo-view");
 const skills = require("../../../../scripts/skills");
-const { text } = require("../fixtures");
+const { text, withRoot } = require("../fixtures");
 
 const skill = name => text("---", `name: ${name}`, "description: Does one thing.", "---", "Body");
 const plan = (files, root) => skills.relinkPlan(repoView.fromMap(files), root);
@@ -92,4 +93,78 @@ exports.relinkLooksInEveryHarnessFolderButItsOwn = function relinkLooksInEveryHa
     t.ok(files.join(" ") === ".codex/skills/one .cursor/skills/one",
         "relink: every folder holding a skills/ gets a link, and a folder without one is not touched", files.join(" "));
     t.ok(!files.some(f => f.startsWith(".agents/")), "relink: the skills folder itself is never linked into", files.join(" "));
+};
+
+// A skill a project keeps under .claude/skills and nowhere else. It is invisible to every other
+// agent harness in the clone -- Codex and Cursor read their own folders, and nothing links there --
+// and relink used to walk straight past it: the branch that names a copy asks whether
+// .agents/skills already holds that name, and for a skill only this folder has, it does not.
+// Which is how an install into a repo that vendored its skills the `npx skills` way came to exit 1
+// on one of its own harness invariants: the folders stayed real folders, and every .claude/skills entry is meant to
+// be a link.
+exports.relinkAdoptsASkillOnlyOneHarnessHas = function relinkAdoptsASkillOnlyOneHarnessHas(t) {
+    if (!skills.relinkPlan) { t.skip("relink adopt: this scripts/skills.js relinks without deciding first"); return; }
+    const p = plan({
+        ".agents/skills/one/SKILL.md": skill("one"),
+        ".claude/skills/mine/SKILL.md": skill("mine"),
+        ".claude/skills/one/SKILL.md": skill("one"),
+    });
+    const moves = p.entries.filter(e => e.move !== undefined);
+    t.ok(moves.length === 1 && moves[0].move === ".claude/skills/mine" && moves[0].file === ".agents/skills/mine",
+        "relink: a skill only one harness folder has moves into the skills folder", JSON.stringify(p.entries));
+    const linked = p.entries.filter(e => e.link !== undefined).map(e => e.file).sort();
+    t.ok(linked.join(" ") === ".claude/skills/mine", "relink: and is linked back where it came from", linked.join(" "));
+    t.ok(p.adopted.includes(".claude/skills/mine"), "relink: the move is reported, because it is the project's own work being moved", JSON.stringify(p.adopted));
+
+    // The move comes before the link that replaces it: a link written first would be what the move
+    // then tried to relocate.
+    const order = p.entries.map(e => (e.move !== undefined ? "move" : "link"));
+    t.ok(order.indexOf("move") < order.indexOf("link"), "relink: the move is planned before the link into its place", order.join(" "));
+
+    // Unchanged: a name the skills folder already has is still a copy to be named, never moved over.
+    t.ok(p.copies.includes(".claude/skills/one") && !moves.some(e => e.move === ".claude/skills/one"),
+        "relink: a folder whose name the skills folder already holds is still the reader's to settle", JSON.stringify(p.copies));
+};
+
+// Adoption is for a skill, not for whatever else a harness folder holds. A SKILL.md is what makes a
+// folder one, and without it the folder is somebody else's business.
+exports.relinkAdoptsOnlyWhatIsASkill = function relinkAdoptsOnlyWhatIsASkill(t) {
+    if (!skills.relinkPlan) { t.skip("relink adopt: this scripts/skills.js relinks without deciding first"); return; }
+    const p = plan({
+        ".agents/skills/one/SKILL.md": skill("one"),
+        ".claude/skills/notes/README.md": "not a skill\n",
+        ".claude/skills/settings.json": "{}\n",
+    });
+    t.ok(!p.entries.some(e => e.move !== undefined), "relink: a folder with no SKILL.md is not adopted", JSON.stringify(p.entries));
+    t.ok(!p.adopted.length, "relink: and nothing is reported as moved", JSON.stringify(p.adopted));
+    t.ok(!p.entries.some(e => e.file === ".claude/skills/settings.json"), "relink: a plain file in the folder is left alone", JSON.stringify(p.entries));
+};
+
+// A refused move has to take every one of its links with it. The plan links an adopted skill into
+// each harness folder, so suppressing only the link at the folder the skill was leaving still
+// scatters links to a skill that never arrived. This is the one row here that runs on a real tree:
+// a refusal is what it is about, and a map cannot be made to refuse.
+exports.relinkStallsEveryLinkOfARefusedMove = function relinkStallsEveryLinkOfARefusedMove(t) {
+    if (!skills.relinkPlan) { t.skip("relink stall: this scripts/skills.js relinks without deciding first"); return; }
+
+    // A file where the skills folder belongs: the move cannot make its destination, so it refuses,
+    // and it refuses the same way on every platform.
+    withRoot({
+        ".agents/skills": "not a folder\n",
+        ".claude/skills/mine/SKILL.md": skill("mine"),
+        ".codex/skills/.keep": "",
+    }, root => {
+        const report = skills.relink(root);
+        t.ok(!report.adopted.length, "relink stall: a move that could not be made is not reported as adopted", JSON.stringify(report.adopted));
+        t.ok(report.refused.length === 1,
+            "relink stall: and is the only thing refused, no link having been tried after it", JSON.stringify(report.refused));
+        // Read as a listing rather than with existsSync, which follows the link and reports a
+        // dangling one absent -- it would pass on exactly the tree this row exists to catch.
+        const codex = fs.readdirSync(path.join(root, ".codex", "skills"));
+        t.ok(!codex.includes("mine"),
+            "relink stall: no other harness folder is left linking to a skill that never arrived",
+            JSON.stringify(codex));
+        t.ok(fs.readFileSync(path.join(root, ".claude", "skills", "mine", "SKILL.md"), "utf8") === skill("mine"),
+            "relink stall: and the project keeps the skill exactly where it had it");
+    });
 };
