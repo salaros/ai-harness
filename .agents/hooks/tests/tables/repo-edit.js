@@ -334,6 +334,79 @@ exports.repoEditOrdersAMoveBeforeALinkThatWouldEatIt = function repoEditOrdersAM
     });
 };
 
+// SPEC-0001/W-2, the other end of the same rule. Ordering moves to the front is what makes the
+// shape above safe, and it is also what makes this one dangerous: a move now runs before an entry
+// written above it, so the path it lands on is a path that entry was about to land on. A link there
+// clears its way first, which is the moved work gone -- the identical loss as the check above, one
+// end of the move further along, and reported done by both entries just the same. A move owns both
+// ends of its path and the rest of the plan is refused at the destination, so the entries are
+// written here in the order that used to destroy and the content has to still be readable.
+exports.repoEditRefusesAnEntryThatLandsOnWhatAMoveMoved = function repoEditRefusesAnEntryThatLandsOnWhatAMoveMoved(t) {
+    if (repoEdit.kindOf({ file: "a", move: "b" }) !== "move") { t.skip("repo edit landed: this scripts/repo-edit.js does not move"); return; }
+    const entries = [
+        { file: "kept", link: "somewhere" },
+        { file: "kept", move: "notes.md" },
+    ];
+
+    // A file, because unlink clears one without complaint: nothing refuses, nothing is reported,
+    // and the destination is left a link to a path that was never there.
+    withRoot({ "notes.md": "the project's own work\n" }, root => {
+        const edit = repoEdit.worktreeEdit(root);
+        const [move, link] = edit.apply(entries);
+        t.ok(move.done && edit.view().read("kept") === "the project's own work\n",
+            "repo edit landed: the move happens and its destination holds the work",
+            JSON.stringify([move, edit.view().read("kept")]));
+        t.ok(!link.done && /is where notes\.md was moved/.test(link.why || ""),
+            "repo edit landed: and the entry that would have landed on it is refused, saying whose path it is",
+            JSON.stringify(link));
+    });
+
+    // The map adapter reproduced this identically, which is what made it a decision of the shared
+    // body rather than of either adapter, so it is asked in the same words.
+    const edit = repoEdit.mapEdit({ "notes.md": "the project's own work\n" });
+    const [move, link] = edit.apply(entries);
+    t.ok(move.done && edit.view().read("kept") === "the project's own work\n",
+        "repo edit landed: the map adapter keeps the work too", JSON.stringify([move, edit.view().modes()]));
+    t.ok(!link.done && link.why === "kept is where notes.md was moved, so nothing else in the plan writes there",
+        "repo edit landed: and refuses in the same words the disk does", JSON.stringify(link));
+
+    // A mark is the exception: it changes the mode of what is at the path rather than putting
+    // something else there, so moving a hook into place and then marking it has to keep working.
+    const marking = repoEdit.mapEdit({ "src/pre-commit": "#!/bin/sh\n" });
+    const [moved, mark] = marking.apply([
+        { file: ".githooks/pre-commit", move: "src/pre-commit" },
+        { file: ".githooks/pre-commit", exec: true },
+    ]);
+    t.ok(moved.done && mark.done, "repo edit landed: a mark on a moved path is not refused", JSON.stringify([moved, mark]));
+    t.ok(marking.marked().includes(".githooks/pre-commit"), "repo edit landed: it marks what the move put there", JSON.stringify(marking.marked()));
+};
+
+// A refusal is a value, says the module header, and for three shapes it was not: the write and the
+// mkdir reached `fs` unguarded, so a project with a folder where the harness writes a file -- or a
+// file where it makes a folder -- got a throw out of `apply` rather than a line in the report, with
+// every entry after it never attempted. The map adapter meanwhile answered done to all three, so
+// the suite could not have seen it. Asked of both, because agreeing on a refusal is the point.
+exports.repoEditAnswersRatherThanThrowing = function repoEditAnswersRatherThanThrowing(t) {
+    const shapes = [
+        ["a folder where a file goes", { "out/kept.md": "x\n" }, { file: "out", write: "x\n" }],
+        ["a file where a folder goes", { out: "x\n" }, { file: "out", mkdir: true }],
+        ["a file where a parent goes", { out: "x\n" }, { file: "out/under/a.md", write: "x\n" }],
+    ];
+    for (const [what, held, entry] of shapes) {
+        let onMap;
+        try { [onMap] = repoEdit.mapEdit(held).apply([entry]); }
+        catch (err) { t.ok(false, `repo edit refusal: the map adapter answers for ${what}`, err.message); onMap = null; }
+        if (onMap) t.ok(!onMap.done && onMap.why, `repo edit refusal: the map adapter refuses ${what}`, JSON.stringify(onMap));
+
+        withRoot(held, root => {
+            let onDisk;
+            try { [onDisk] = repoEdit.worktreeEdit(root).apply([entry]); }
+            catch (err) { t.ok(false, `repo edit refusal: the worktree adapter answers for ${what}`, err.code || err.message); return; }
+            t.ok(!onDisk.done && onDisk.why, `repo edit refusal: the worktree adapter refuses ${what}`, JSON.stringify(onDisk));
+        });
+    }
+};
+
 // Both adapters answer for every kind the module names. `apply` reaches into the adapter by the kind
 // `work()` returned, so a sixth kind added to one of them and forgotten in the other is not a wrong
 // answer but a TypeError, thrown halfway through somebody else's repository at the entry that hits
@@ -342,7 +415,7 @@ exports.repoEditOrdersAMoveBeforeALinkThatWouldEatIt = function repoEditOrdersAM
 exports.repoEditAdaptersAnswerForEveryKind = function repoEditAdaptersAnswerForEveryKind(t) {
     // One path per kind. Sharing one tests nothing extra and does mislead: the link case leaves a
     // dangling symlink, and mkdir over that fails ENOENT because it follows the link to a target that
-    // is not there -- an artefact of the fixture rather than anything the adapter got wrong.
+    // is not there -- an artefact of how the case is set up rather than anything the adapter got wrong.
     const kinds = [
         ["write", { file: "w", write: "x\n" }],
         ["link", { file: "l", link: "b" }],

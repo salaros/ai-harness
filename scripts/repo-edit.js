@@ -24,9 +24,14 @@ const result = (file, kind, why) => ({ file, kind, done: !why, why: why || null 
 // the same way, which is easier to keep true when there is one sentence rather than two copies.
 const noSource = e => `nothing at ${e.move} to move to ${e.file}`;
 const taken = e => `${e.file} is already there, so ${e.move} was left where it is`;
-// A link asked to go where something already is, without `replace` to say that was expected. Worded
-// as the filesystem words it, because that is what the disk adapter is reporting.
-const blocked = e => `could not create the symlink ${e.file} -> ${e.link}: EEXIST`;
+// A path a move in the same plan is moving to, claimed by some other entry as well. A plan that
+// says two things about one path is a plan that contradicts itself, and the second of them is
+// refused rather than performed: see `apply`, where the reason this can arise at all is set out.
+const landed = (e, from) => `${e.file} is where ${from} was moved, so nothing else in the plan writes there`;
+// A symlink that was not made, worded as the filesystem words it, because that is what the disk
+// adapter is reporting: EEXIST for a path something is already at, EPERM for a platform that will
+// not make one at all.
+const noLink = (e, code) => `could not create the symlink ${e.file} -> ${e.link}: ${code}`;
 
 // What an entry asks to have done, or null when it asks for nothing: a phase heading, or a path the
 // plan decided to leave exactly as it found it.
@@ -57,11 +62,20 @@ function editing(act) {
             // link off to the destination: work destroyed, with both entries reporting success.
             // Moves go first instead, which is the order every caller already writes. The one thing
             // it costs: a move's source has to be in the tree already, not written by the same plan.
-            const first = entries.filter(e => work(e) === "move");
-            for (const e of [...first, ...entries.filter(e => !first.includes(e))]) {
+            const moves = entries.filter(e => work(e) === "move");
+            // And what the reordering itself costs, paid here rather than by the caller. A move now
+            // runs before an entry written above it, so the path it lands on is a path that entry
+            // was about to land on -- and if that entry is a link, `clear` takes the moved work out
+            // of its way: the same destruction, one end of the move further along. A move owns both
+            // ends of its path, so the rest of the plan is refused at the destination. A mark is not
+            // refused: it changes the mode of whatever is at the path rather than putting something
+            // else there, which is how a hook is moved into place and then made executable.
+            const to = new Map(moves.map(e => [e.file, e.move]));
+            for (const e of [...moves, ...entries.filter(e => work(e) !== "move")]) {
                 const kind = work(e);
                 if (!kind) continue;
-                let why = kind === "mark" ? null : act[kind](e);
+                const onAMove = kind !== "move" && kind !== "mark" && to.has(e.file);
+                let why = onAMove ? landed(e, to.get(e.file)) : kind === "mark" ? null : act[kind](e);
                 if (!why && e.exec) why = act.mark(e);
                 out.push(result(e.file, kind, why));
             }
@@ -89,21 +103,40 @@ function mapEdit(files = {}, { links = true } = {}) {
     // Every key a path stands for: the file itself, and everything under it when it is a folder.
     // A map has no directories, so this is what "something is at this path" means here.
     const anyUnder = rel => [rel, ...Object.keys(held).filter(k => k.startsWith(`${rel}/`))].filter(k => k in held);
+    // The ancestor a path cannot be reached through, because the map holds a file there. A map has
+    // no folders to be blocked by, so this is the only shape in which "a file where a folder has to
+    // go" exists here at all -- and on disk it is what makes mkdir and the write after it refuse.
+    const ancestorFile = rel => rel.split("/").slice(0, -1)
+        .map((_, i, parts) => parts.slice(0, i + 1).join("/"))
+        .find(p => p in held) || null;
     return {
         ...editing({
-            write: e => { held[e.file] = e.write; return null; },
+            // A folder at the path is a refusal, which in a map is keys under it: the disk answers
+            // EISDIR, and an adapter that quietly wrote instead would be the one place the suite
+            // could not see the failure an install really gets.
+            write: e => {
+                if (anyUnder(e.file).some(k => k !== e.file)) return `could not write ${e.file}: EISDIR`;
+                if (ancestorFile(e.file)) return `could not write ${e.file}: ENOTDIR`;
+                held[e.file] = e.write;
+                return null;
+            },
             link: e => {
-                if (!links) return `could not create the symlink ${e.file} -> ${e.link}: EPERM`;
+                if (!links) return noLink(e, "EPERM");
+                if (ancestorFile(e.file)) return noLink(e, "ENOTDIR");
                 // A file or a link at the path is replaced and a folder holding anything is not,
                 // because that is what the disk does: `clear` unlinks, and its rmdir fallback fails
                 // on a folder with something in it, so the symlink then refuses with EEXIST.
-                if (anyUnder(e.file).some(k => k !== e.file)) return blocked(e);
+                if (anyUnder(e.file).some(k => k !== e.file)) return noLink(e, "EEXIST");
                 held[e.file] = { link: e.link };
                 return null;
             },
             // A map holds files, and a folder in it is whatever a path implies, so there is nothing
-            // to make: the entry is satisfied the moment anything is written under it.
-            mkdir: () => null,
+            // to make: the entry is satisfied the moment anything is written under it. A file at the
+            // exact path is the one case with an answer to give, and it is the disk's.
+            mkdir: e => {
+                if (e.file in held) return `could not create the folder ${e.file}: EEXIST`;
+                return ancestorFile(e.file) ? `could not create the folder ${e.file}: ENOTDIR` : null;
+            },
             // A folder in a map is a prefix, so moving one is re-keying every path under it, and a
             // file is the exact key. Whatever each one held travels with it, mode and all.
             move: e => {
@@ -158,8 +191,13 @@ function worktreeEdit(root) {
         // source's deletion and then fails on the destination -- a target whose .gitignore covers
         // where the harness keeps its skills is enough -- which leaves the index recording the skill
         // at neither path while the disk holds it at the new one. So the destination is offered
-        // alone, and if Git will not have it the rename goes back: a refusal this module makes
-        // leaves the repository as it found it, which is the whole of what a caller can rely on.
+        // alone, and if Git will not have it the rename goes back and the index is untouched: the
+        // refusal a real target actually produces costs the repository nothing.
+        // Dropping the source afterwards is the step with no way back, because by then the
+        // destination is staged. Nothing was found that makes it fail -- a path `git add -A` is
+        // asked about is gone from the disk by this point, and staging that is a deletion Git takes
+        // whether or not the path is ignored -- so the refusal is reported and TODO.md carries the
+        // gap rather than this carrying a rollback no check can reach.
         const added = git(root, ["add", "-A", "--", e.file]);
         if (added.status !== 0) {
             try { fs.renameSync(at(e.file), at(e.move)); }
@@ -181,8 +219,20 @@ function worktreeEdit(root) {
     const alreadyExec = file => (repoView.indexModes(root, [file]) || []).some(r => r.file === file && r.exec);
     return {
         ...editing({
-            write: e => { parent(e.file); fs.writeFileSync(at(e.file), e.write); return null; },
-            mkdir: e => { fs.mkdirSync(at(e.file), { recursive: true }); return null; },
+            // Both inside a try, for the same reason the move below is: a project with a folder
+            // where a file goes, or a file where a folder goes, would otherwise take the whole
+            // install down mid-way through with a throw out of `apply`. A refusal is this module's
+            // contract, and it has to hold for the paths the harness writes as well.
+            write: e => {
+                try { parent(e.file); fs.writeFileSync(at(e.file), e.write); }
+                catch (err) { return `could not write ${e.file}: ${err.code || err.message}`; }
+                return null;
+            },
+            mkdir: e => {
+                try { fs.mkdirSync(at(e.file), { recursive: true }); }
+                catch (err) { return `could not create the folder ${e.file}: ${err.code || err.message}`; }
+                return null;
+            },
             // Git is not asked to do the rename: a skill being adopted is usually untracked, and
             // `git mv` refuses that. Nothing is overwritten, so a name already taken at the
             // destination is a refusal rather than a project's work quietly replaced. Asked with
@@ -204,13 +254,15 @@ function worktreeEdit(root) {
                 return stage(e);
             },
             link: e => {
-                parent(e.file);
+                // Before `clear`, so a parent that cannot be made refuses with the path still as it
+                // was rather than with its way already cleared for a link that never arrives.
+                try { parent(e.file); } catch (err) { return noLink(e, err.code || err.message); }
                 clear(e.file);
                 // Windows needs Developer Mode and core.symlinks=true for this to work at all, so a
                 // refusal is a result rather than a throw: the harness still functions with the link
                 // missing, it is just invisible to the agent harnesses that read it.
                 try { fs.symlinkSync(e.link.split("/").join(path.sep), at(e.file), "dir"); }
-                catch (err) { return `could not create the symlink ${e.file} -> ${e.link}: ${err.code || err.message}`; }
+                catch (err) { return noLink(e, err.code || err.message); }
                 return null;
             },
             mark: e => {
