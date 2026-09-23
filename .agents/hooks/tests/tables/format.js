@@ -70,3 +70,31 @@ exports.batchVerdictsCombineIntoOne = function batchVerdictsCombineIntoOne(t) {
     t.ok(bad.status === 1 && bad.output === "a.ts\nb.ts", "combine: the failing batches' output is what the run reports", JSON.stringify(bad));
     t.ok(fmt.combine([]).status === 0, "combine: no batches is nothing to report", "");
 };
+
+// Which of the changed paths a formatter can actually be handed. `existsSync` was the filter, and it
+// follows a symlink: .claude/skills points at .agents/skills, so it answered yes and prettier was
+// given a path it refuses outright -- reported, like every other way a formatter can fail, as "not
+// formatted", which blocked the push of files that were fine. umnico-crm hit it and patched the
+// script locally, and the next harness update conflicted with the patch.
+// A path is asked two questions rather than one, because either alone lets a symlink through: the
+// folder link answers isFile no, and a link to a file answers it yes.
+exports.onlyRealFilesAreHandedToAFormatter = function onlyRealFilesAreHandedToAFormatter(t) {
+    const fmt = formatChanged();
+    if (!fmt || !fmt.formattable) { t.skip(`formattable: ${SKIP}`); return; }
+    const repoView = require("../../../../scripts/repo-view");
+    const view = repoView.fromMap({
+        "src/a.ts": "const a = 1;\n",
+        ".claude/skills": { link: "../.agents/skills" },
+        ".agents/skills/one/SKILL.md": "skill\n",
+        "notes/link.md": { link: "../src/a.ts" },
+        "src/run.sh": { text: "run\n", exec: true },
+    });
+    const asked = ["src/a.ts", ".claude/skills", "notes/link.md", "src/run.sh", "src/gone.ts", ".agents/skills"];
+    const got = fmt.formattable(view, asked);
+    t.ok(got.join(" ") === "src/a.ts src/run.sh", "formattable: a real file is handed over, whatever its mode", got.join(" "));
+    t.ok(!got.includes(".claude/skills"), "formattable: a link to a folder is not, though it exists", got.join(" "));
+    t.ok(!got.includes("notes/link.md"), "formattable: nor is a link to a file, which exists and is one", got.join(" "));
+    t.ok(!got.includes(".agents/skills") && !got.includes("src/gone.ts"),
+        "formattable: nor is a folder, nor a path a commit deleted", got.join(" "));
+    t.ok(fmt.formattable(view, []).length === 0, "formattable: nothing changed is nothing to hand over", "");
+};
