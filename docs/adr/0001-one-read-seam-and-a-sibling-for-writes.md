@@ -32,4 +32,4 @@ repo-view's header states that nothing in it writes, prints or exits, and that r
 
 `check-harness.check` and `skills.readRoster` take a view rather than a root, which makes the 35 invariants substitutable and is the largest part of the work. The receipt stays an ordinary file: the view knows paths and `main()` knows which one is `harness-lock.json`, so repo-view and repo-edit remain reusable by modules that have no receipt.
 
-`threeWay` still creates a temp directory and spawns `git merge-file` from inside a policy decision, which is how the in-memory decision table touches real disk. It writes to an OS temp directory rather than to the target, so it sits outside this seam and is recorded in `TODO.md` instead.
+`threeWay` still creates a temp directory and spawns `git merge-file` from inside a policy decision, which is how the in-memory decision table touches real disk. It writes to an OS temp directory rather than to the target, so it sits outside this seam. ADR-0002 records why it stays there.

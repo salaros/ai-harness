@@ -41,8 +41,12 @@ A repo as anything reads it, by repo-relative path: whether a path exists, wheth
 _Avoid_: filesystem, snapshot, tree
 
 **Repo edit**:
-A repo as a run changes it, by repo-relative path: the writes, folders, links and modes one install applies, performed by a run against the working tree and by a check against a map. It reports what it did and what it could not do, never what the run should call the result: naming that is the install policy's.
+A repo as a run changes it, by repo-relative path: the writes, folders, links and modes one install applies, and the relocations, performed by a run against the working tree and by a check against a map. It reports what it did and what it could not do, never what the run should call the result: naming that is the install policy's.
 _Avoid_: writer, mutator, filesystem
+
+**Adoption**:
+What the harness does with a skill only one agent harness can see: a folder under `.claude/skills` or another harness's folder that the skills folder does not already hold is moved into it and linked back from every harness folder, so every agent reads it. The skill is taken as it stands, folder and all, rather than fetched again from wherever it came from, and a name the skills folder already holds is left alone rather than merged over.
+_Avoid_: import, migration, absorb
 
 **Repo root**:
 The repo an entry point acts on, which is not always the checkout the file sits in: a hook checks the project its harness was installed into, and a check can be pointed at a throwaway repo. One rule answers for every script and hook: `--root=<dir>`, then the harness's project-dir variable, then the checkout.

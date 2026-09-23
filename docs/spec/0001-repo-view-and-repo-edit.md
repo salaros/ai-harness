@@ -53,11 +53,13 @@ ADR-0001 settles where the seam goes. This document designs the two modules.
 { file, kind, done, why }
 ```
 
-`kind` is `write`, `link`, `mkdir` or `mark`; `done` is whether the tree now holds what the entry asked for; `why` is the mechanical reason it does not, or `null`. No outcome word and no summary bucket appears anywhere in this module: those belong to the install policy, and the run translates the results into them.
+`kind` is `write`, `link`, `mkdir`, `mark` or `move`; `done` is whether the tree now holds what the entry asked for; `why` is the mechanical reason it does not, or `null`. No outcome word and no summary bucket appears anywhere in this module: those belong to the install policy, and the run translates the results into them.
 
 ### W-2 Ordering is the edit's job
 
-`apply` creates a parent directory before writing into it, removes what stands in the way before creating a symlink, and marks a mode after the content it applies to exists. A caller orders entries for readability, never for correctness.
+`apply` creates a parent directory before writing into it, removes what stands in the way before creating a symlink, and marks a mode after the content it applies to exists. A caller orders entries for readability, never to work around the filesystem.
+
+`move` is the exception, and the only one: it is about a path that is about to stop existing, so an entry that links something at where it came from has to come after it. A caller that gets this wrong is refused rather than obeyed: the link finds the project's folder still standing in its way and reports `EEXIST`, leaving it exactly as it was, and the move then goes through. What an ordering mistake costs is the link, and it is reported; the promise the rule was really making, that no ordering mistake silently destroys work, still holds.
 
 ### W-3 The adapters
 
