@@ -164,6 +164,8 @@ exports.docsCheckStatusColumn = function docsCheckStatusColumn(t) {
         "rfc/9603-odd.md": rfc(9603, "Pondering"),
         "rfc/9604-old.md": rfc(9604, "Superseded by RFC-9605"),
         "rfc/9605-new.md": [...rfc(9605, "Accepted"), "", "Replaces RFC-9604."],
+        "rfc/9606-dated.md": ["# RFC-9606: Rfc", "", "Status quo is a list of options.", "**Status:** Accepted, 2026-09-20", "**Derived from:** https://example.com/issue"],
+        "bdd/9600-early.md": ["# BDD-9600: Early", "", "**Derived from:** RFC-9600"],
         "spec/9600-early.md": ["# SPEC-9600: Early", "", "**Derived from:** RFC-9600"],
         "spec/9601-accepted.md": ["# SPEC-9601: Accepted", "", "**Derived from:** RFC-9605"],
         "adr/9600-no.md": ["# ADR-9600: No", "", "**Derived from:** RFC-9601"],
@@ -172,6 +174,8 @@ exports.docsCheckStatusColumn = function docsCheckStatusColumn(t) {
         "docs-check: a SPEC may not build on an RFC still open", r.all);
     t.ok(r.for("spec/9601-accepted.md").length === 0, "docs-check: a SPEC builds on an accepted RFC", r.all);
     t.ok(r.for("adr/9600-no.md").length === 0, "docs-check: an ADR may cite a rejected RFC", r.all);
+    t.ok(r.for("bdd/9600-early.md").every(p => !p.includes("which is Open")), "docs-check: only a stage after the RFC is held to its status", r.all);
+    t.ok(r.for("rfc/9606-dated.md").length === 0, "docs-check: the Status line is the one with a colon, and a date may follow the value", r.all);
     t.ok(r.for("rfc/9602-none.md").some(p => p.includes('"**Status:**" line')), "docs-check: an RFC with no status", r.all);
     t.ok(r.for("rfc/9603-odd.md").some(p => p.includes('"**Status:**" line')), "docs-check: an RFC with a status the table does not list", r.all);
     t.ok(r.for("rfc/9604-old.md").length === 0 && r.for("rfc/9605-new.md").length === 0,

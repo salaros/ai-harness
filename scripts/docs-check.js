@@ -199,9 +199,10 @@ function check(root, view = repoView.worktree(root)) {
     // A document's **Status:** value, and the table's entry for it: "Superseded by RFC-0007" is
     // Superseded. Null when the line is missing or names a value the stage does not list.
     const statusOf = d => {
-        const line = d.lines.find(l => /^\**Status:?\**:?/i.test(l));
-        const value = line ? line.replace(/^\**Status:?\**:?\**\s*/i, "").trim().toLowerCase() : "";
-        return stageOf[d.folder].statuses.find(s => value === s.value.toLowerCase() || value.startsWith(`${s.value.toLowerCase()} `)) || null;
+        const line = d.lines.find(l => /^\**Status\**:/i.test(l));
+        const value = line ? line.replace(/^\**Status\**:\**\s*/i, "").trim().toLowerCase() : "";
+        // The value, then anything but a letter: "Accepted.", "Accepted, 2026-09-20", "Superseded by …".
+        return stageOf[d.folder].statuses.find(s => new RegExp(`^${s.value.toLowerCase()}(?![a-z])`).test(value)) || null;
     };
     const prefixes = chain.map(s => s.toUpperCase());
 
@@ -248,10 +249,10 @@ function check(root, view = repoView.worktree(root)) {
             // A later stage builds only on a document its stage's Status marks as one to build on:
             // no SPEC on an RFC still open or rejected. A cross-cutting document may cite any, since
             // "we rejected RFC-0002" is itself a decision worth recording.
-            const status = target.folder !== d.folder && cites !== "any" && stageOf[target.folder].statuses.length ? statusOf(target) : null;
+            const status = rank[target.folder] < rank[d.folder] && cites !== "any" && stageOf[target.folder].statuses.length ? statusOf(target) : null;
             if (status && !status.buildable) {
                 const want = stageOf[target.folder].statuses.filter(s => s.buildable).map(s => s.value).join(" or ");
-                say(d.file, `cites ${ref}, which is ${status.value}; a ${stageOf[d.folder].stage} builds only on a ${stageOf[target.folder].stage} that is ${want}`);
+                say(d.file, `cites ${ref}, which is ${status.value}; ${stageOf[d.folder].stage} builds only on ${stageOf[target.folder].stage} documents that are ${want}`);
             }
             if (item && !target.items.has(item)) say(d.file, `cites ${ref} but ${target.file} has no item ${item}`);
         }
