@@ -76,7 +76,7 @@ exports.stacksTableDecisions = function stacksTableDecisions(t) {
     t.ok(!unpaired.length, "an extension needing a prettier plugin is listed only where the scaffold installs and configures it",
         unpaired.join("\n"));
 
-    // The footgun D-2 hands the next plugin. `npm pkg set prettier.plugins[0]=...` writes a
+    // The footgun D-2 hands the next plugin. `pkg set prettier.plugins[0]=...` writes a
     // position rather than appending, so a second plugin declared at [0] as well replaces the
     // first without saying so, and the row is back to formatting an extension nothing can parse.
     // Two declarations in one scaffold have to name two positions.
