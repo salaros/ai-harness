@@ -583,11 +583,40 @@ function selfCheck(target, templateDir, options) {
     return { failed: r.failed.length > 0, summary: r.summary, output: harness.format(r) };
 }
 
-// The summary, from the entries as they turned out. Returns the exit code: 1 while anything is left
-// for the reader to act on.
-function report({ entries, base, head, ref, target, check, hooks = true, options }) {
-    const notes = { written: [], merged: [], conflicted: [], seeded: [], kept: [], skipped: [], template: [], unreadable: [] };
-    for (const e of entries) if (e.bucket) notes[e.bucket].push(e.file);
+// Which paths joined which summary list. The lists are install-policy's to name: it is where a
+// bucket is decided, and a second copy of the names here is a second place to forget one.
+const bucketed = entries => {
+    const notes = Object.fromEntries(installPolicy.BUCKETS.map(b => [b, []]));
+    for (const e of entries) if (e.bucket) (notes[e.bucket] || []).push(e.file);
+    return notes;
+};
+
+// Whether the run left anything for the reader to act on, and what. The one place that knows what
+// makes an install fail: it used to be a single expression at the foot of the printer below, so the
+// only way to ask was to run the install and read its stdout. Every reason is named, not the first
+// one found -- a run with conflicts and unwired hooks has two things wrong with it.
+function verdict({ entries, check, hooks = true }) {
+    const notes = bucketed(entries);
+    const why = [];
+    for (const bucket of installPolicy.UNFINISHED) {
+        const n = notes[bucket].length;
+        if (n) why.push(bucket === "conflicted"
+            ? `${n} path(s) hold conflict markers to resolve by hand`
+            : `${n} path(s) could not be read out of the upstream checkout, so they are not installed`);
+    }
+    if (check && check.failed) why.push("the harness's own checks do not pass in the target");
+    if (!hooks) why.push("the target's Git hooks are not wired, so nothing gates a commit there");
+    return { failed: why.length > 0, why };
+}
+
+// The summary in words, as lines: what happened, then whatever the verdict says is outstanding.
+// Returned rather than printed, so what a run reports can be read by a check the way a reader reads
+// it. The verdict is read here and never worked out again -- two answers to "did this run fail?"
+// drift, and the one CI reads is the one nobody is looking at.
+function summarise({ entries, base, head, ref, target, check, hooks = true, options }) {
+    const notes = bucketed(entries);
+    const out = [];
+    const say = line => out.push(line);
     // Every path was named as it happened, so repeating the lists here doubles the output; a quiet
     // run never saw them and gets them in full. Conflicts are listed either way: they are what the
     // reader has to act on, and they belong beside the instructions for acting on them.
@@ -626,7 +655,14 @@ function report({ entries, base, head, ref, target, check, hooks = true, options
     // Git hooks are wired per clone: this one was wired above, and every other clone runs the script once.
     if (!options.dryRun && !hooks) say(`\nGIT HOOKS NOT WIRED: in ${target}, run node scripts/githooks-init.js`);
     if (!options.dryRun) say(`\nEvery other clone of ${target} wires its Git hooks once with: node scripts/githooks-init.js`);
-    return notes.conflicted.length || notes.unreadable.length || (check && check.failed) || !hooks ? 1 : 0;
+    return out;
+}
+
+// The command line's half of the two above: prints the summary, and turns the verdict into the exit
+// code npx and CI read.
+function report(result) {
+    for (const line of summarise(result)) say(line);
+    return verdict(result).failed ? 1 : 0;
 }
 
 // ---------------------------------------------------------------- the run
@@ -690,7 +726,7 @@ function main(args) {
 // The plan and the decisions under it, so the suite can put a case in and read the answer out rather
 // than building a git checkout to reach one branch. apply() is here for its dry run, which prints and
 // writes nothing; main() writes to somebody's repository and is reached through the command line.
-module.exports = { cloneArgs, installerStamp, upToDate, settleDropped, unknownArgs, mistypedArgs, usage, parseOptions, plan, apply, lineCounts, overlap, NEAREST, skeletonLines };
+module.exports = { cloneArgs, installerStamp, upToDate, settleDropped, unknownArgs, mistypedArgs, usage, parseOptions, plan, apply, verdict, summarise, lineCounts, overlap, NEAREST, skeletonLines };
 
 if (require.main === module) {
     try { process.exitCode = main(process.argv.slice(2)); }
