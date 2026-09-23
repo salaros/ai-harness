@@ -338,6 +338,17 @@ function relink(root) {
         else if (e.replace) report.fixed++;
         else report.added++;
     }
+    // A skill that was already committed where it stood is still committed there: the rename
+    // happened on disk, and Git's index goes on recording two regular files under .claude/skills
+    // until somebody says otherwise. Which is what the harness invariant reads, so an install that
+    // adopted a skill would fail its own check and tell the reader to run the relink it just ran.
+    // Only the paths relink itself moved are staged, and only those: a repository mid-edit keeps
+    // the rest of its index.
+    for (const from of report.adopted) {
+        const to = `${SKILLS}/${path.posix.basename(from)}`;
+        const r = lib.run("git", ["-c", "core.longpaths=true", "-C", root, "add", "-A", "--", from, to]);
+        if (r.status !== 0) report.refused.push(`could not stage the move of ${from} to ${to}: ${(r.output || "").trim()}`);
+    }
     return report;
 }
 
