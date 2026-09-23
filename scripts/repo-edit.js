@@ -193,19 +193,24 @@ function worktreeEdit(root) {
         // at neither path while the disk holds it at the new one. So the destination is offered
         // alone, and if Git will not have it the rename goes back and the index is untouched: the
         // refusal a real target actually produces costs the repository nothing.
-        // Dropping the source afterwards is the step with no way back, because by then the
-        // destination is staged. Nothing was found that makes it fail -- a path `git add -A` is
-        // asked about is gone from the disk by this point, and staging that is a deletion Git takes
-        // whether or not the path is ignored -- so the refusal is reported and TODO.md carries the
-        // gap rather than this carrying a rollback no check can reach.
         const added = git(root, ["add", "-A", "--", e.file]);
         if (added.status !== 0) {
             try { fs.renameSync(at(e.file), at(e.move)); }
             catch { /* the way back is gone too; the message below is all there is to give */ }
             return `could not stage the move of ${e.move} to ${e.file}: ${(added.stderr || "").trim()}`;
         }
+        // Dropping the source afterwards is judged by the index, not by what `git add` answers. A
+        // source now covered by the target's .gitignore is refused and dropped in the same breath:
+        // the command exits non-zero over the ignore rule and takes the entry out of the index all
+        // the same, which is the staging that was asked for. So the index is read back, and the
+        // refusal is reported only while the source is still recorded there. Nothing rolls back at
+        // this point and nothing should: the destination is staged by then, so putting the file back
+        // on disk would leave the two contradicting each other rather than as they started.
         const dropped = git(root, ["add", "-A", "--", e.move]);
-        return dropped.status === 0 ? null : `could not stage the move of ${e.move} to ${e.file}: ${(dropped.stderr || "").trim()}`;
+        if (dropped.status === 0) return null;
+        const left = repoView.indexModes(root, [e.move]);
+        if (!left || !left.length) return null;
+        return `could not stage the move of ${e.move} to ${e.file}: ${(dropped.stderr || "").trim()}`;
     };
     const marked = [];
     // Git runs a hook only if it is executable and says nothing when it is not, so an installed
