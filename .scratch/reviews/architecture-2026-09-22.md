@@ -85,7 +85,7 @@ Deepening candidates for `ai-harness`, in the vocabulary of the `codebase-design
 
 - `scripts/check-harness.js:31` — `PATHS` (what triggers the invariants on edit) and `INVARIANTS` (what reads files) are two lists kept together by prose. An invariant added without its path silently never fires on edit and still passes CI.
 - `scripts/docs-check.js:169` — `check()` is 93 lines with numbered comment sections 1, 2, 4, 5. Sections 4 and 5 read project facts, not the documentation chain.
-- `scripts/install-policy.js:286` — a standing TODO admitting `seed` and `skeleton` differ only because they grew apart.
+- `scripts/install-policy.js:298` — a standing TODO admitting `seed` and `skeleton` differ only because they grew apart.
 - `scripts/update-harness.js:212` — `treeBlobs` walks `git cat-file --batch` output by byte offset with no check of its own; a parsing bug degrades silently to the per-file path.
 
 ## Top recommendation
@@ -109,5 +109,5 @@ The other six were taken up over 22-23 Sep and all of them have landed, so this 
 | 6. Relinking: discovery fused with mutation | `ace4982`, reusing `scripts/repo-edit.js` as expected |
 | 7. The suite runner: isolation and registration | `10bb2eb`, `25d09d7` |
 
-The four items under "Also noted" were not cards and were not taken up; `scripts/install-policy.js:286`
+The four items under "Also noted" were not cards and were not taken up; `scripts/install-policy.js:298`
 still holds its standing TODO. Anything reopened from here is a new review rather than this one.

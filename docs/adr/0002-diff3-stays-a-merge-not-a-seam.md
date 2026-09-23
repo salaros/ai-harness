@@ -1,6 +1,6 @@
 # ADR-0002: diff3 stays a merge, not a seam
 
-**Derived from:** docs/adr/0001-one-read-seam-and-a-sibling-for-writes.md, scripts/update-harness.js:338, .scratch/reviews/architecture-2026-09-22.md
+**Derived from:** docs/adr/0001-one-read-seam-and-a-sibling-for-writes.md, scripts/update-harness.js:342, .scratch/reviews/architecture-2026-09-22.md
 
 ADR-0001 put every read of a repo behind `scripts/repo-view.js` and every write behind `scripts/repo-edit.js`, so that an install's decisions are values a check can make without a filesystem. One thing was left outside both, and ADR-0001 said so: `threeWay` in `scripts/update-harness.js` makes a temp directory and spawns `git merge-file --diff3` from inside a policy decision. It is the only reason the otherwise in-memory decision table touches real disk.
 
