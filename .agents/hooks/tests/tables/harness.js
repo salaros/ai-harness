@@ -195,6 +195,36 @@ exports.skillRosterDecisions = function skillRosterDecisions(t) {
     });
 };
 
+// THIRD-PARTY-NOTICES.md exists to stop a vendored skill going unattributed, and it had a way of
+// doing the opposite. A skill somebody copied in by hand rather than vendoring with `npx skills` has
+// no lock entry -- that tool is what writes one -- so the roster called it local and the notice
+// listed it under "written for this repository, with no upstream": authorship claimed, in writing,
+// over somebody else's work. What tells a copy from a skill written here is what a copy brings with
+// it and a new file has no reason to carry, a licence of its own, in the folder or the frontmatter.
+// Both shapes are asked here, beside a skill that really was written here, which has to stay listed.
+exports.skillNoticesWillNotClaimACopyAsItsOwn = function skillNoticesWillNotClaimACopyAsItsOwn(t) {
+    const skill = (name, extra = "") => text("---", `name: ${name}`, "description: Does one thing.", ...(extra ? [extra] : []), "---", "Body");
+    const r = skills.readRoster(repoView.fromMap({
+        ".agents/skills/written-here/SKILL.md": skill("written-here"),
+        ".agents/skills/copied-by-hand/SKILL.md": skill("copied-by-hand"),
+        ".agents/skills/copied-by-hand/LICENSE.txt": "MIT License\n\nCopyright (c) Somebody\n",
+        ".agents/skills/says-so-itself/SKILL.md": skill("says-so-itself", "license: Apache-2.0"),
+    }));
+    const s = n => r.skills.find(x => x.name === n) || {};
+    t.ok(!s("written-here").carries, "skill notices: a skill written here carries no licence of its own", s("written-here").carries);
+    t.ok(/LICENSE\.txt/.test(s("copied-by-hand").carries || ""),
+        "skill notices: a licence file in the folder says the skill came from somewhere", s("copied-by-hand").carries);
+    t.ok(/Apache-2\.0/.test(s("says-so-itself").carries || ""),
+        "skill notices: and so does a licence named in the frontmatter", s("says-so-itself").carries);
+
+    const orphans = r.notices.orphans.join(" | ");
+    t.ok(r.notices.orphans.length === 2 && /copied-by-hand/.test(orphans) && /says-so-itself/.test(orphans)
+        && r.notices.orphans.every(o => /skills-lock\.json/.test(o)),
+        "skill notices: each of them is an orphan naming the lock, not a line in the notice", orphans);
+    t.ok(!/copied-by-hand|says-so-itself/.test(r.notices.text) && /`written-here`/.test(r.notices.text),
+        "skill notices: only the skill actually written here is listed as written here", r.notices.text);
+};
+
 // The upstream's own skills all pass the frontmatter check, so harnessInvariantsHoldHere proves only
 // that it passes. Each broken shape gets a skill of its own, and the check must name every one of
 // them and none of the valid ones: quoted values and a folded description included.
