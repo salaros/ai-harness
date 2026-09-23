@@ -44,4 +44,30 @@ exports.stacksTableDecisions = function stacksTableDecisions(t) {
     const skipping = rows.filter(r => (r.format || "").includes("--ignore-unknown"));
     t.ok(!skipping.length, "no format command hides an unparseable file behind --ignore-unknown",
         skipping.map(r => `${r.stack}: ${r.format}`).join("\n"));
+
+    // Which leaves the other half of ADR-0003: an extension prettier cannot parse on its own is
+    // listed only where the scaffold leaves the project able to parse it. That takes two commands,
+    // not one. Prettier 3 dropped plugin auto-discovery, so an installed plugin it has not been
+    // told about is a plugin it never loads: `prettier --check Page.astro` answers "No parser
+    // could be inferred" and the push is blocked over a file nothing could have formatted. The
+    // scaffold installs the plugin and names it in the config, and both are asserted, because
+    // either one alone leaves the extension listed and unparseable. The pairing runs the other
+    // way too: a plugin no row formats anything for is weight in every scaffolded project, paid
+    // for nothing.
+    const PLUGINS = { "*.astro": "prettier-plugin-astro" };
+    const unpaired = [];
+    for (const r of rows.filter(r => (r.format || "").includes("prettier"))) {
+        const listed = (r.formats || "").split(/\s+/).filter(Boolean), scaffold = r.scaffold || "";
+        for (const [pattern, plugin] of Object.entries(PLUGINS)) {
+            const wants = listed.includes(pattern);
+            const steps = scaffold.split("&&").map(s => s.trim());
+            const installs = steps.some(s => /\b(?:install|add)\b/.test(s) && s.split(/\s+/).includes(plugin));
+            const declares = steps.some(s => s.includes("prettier.plugins") && s.includes(plugin));
+            if (wants && !installs) unpaired.push(`${r.stack}: formats ${pattern} and its scaffold does not install ${plugin}`);
+            if (wants && !declares) unpaired.push(`${r.stack}: formats ${pattern} and its scaffold never names ${plugin} in the prettier config, so prettier will not load it`);
+            if (installs && !wants) unpaired.push(`${r.stack}: scaffolds ${plugin} and formats nothing that needs it`);
+        }
+    }
+    t.ok(!unpaired.length, "an extension needing a prettier plugin is listed only where the scaffold installs and configures it",
+        unpaired.join("\n"));
 };
