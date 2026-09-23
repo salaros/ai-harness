@@ -6,6 +6,8 @@ ADR-0001 put every read of a repo behind `scripts/repo-view.js` and every write 
 
 ## Decision
 
+### D-1 the merge keeps its temp directory and its spawn
+
 It stays where it is. No seam is introduced for merging, and no stand-in for diff3 is written.
 
 ## Why
