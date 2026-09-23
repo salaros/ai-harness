@@ -36,4 +36,12 @@ exports.stacksTableDecisions = function stacksTableDecisions(t) {
     t.ok(stacks.matches("*.cs", ["src/App/Program.cs"]), "a pattern matches by basename");
     t.ok(stacks.matches("package-lock.json", ["package-lock.json"]), "a pattern matches by path");
     t.ok(!stacks.matches("*.cs", ["a.cs/b.txt"]), "a pattern does not match across a directory separator");
+
+    // --ignore-unknown skips a file prettier has no parser for and still exits 0, so a row listing an
+    // extension it cannot read reported a clean gate over files nothing had checked: codecave.pro
+    // carried .astro that way. The formats cell is the contract, the command trusts it, and an
+    // extension with no parser has to fail loudly rather than be listed and skipped.
+    const skipping = rows.filter(r => (r.format || "").includes("--ignore-unknown"));
+    t.ok(!skipping.length, "no format command hides an unparseable file behind --ignore-unknown",
+        skipping.map(r => `${r.stack}: ${r.format}`).join("\n"));
 };

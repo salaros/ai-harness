@@ -5,3 +5,5 @@
   - [ ] A skill the project wrote itself, recorded in neither file, must survive that reinstall rather than being wiped with the rest
   - [ ] Read `skills.json` as well as `skills-lock.json`, transforming the former into a lock while adopting
 - [ ] `threeWay` creates a temp directory and spawns `git merge-file` from inside a policy decision, which is why the in-memory decision table still touches real disk #deferred (scripts/update-harness.js:381)
+- [ ] `.astro` is format-checked by nobody: prettier needs `prettier-plugin-astro` to parse it, and the harness installs no prettier plugin, so a project wanting it must install the plugin and extend its own row #deferred (scripts/stacks.tsv)
+- [ ] `.razor` is format-checked by nobody: prettier has no plugin for it at all, so it would belong on the dotnet row, and whether `dotnet format` formats Razor markup rather than only the `@code` C# was never established #question (scripts/stacks.tsv)
