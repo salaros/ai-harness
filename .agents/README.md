@@ -70,7 +70,7 @@ Three Node scripts in `.agents/hooks/`. Each reads the tool's JSON payload on st
 
 | Hook | Checks |
 | --- | --- |
-| `pre-commit` | The project is initialised: `MEMORY.md` exists and holds no `<placeholder>`, with the name and purpose taken from `INTENT.md` when there is one. `TODO.md` follows the ledger format. Staged documents, `MEMORY.md` and `INTENT.md` keep the documentation chain intact. |
+| `pre-commit` | The project is initialised: `MEMORY.md` exists and holds no `<placeholder>`, with the name and purpose taken from `INTENT.md` when there is one. No staged line opens a merge conflict (`<<<<<<< `). `TODO.md` follows the ledger format. Staged documents, `MEMORY.md` and `INTENT.md` keep the documentation chain intact. |
 | `commit-msg` | The message is a conventional commit: `<type>(<scope>)?!?: <description>`, subject at most 72 characters, at least four words, and a body. A missing issue key is a warning, not an error, and so are a hashed key (`#AB-42`) and a smart-commit command in the subject; none of them warn when `MEMORY.md` records `Issue tracker: none`. |
 | `pre-push` | The project is initialised, and the pushed files pass the stack's formatter from `scripts/stacks.tsv`. It reports and blocks, never rewrites, and skips a formatter that is not installed. |
 | `post-merge` | Restores dependencies when a manifest changed: skills, npm, pnpm, yarn, NuGet or uv, as `scripts/stacks.tsv` says. |
