@@ -13,16 +13,20 @@
 // Only checkbox lines are entries; every other line is prose the file is free to carry. It never
 // asks for entries to exist: an empty ledger, or no TODO.md at all, is the honest state of a repo
 // with nothing outstanding.
-// Called by .githooks/pre-commit, which pipes the staged blob in, so the check sees what the commit
-// will record rather than what is on disk. Reads a path instead when given one.
+// The pre-commit hook calls check() on the staged blob through githook.js, so the commit is judged by
+// what it will record rather than what is on disk. As a command it reads TODO.md at the repo root, a
+// path when given one, and stdin only when given `-`: an agent's shell leaves stdin open with nothing
+// on it, and reading it by default left the command waiting there for hours.
 // check(text, root) is the decision, exported the way check-initialised.js and docs-check.js export
 // theirs: text in, problems out, nothing printed and nothing exited. `root` is what a source that
 // looks like a path is resolved against. The command line below is the only part that talks to a
 // terminal.
 // Usage:
-//   git show :TODO.md | node scripts/check-todo.js
+//   node scripts/check-todo.js
 //   node scripts/check-todo.js TODO.md
+//   git show :TODO.md | node scripts/check-todo.js -
 const fs = require("fs");
+const path = require("path");
 const lib = require("./lib");
 const docsCheck = require("./docs-check");
 
@@ -83,12 +87,13 @@ function check(text, root) {
 module.exports = { check, TAGS };
 
 if (require.main === module) {
-    const file = lib.args().find(a => !a.startsWith("--"));
+    const root = lib.root();
+    const file = lib.args().find(a => a === "-" || !a.startsWith("--")) || path.join(root, "TODO.md");
     // No ledger is the honest state of a repo with nothing outstanding, and the same answer as an
     // empty one. Throwing ENOENT at a path that is simply not there says "broken" about "nothing to
-    // report".
-    const text = file ? (fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "") : lib.stdin();
-    const root = lib.chdirRoot();
+    // report". A path given is read from where the command was run, before moving to the root.
+    const text = file === "-" ? lib.stdin() : fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+    lib.chdirRoot();
 
     const { problems, summary } = check(text, root);
     if (!problems.length) { console.log(summary); process.exit(0); }

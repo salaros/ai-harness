@@ -1,6 +1,8 @@
 // .agents/hooks/tests/tables/todo.js
 // scripts/check-todo.js's decisions: the todo-md shape TODO.md is held to, and the source rule it
 // shares with a Derived from line.
+const path = require("path");
+const lib = require("../../lib");
 const todo = require("../../../../scripts/check-todo");
 const { withRoot, text } = require("../fixtures");
 
@@ -47,4 +49,20 @@ exports.todoDecisions = function todoDecisions(t) {
         const verdict = blocks ? r.problems.some(p => p.includes(blocks)) : !r.problems.length && r.summary.includes(summary);
         t.ok(verdict, `check-todo: ${why}`, r.problems.join("\n") || r.summary);
     }
+};
+
+// The command's inputs. With no argument it reads the root's TODO.md rather than stdin, since an
+// agent's shell leaves stdin open and empty and the command then waited on it for hours. Stdin is
+// read only when asked for with "-", which is how a staged blob is piped in by hand.
+exports.todoCommandInput = function todoCommandInput(t) {
+    const script = path.join(__dirname, "../../../../scripts/check-todo.js");
+    const bad = text("- [ ] An entry with no file header #question (AGENTS.md)");
+    withRoot({ "AGENTS.md": "# Agents\n", "TODO.md": bad }, root => {
+        const flag = `${lib.ROOT_FLAG}${root}`;
+        const plain = lib.node([script, flag], { cwd: root });
+        t.ok(plain.status === 1 && plain.output.includes('must open with "# TODO"'),
+            "check-todo: with no argument it checks the root's TODO.md, not stdin", plain.output);
+        const piped = lib.node([script, "-", flag], { cwd: root, input: text("# TODO", "", "- [ ] Piped in #question (AGENTS.md)") });
+        t.ok(piped.status === 0 && piped.output.includes("1 open item(s)"), 'check-todo: "-" reads stdin', piped.output);
+    });
 };
