@@ -20,7 +20,7 @@ Real names are allowed. Leave out anything the participant asked to keep off the
 2. **Sweep** the material in question order. For each question, write down what was answered, what was asked and not answered, or what was never asked, and never infer an answer that was not given. Then sweep again for everything that fit no question: off-script stories, the participant's own words for things, workarounds, emotional moments, commitments. Done when every question has one of the three outcomes and nothing interesting is left only in the raw material.
 3. **Clarify** with the interviewer through the question tool, a few items per round: ambiguous passages offered as "X or Y?", answers the notes compress past use, questions that are blank because they were not asked or were not written down, and once, "did anything surprise you that is not in these notes?". Mark what comes back as from memory. Done when no blank is unexplained.
 4. **Write** the file with the template below and show it to the user. Done when they confirm it says what happened.
-5. **Hand off**: name the document that will cite it: a PDD for user interviews, a BRD, TRD or ADR for a stakeholder session. Draw no conclusions here: a single conversation records evidence, and weighing it against other interviews is the job of the document that cites them.
+5. **Hand off**: name the document that will cite it: a PDD for user interviews, a BRD, TRD or ADR for a stakeholder session. Draw no conclusions here: a single conversation records evidence, and weighing it against other interviews is the job of `interview-synthesis`, or of the document that cites it when there is only one.
 
 ## Template
 
