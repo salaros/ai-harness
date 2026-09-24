@@ -26,7 +26,7 @@ Read by `business-analyst`, `devops` and `engineer`.
 | an ask, plan or decision that is not yet sharp | `grilling`; `grill-with-docs` where terms and decisions should be recorded as they land, which adds `domain-modeling` |
 | a settled plan that needs breaking into work | `to-tickets`, when `MEMORY.md` names a tracker |
 
-Record the interview with `interview-notes` under `docs/research/interviews/`: a document derived from a conversation cites that path as its source.
+Record the interview with `interview-notes` under `docs/research/interviews/`: a document derived from a conversation cites that path as its source. Several of them on one question are weighed together with `interview-synthesis`, under `docs/research/syntheses/`.
 
 Hand `to-tickets` the open `#deferred` entries from `TODO.md` alongside the plan, and delete each entry whose ticket now exists. With no tracker, the drafts it writes under `.scratch/<feature-slug>/issues/` are the work items; say where they are.
 

@@ -24,6 +24,7 @@ Every document carries a `**Derived from:**` line, the BRD included. Where the c
 | more initiatives than the team can build, or the order to build them in | `roadmap-prioritization` for the scoring and the portfolio balance, then the chain for whichever one wins |
 | an idea, a request or a market signal whose worth is still in question | `pdd`, which ends in a verdict the user gives; `docs-check` after it |
 | a conversation with a user or stakeholder to put on the record: a transcript, call notes, a recollection | `interview-notes` |
+| several interview records to weigh against each other: what recurs, how many say it, what it means | `interview-synthesis`, then `pdd` citing it |
 | a document of the chain in `AGENTS.md` to write: BRD, PRD, EARS, BDD | `brd`, `prd`, `feature-forge`, `bdd-scenarios`, in that order; `docs-check` after each. A PRD with `NFR-n` lines goes to the `engineer` for its TRD before EARS |
 | a contract to shape between teams, systems or modules | `codebase-design`, including its design-it-twice reference for comparing alternatives |
 | questions to put to stakeholders in writing instead of live | `to-questionnaire` |

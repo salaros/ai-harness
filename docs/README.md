@@ -10,7 +10,7 @@ A reference is an upstream document ID, or a **source**: a URL, a repo-relative 
 
 **Whether** the opportunity is worth pursuing at all: an opportunity assessment written while the idea is still a hunch, before anyone writes a business case. It is optional; a need already settled by a contract, a regulation or a decision taken elsewhere goes straight to a BRD.
 
-Contains: the problem in the customer's words, who has it, evidence (`EV-n`) each with its reference, the size of the opportunity, today's alternatives, why us, why now, how it would reach them, the outcomes that would prove it worked (`OUT-n`), risks and assumptions (`RISK-n`), and the verdict. It derives from its evidence: interview records under `docs/research/interviews/`, tickets, analytics, a roadmap entry. The `pdd` skill writes it.
+Contains: the problem in the customer's words, who has it, evidence (`EV-n`) each with its reference, the size of the opportunity, today's alternatives, why us, why now, how it would reach them, the outcomes that would prove it worked (`OUT-n`), risks and assumptions (`RISK-n`), and the verdict. It derives from its evidence: interview records under `docs/research/interviews/` and their syntheses under `docs/research/syntheses/`, tickets, analytics, a roadmap entry. The `pdd` skill writes it.
 
 Its status is `Draft`, `Go`, `No-go` or `Parked`. The user gives the verdict, and a BRD may build only on a PDD that is `Go`; a `No-go` is kept as the record of why, and a `Parked` one has a `#deferred` line in `TODO.md` saying what would reopen it.
 
@@ -69,6 +69,8 @@ Contains: goals and non-goals citing the EARS and BDD documents, the architectur
 ## Research, the sources beside the chain
 
 `docs/research/` holds what the chain's documents cite as evidence but that is not itself a stage, so `docs-check` checks nothing inside it beyond its being there to cite. Its first kind is interviews: `docs/research/interviews/YYYY-MM-DD-<slug>.md`, one conversation per file, written with `interview-notes`. A `user` interview is with someone who has the problem, and feeds a PDD's evidence. A `stakeholder` interview is with someone who decides or pays, including a grilling session that settled requirements or a decision, and feeds a PDD, a BRD, a TRD or an ADR. Real names are allowed; what the participant asked to keep off the record stays off it.
+
+Its second kind is syntheses: `docs/research/syntheses/YYYY-MM-DD-<slug>.md`, written with `interview-synthesis`, weighing several interviews on one question: themes, insights and recommendations, which a PDD's evidence cites and its verdict may overrule.
 
 ## After the documents
 

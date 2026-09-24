@@ -36,7 +36,7 @@ Several services in one repo, deployed separately and orchestrated together. Eac
 ├── docs/
 │   ├── <stage>/                    ← one documentation chain for the whole product: pdd/ to spec/
 │   ├── adr/                        ← decisions that cross services
-│   └── research/interviews/        ← the conversations the chain cites
+│   └── research/                   ← what the chain cites: interviews/ and their syntheses/
 ├── src/
 │   ├── <Name>.AppHost/             ← orchestration (Aspire on .NET)
 │   ├── <Name>.ServiceDefaults/     ← shared telemetry, health checks, resilience
