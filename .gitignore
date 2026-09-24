@@ -638,7 +638,7 @@ tools/.store
 # that has no project to configure, such as the template repo itself. Local, never committed.
 .skip-project-init
 
-## Astro site: generated types 
+## Astro site: generated types
 .astro/
 
 ## Lighthouse CI reports
