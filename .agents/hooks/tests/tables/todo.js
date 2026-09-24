@@ -51,11 +51,10 @@ exports.todoDecisions = function todoDecisions(t) {
     }
 };
 
-// The command's inputs. With no argument it reads the root's TODO.md rather than stdin, since an
-// agent's shell leaves stdin open and empty and the command then waited on it for hours. Stdin is
-// read only when asked for with "-", which is how a staged blob is piped in by hand.
+// The command's inputs: the root's TODO.md by default, stdin only with "-", and a given path that is
+// not there is an error. The old default of stdin exited 0 here on the closed stdin spawnSync hands it.
 exports.todoCommandInput = function todoCommandInput(t) {
-    const script = path.join(__dirname, "../../../../scripts/check-todo.js");
+    const script = path.join(lib.checkout, "scripts", "check-todo.js");
     const bad = text("- [ ] An entry with no file header #question (AGENTS.md)");
     withRoot({ "AGENTS.md": "# Agents\n", "TODO.md": bad }, root => {
         const flag = `${lib.ROOT_FLAG}${root}`;
@@ -64,5 +63,7 @@ exports.todoCommandInput = function todoCommandInput(t) {
             "check-todo: with no argument it checks the root's TODO.md, not stdin", plain.output);
         const piped = lib.node([script, "-", flag], { cwd: root, input: text("# TODO", "", "- [ ] Piped in #question (AGENTS.md)") });
         t.ok(piped.status === 0 && piped.output.includes("1 open item(s)"), 'check-todo: "-" reads stdin', piped.output);
+        const typo = lib.node([script, "TOOD.md", flag], { cwd: root });
+        t.ok(typo.status === 2 && typo.output.includes("no such file"), "check-todo: a path given that is not there fails", typo.output);
     });
 };
