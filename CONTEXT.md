@@ -36,6 +36,14 @@ _Avoid_: strategy, mode, rule
 What a repo's harness knows about its skills at one moment: every entry under `.agents/skills`, each skill's frontmatter and source, which agents route it, the skills the lock records but the disk lacks, and whether the licence notice is current. Read in one pass and never written; relinking and writing the notice are separate acts.
 _Avoid_: skill registry, skill index, skill list
 
+**Licence signal**:
+A licence file (`LICENSE`, `LICENCE`, `NOTICE` or `COPYING`, any case, any extension) or a `license:` line in the frontmatter, inside a skill's own folder. A skill written here is covered by the repository's licence and restates nothing, so a signal is the fingerprint of a copy, whatever it says.
+_Avoid_: licence header, licence marker, attribution
+
+**Orphan**:
+A skill the third-party notice cannot account for: one the lock records with no licence row for its source, or one the lock does not record that carries a licence signal. The notice is not written while there is one. The way out is vendoring with `npx skills`, or removing the licence from a skill that really was written here.
+_Avoid_: unlicensed skill, unknown skill, stray skill
+
 **Repo view**:
 A repo as anything reads it, by repo-relative path: whether a path exists, whether it is a file, its text, its bytes, where a symlink points, what a folder holds and what modes Git records. The working tree, Git's index, one commit and a set of files a test names each give one, and it is the only read seam: a check, a hook and an install all ask the same questions. The staged view is what a commit will record: the documentation chain from the index, and everything else from the working tree. Nothing in it writes.
 _Avoid_: filesystem, snapshot, tree
