@@ -637,3 +637,9 @@ tools/.store
 # The project-init gate (.githooks/pre-commit, pre-push): create this empty file in a clone
 # that has no project to configure, such as the template repo itself. Local, never committed.
 .skip-project-init
+
+## Astro site: generated types 
+.astro/
+
+## Lighthouse CI reports
+.lighthouseci/
