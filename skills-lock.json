@@ -67,12 +67,6 @@
       "skillPath": "skills/create-implementation-plan/SKILL.md",
       "computedHash": "5c282fded01e40a7db621b0690513f62d179b600e0a271751e82cb0c9e1bcafc"
     },
-    "design-doc": {
-      "source": "diskd-ai/design-doc",
-      "sourceType": "github",
-      "skillPath": "SKILL.md",
-      "computedHash": "1bf1e12acf78a1c05ef2cd907cc45a0ae8a0a3c510fa64da9ee474ec757568f9"
-    },
     "devops-engineer": {
       "source": "jeffallan/claude-skills",
       "sourceType": "github",

@@ -14,7 +14,6 @@ vercel-labs/agent-browser	Apache-2.0	-	https://github.com/vercel-labs/agent-brow
 thebushidocollective/han	FSL-1.1-ALv2	Copyright 2025 The Bushido Collective	https://github.com/thebushidocollective/han/blob/main/LICENSE	Source-available, not open source. Forbids Competing Use, and converts to Apache-2.0 two years after each release.
 mindrally/skills	Apache-2.0	-	https://github.com/mindrally/skills/blob/main/LICENSE	-
 wondelai/skills	MIT	Copyright (c) 2025 Wondel.ai sp. z o.o.	https://github.com/wondelai/skills/blob/main/LICENSE	-
-diskd-ai/design-doc	MIT	-	https://github.com/diskd-ai/design-doc#license	Stated in the README only: no LICENSE file and no copyright holder to reproduce.
 sprngr/rubber-duck	MIT	Copyright (c) 2026 Michael Springer	https://github.com/sprngr/rubber-duck/blob/main/LICENSE	-
 vercel-labs/skills	MIT	Copyright (c) 2026 Vercel, Inc.	https://github.com/vercel-labs/skills/blob/main/LICENSE	-
 anthropics/skills	Apache-2.0	-	https://github.com/anthropics/skills	Per-skill: each folder carries its own LICENSE.txt, already vendored.

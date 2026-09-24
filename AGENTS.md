@@ -28,7 +28,7 @@ PDD → BRD → PRD → TRD → EARS → BDD → RFC → ADR → SPEC → TDD �
 | BDD | behaviour as Given/When/Then scenarios | `docs/bdd/` | backwards | | `bdd-scenarios` |
 | RFC | how to solve a technical problem, argued out between options | `docs/rfc/` | any | Draft, Open, **Accepted**, Rejected, Withdrawn, Superseded | `rfc` |
 | ADR | decisions that are hard to reverse | `docs/adr/` | any | | `grill-with-docs` |
-| SPEC | the technical design that satisfies the requirements | `docs/spec/` | backwards | | `design-doc` |
+| SPEC | the technical design that satisfies the requirements | `docs/spec/` | backwards | | `spec` |
 | TDD | the failing tests that pin the behaviour | `tests/` | | | `tdd` |
 | IPLAN | ordered implementation steps | `.scratch/` | | | `create-implementation-plan`; `to-tickets` publishes it to the issue tracker, if any |
 | Code | | `src/` | | | `implement`, `codebase-design` |

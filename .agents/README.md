@@ -57,7 +57,7 @@ Three Node scripts in `.agents/hooks/`. Each reads the tool's JSON payload on st
 | --- | --- | --- |
 | `session-start.js` | session start | Prints the branch, whether Git hooks are installed, skills missing from disk, and whether `CONTEXT.md`, `docs/adr/` and the issue-tracker config exist. On a GitHub clone with `gh` signed in, it also lists the open pull requests by number, so the agent can offer `pr-sweep`. |
 | `guard-command.js` | before a shell command | Blocks force pushes, `git reset --hard`, `git clean -f`, `git branch -D` and recursive deletes of `/`, `~`, `.git` or `*`, and tells the agent to ask you instead. |
-| `chain-skill.js` | before a file is created | Asks for the skill that writes that stage of the chain, reading the mapping from `AGENTS.md`'s table: a PRD with `prd`, a SPEC with `design-doc`, a new module under `src/` with `implement` and `codebase-design`. Only a creation fires it, and only when the session's transcript shows the skill was never loaded. |
+| `chain-skill.js` | before a file is created | Asks for the skill that writes that stage of the chain, reading the mapping from `AGENTS.md`'s table: a PRD with `prd`, a SPEC with `spec`, a new module under `src/` with `implement` and `codebase-design`. Only a creation fires it, and only when the session's transcript shows the skill was never loaded. |
 | `check-edit.js` | after a file edit | Syntax-checks `*.js`, validates `*.json`, runs `docs-check.js` after changes to `docs/` or `AGENTS.md`, runs `check-harness.js` after harness changes, and refuses edits to vendored skills. |
 
 `lib.js` turns whatever a tool sends (Claude Code, Cursor, Copilot, Gemini CLI) into one hook event: the repo root, the edited paths, the command text, and the raw input. A payload in no shape it knows is noted on stderr and never blocks an edit; for the command guard, every string in it counts as the command, so an unfamiliar tool is scanned rather than waved through.
@@ -146,7 +146,7 @@ To switch to GitHub, GitLab or local Markdown, run `/setup-matt-pocock-skills`.
 | `triage` | `issue-tracker.md`, `triage-labels.md`, `.out-of-scope/` | `.out-of-scope/<concept>.md`, labels and comments |
 | `grill-with-docs` | the ask being sharpened | nothing of its own: it calls `grilling` and `domain-modeling` |
 | `domain-modeling` | `CONTEXT.md`, `docs/adr/` | `CONTEXT.md`, `docs/adr/NNNN-<slug>.md` |
-| `brd`, `prd`, `feature-forge`, `bdd-scenarios`, `design-doc`, `create-implementation-plan` | the document one stage upstream, `CONTEXT.md` | `docs/<stage>/NNNN-<slug>.md`, or `.scratch/<feature>/` for the plan |
+| `brd`, `prd`, `feature-forge`, `bdd-scenarios`, `spec`, `create-implementation-plan` | the document one stage upstream, `CONTEXT.md` | `docs/<stage>/NNNN-<slug>.md`, or `.scratch/<feature>/` for the plan |
 | `docs-check` | the `AGENTS.md` chain table, `docs/`, `MEMORY.md`, `INTENT.md` | repairs in place |
 | `loose-ends` | `TODO.md` | `TODO.md` |
 | `project-init` | your answers, `INTENT.md` if present | `MEMORY.md`, `INTENT.md` if you accept one, the Project section of `README.md`, `issue-tracker.md`, and `CONTEXT-MAP.md` for `microservices` |
