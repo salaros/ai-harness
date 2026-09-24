@@ -23,6 +23,7 @@ const initialised = require("./check-initialised");
 const commitMsg = require("./check-commit-msg");
 const todo = require("./check-todo");
 const stagedDocs = require("./check-staged-docs");
+const markers = require("./check-conflict-markers");
 const repoView = require("./repo-view");
 
 const TODO = "TODO.md";
@@ -45,8 +46,8 @@ function staged(root, file) {
 
 const lines = text => text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
-// Before a commit lands: refuse an unconfigured clone, check the loose-ends ledger, check the
-// documentation chain as the commit will record it.
+// Before a commit lands: refuse an unconfigured clone, refuse a merge conflict left in what is
+// staged, check the loose-ends ledger, check the documentation chain as the commit will record it.
 function preCommit(root, { dry }) {
     const gate = initialised.check(root);
     const stagedTodo = staged(root, TODO);
@@ -56,6 +57,7 @@ function preCommit(root, { dry }) {
 
     if (dry) {
         console.log(`project: ${gate.reason}`);
+        console.log("would check what is staged for conflict markers");
         console.log(stagedTodo !== null ? `would check the staged ${TODO}`
             : onDisk ? `would check the unstaged ${TODO} and warn about what it finds`
             : `no ${TODO} to check`);
@@ -66,6 +68,8 @@ function preCommit(root, { dry }) {
 
     if (!gate.ok) { initialised.explain("commit", gate); return 1; }
     console.log(`project: ${gate.reason}`);
+
+    if (report(root, markers.check(root), "Resolve the merge, or keep a marker on purpose with conflict-marker-size in .gitattributes.\nTo commit anyway: git commit --no-verify")) return 1;
 
     // The ledger the commit records blocks it. A TODO.md nobody has staged records nothing, so a
     // problem in it is a warning: it is still this repo's ledger and still worth saying, but it is
