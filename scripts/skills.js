@@ -66,10 +66,10 @@ function readEntries(view) {
         const dir = view.exists(folder) && !view.isFile(folder);
         const hasSkillMd = view.isFile(file);
         const fm = hasSkillMd ? frontmatter(view.read(file)) : null;
-        // What says the skill came from somewhere, whether or not anything recorded where: a licence
-        // file in its own folder, or a licence named in its frontmatter. Both are things a copy
-        // brings with it and a skill written here has no reason to carry.
-        const licence = dir ? (view.list(folder) || []).find(f => /^(licen[cs]e|notice)\b/i.test(f)) : null;
+        // The licence signal: a licence file in its own folder, or a licence named in its frontmatter,
+        // either of which a copy brings with it and a skill written here has no reason to carry.
+        // COPYING is how a GPL work names its file. ADR-0006 has the argument.
+        const licence = dir ? (view.list(folder) || []).find(f => /^(licen[cs]e|notice|copying)\b/i.test(f)) : null;
         const carries = licence ? `\`${licence}\`` : (fm && fm.license ? `a \`license: ${fm.license}\` line` : null);
         return { name, link: !!(view.lstat(folder) || {}).link, dir, hasSkillMd, frontmatter: fm, carries };
     });
@@ -139,10 +139,10 @@ function noticesFor(skills, rows) {
     const orphans = [];
     for (const s of skills) {
         if (!s.vendored) {
-            // A skill the lock does not record is this repository's own work -- unless it is
-            // carrying somebody else's licence, which is what a hand-copied skill brings with it and
-            // a skill written here has no reason to have. `npx skills` writes the lock entry, so
-            // only a copy somebody made by hand lands here. Saying "written for this repository,
+            // A skill the lock does not record is this repository's own work -- unless it carries a
+            // licence signal, which is what a hand-copied skill brings with it and a skill written
+            // here has no reason to have. `npx skills` writes the lock entry, so only a copy somebody
+            // made by hand lands here, and the lock is the one record of provenance (ADR-0006). Saying "written for this repository,
             // with no upstream" about that skill would be the notice claiming authorship of work
             // this repository did not write, which is the failure the file exists to prevent.
             if (s.carries) orphans.push(`${s.name} (no ${LOCK} entry, but carries ${s.carries})`);
@@ -365,7 +365,7 @@ function relink(root) {
 // sending a skill with no lock entry off to add a licence row that would never be reached.
 const orphanMessage = orphans => `${NOTICES} cannot account for:\n  ${orphans.join("\n  ")}\n` +
     `A skill the lock records needs a row in ${LICENCES}: source, SPDX id, copyright line, licence URL, and any restriction.\n` +
-    `A skill carrying a licence with no ${LOCK} entry was copied in by hand: record where it came from, or remove the licence if it really is this repository's own.`;
+    `A skill carrying a licence with no ${LOCK} entry was copied in by hand: vendor it with npx skills, or remove the licence if it really is this repository's own. The lock is the only record of where a skill came from (ADR-0006).`;
 
 module.exports = { readRoster, relinkPlan, relink, writeNotices, frontmatter, orphanMessage, LOCK, NOTICES, LICENCES };
 
