@@ -211,6 +211,8 @@ exports.skillNoticesWillNotClaimACopyAsItsOwn = function skillNoticesWillNotClai
         ".agents/skills/copied-by-hand/SKILL.md": skill("copied-by-hand"),
         ".agents/skills/copied-by-hand/LICENSE.txt": "MIT License\n\nCopyright (c) Somebody\n",
         ".agents/skills/says-so-itself/SKILL.md": skill("says-so-itself", "license: Apache-2.0"),
+        ".agents/skills/gpl-by-hand/SKILL.md": skill("gpl-by-hand"),
+        ".agents/skills/gpl-by-hand/COPYING": "GNU GENERAL PUBLIC LICENSE\n",
     });
     const r = skills.readRoster(view);
     const s = n => r.skills.find(x => x.name === n) || {};
@@ -218,19 +220,21 @@ exports.skillNoticesWillNotClaimACopyAsItsOwn = function skillNoticesWillNotClai
     // lookup that finds nothing answers for a skill with no licence, which is what two of them are
     // asking about. Pinned here, a skill dropped from the roster fails on this line instead of
     // passing on those.
-    t.ok(r.skills.map(x => x.name).sort().join() === "copied-by-hand,says-so-itself,written-here",
-        "skill notices: the roster holds all three skills", r.skills.map(x => x.name).join());
+    t.ok(r.skills.map(x => x.name).sort().join() === "copied-by-hand,gpl-by-hand,says-so-itself,written-here",
+        "skill notices: the roster holds all four skills", r.skills.map(x => x.name).join());
     t.ok(!s("written-here").carries, "skill notices: a skill written here carries no licence of its own", s("written-here").carries);
     t.ok(/LICENSE\.txt/.test(s("copied-by-hand").carries || ""),
         "skill notices: a licence file in the folder says the skill came from somewhere", s("copied-by-hand").carries);
     t.ok(/Apache-2\.0/.test(s("says-so-itself").carries || ""),
         "skill notices: and so does a licence named in the frontmatter", s("says-so-itself").carries);
+    t.ok(/COPYING/.test(s("gpl-by-hand").carries || ""),
+        "skill notices: COPYING, the GPL's name for its file, is a licence signal too (ADR-0006)", s("gpl-by-hand").carries);
 
     const orphans = r.notices.orphans.join(" | ");
-    t.ok(r.notices.orphans.length === 2 && /copied-by-hand/.test(orphans) && /says-so-itself/.test(orphans)
+    t.ok(r.notices.orphans.length === 3 && /copied-by-hand/.test(orphans) && /says-so-itself/.test(orphans) && /gpl-by-hand/.test(orphans)
         && r.notices.orphans.every(o => /skills-lock\.json/.test(o)),
         "skill notices: each of them is an orphan naming the lock, not a line in the notice", orphans);
-    t.ok(!/copied-by-hand|says-so-itself/.test(r.notices.text) && /`written-here`/.test(r.notices.text),
+    t.ok(!/copied-by-hand|says-so-itself|gpl-by-hand/.test(r.notices.text) && /`written-here`/.test(r.notices.text),
         "skill notices: only the skill actually written here is listed as written here", r.notices.text);
 
     // And the gate that actually runs. `node scripts/skills.js notices` is not what a project meets
