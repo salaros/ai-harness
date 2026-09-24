@@ -88,12 +88,12 @@ module.exports = { check, TAGS };
 
 if (require.main === module) {
     const root = lib.root();
-    const file = lib.args().find(a => a === "-" || !a.startsWith("--")) || path.join(root, "TODO.md");
-    // No ledger is the honest state of a repo with nothing outstanding, and the same answer as an
-    // empty one. Throwing ENOENT at a path that is simply not there says "broken" about "nothing to
-    // report". A path given is read from where the command was run, before moving to the root.
+    const given = lib.args().find(a => !a.startsWith("--"));
+    const file = given || path.join(root, "TODO.md");
+    // A missing root TODO.md is an empty ledger, not an error. A path someone typed that is not
+    // there is a mistake, so it fails rather than passing as "nothing to check".
+    if (given && given !== "-" && !fs.existsSync(given)) { console.error(`check-todo: no such file: ${given}`); process.exit(2); }
     const text = file === "-" ? lib.stdin() : fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
-    lib.chdirRoot();
 
     const { problems, summary } = check(text, root);
     if (!problems.length) { console.log(summary); process.exit(0); }
