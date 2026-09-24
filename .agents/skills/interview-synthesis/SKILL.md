@@ -1,13 +1,13 @@
 ---
 name: interview-synthesis
-description: Weigh several interview records under docs/research/interviews/ against each other and write what they add up to as a synthesis under docs/research/syntheses/, which a PDD cites as its evidence. Use after a round of user or stakeholder interviews, when someone asks what the interviews say, what patterns recur, or whether the evidence supports an idea; before a PDD that rests on more than one conversation.
+description: Weigh several interview records under docs/research/interviews/ against each other and write what they add up to as a synthesis under docs/research/syntheses/, which a PDD cites as its evidence. Use after a round of user or stakeholder interviews, when someone asks what several interviews add up to or what recurs across them; before a PDD that rests on more than one conversation.
 ---
 
 # Interview synthesis
 
 One interview is an anecdote; five that say the same thing unprompted are evidence. This skill reads the interview records `interview-notes` wrote and turns them into one file: the themes that recur, how many people each rests on, the quotes that show it, what the themes mean, and what to do about them. The file is a **source**, not a stage of the chain: a PDD names its path on its `**Derived from:**` line, and its `EV-n` lines cite the themes.
 
-Files live in `docs/research/syntheses/YYYY-MM-DD-<slug>.md`, dated by the synthesis. A later round of interviews gets a new synthesis that names the one it updates, rather than an edit that erases what the earlier one concluded.
+Files live in `docs/research/syntheses/YYYY-MM-DD-<slug>.md`, dated by the synthesis. A later round of interviews gets a new synthesis that names the one it supersedes, rather than an edit that erases what the earlier one concluded.
 
 Recommendations here are advice. The verdict belongs to the PDD and to the user who gives it; a recommendation that the evidence does not carry is marked low confidence, not left out.
 
@@ -19,7 +19,7 @@ Recommendations here are advice. The verdict belongs to the PDD and to the user 
 4. **Interpret**: turn themes into insights (`IN-n`), each a sentence that says why, not what ("they re-key jobs because the two systems share no identifier", not "they mentioned re-keying"), citing the themes it rests on. Then recommendations (`REC-n`), each citing its insights, with a confidence of high, medium or low set by how many participants and how much contradiction lie under it. Done when every recommendation traces back to quotes.
 5. **Clarify** with the user through the question tool, a few items per round: themes that could be read two ways, a count that hangs on how one answer is read, and a quote that sits in the wrong theme. Done when no theme depends on a reading the user has not seen.
 6. **Write** the file with the template below and show it to the user. Done when they confirm it says what the records say.
-7. **Hand off** to `pdd`: its evidence cites this file and the themes by ID, and its risks take the limitations. Say which question the interviews left open and who could answer it.
+7. **Hand off** to `pdd`: its `**Derived from:**` line names this file, each `EV-n` names the theme it rests on (`EV-1: <what was observed> (docs/research/syntheses/<file>.md, TH-2)`), and its risks take the limitations. Say which question the interviews left open and who could answer it.
 
 ## Template
 
@@ -28,8 +28,7 @@ Recommendations here are advice. The verdict belongs to the PDD and to the user 
 
 **Date:** YYYY-MM-DD
 **Question:** <what these interviews were meant to find out>
-**Interviews:** docs/research/interviews/<file>.md, docs/research/interviews/<file>.md
-**Updates:** <an earlier synthesis this one supersedes, or none>
+**Supersedes:** <an earlier synthesis, or none>
 
 ## Participants
 
