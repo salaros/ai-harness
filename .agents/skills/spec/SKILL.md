@@ -13,10 +13,10 @@ Read `docs/agents/chain.md` first, then `CONTEXT.md` if it exists, the ADRs touc
 
 ## Steps
 
-1. **Collect the inputs.** The EARS document (its `REQ-n` or equivalent items), the BDD scenarios, every ADR that binds the area, and the RFC whose Resolution chose this design, if there was one. A requirement with no agreed upstream is written first, never assumed. Done when every input has an ID for the `**Derived from:**` line and no requirement the design must meet is missing from it.
+1. **Collect the inputs.** The EARS document (its `REQ-n` or equivalent items), the BDD scenarios, every ADR that binds the area, and the RFC whose Resolution chose this design, if there was one. A requirement with no agreed upstream is written first, never assumed. Work on the harness or the tooling itself, with no product requirement behind it, derives from the ADR or the review that raised it, as `SPEC-0001` does. Done when every input has an ID for the `**Derived from:**` line and no requirement the design must meet is missing from it.
 2. **Frame the design** with `grilling`: goals as the requirements it satisfies, non-goals as what it leaves for later, the constraints the ADRs and TRD impose, and the seams where the design meets code that already exists. Done when the user agrees the goals and non-goals.
 3. **Draft** `docs/spec/NNNN-<slug>.md`, numbered after the highest existing file, with the template below. Each part of the design a plan will later refine is a `### D-n` section, and each cites the requirements it meets as `DOC-ID/ITEM`. Done when every requirement in the inputs is met by at least one `D-n`, and every `D-n` names what it meets.
-4. **Confirm** with the user, fix what they change, and set `Status` to agreed. Done when `node scripts/docs-check.js` is clean.
+4. **Confirm** with the user and fix what they change. A SPEC carries no status line: it is agreed once it is confirmed, and the plan that refines it is the record of that. Done when `node scripts/docs-check.js` is clean.
 5. **Hand off.** `tdd` writes the failing tests the test strategy names, and `create-implementation-plan` turns the `D-n` sections into the IPLAN, citing `SPEC-NNNN/D-n`.
 
 ## Template
@@ -24,7 +24,6 @@ Read `docs/agents/chain.md` first, then `CONTEXT.md` if it exists, the ADRs touc
 ```md
 # SPEC-NNNN: <title>
 
-**Status:** Draft | Agreed
 **Derived from:** EARS-NNNN, BDD-NNNN, ADR-NNNN, RFC-NNNN
 
 ## Goals and non-goals

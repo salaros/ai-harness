@@ -373,7 +373,11 @@ exports.docsSiteRendersTheChain = function docsSiteRendersTheChain(t) {
 function portalModule(name) {
     const file = path.join(lib.checkout, "tools", "docs-site", name);
     if (!fs.existsSync(file)) return null;
-    try { return require(file); } catch { return null; }
+    try { return require(file); } catch (e) {
+        // Only a runtime too old for require(esm) skips; a broken module fails the case.
+        if (e.code === "ERR_REQUIRE_ESM" || e.code === "ERR_REQUIRE_ASYNC_MODULE") return null;
+        throw e;
+    }
 }
 
 const SRS_SECTIONS = ["## 1 Introduction", "## 2 References", "## 3 Requirements", "## 4 Verification", "## 5 Appendices"];
@@ -441,4 +445,7 @@ exports.markdownForWithoutOptionsIsUnchanged = function markdownForWithoutOption
         "markdownFor without options drops the H1, links the citations and anchors the items as before", page);
     const demoted = portal.markdownFor(chain.byId.get("BRD-9403"), chain, { anchors: false, demote: 2 });
     t.ok(demoted.includes("\n#### Needs\n") && !demoted.includes("<span id="), "markdownFor with options pushes headings down and writes no anchors", demoted);
+    // A citation inside a heading links as it does on the document's page, demoted or not.
+    const cited = portal.markdownFor({ ...chain.byId.get("PRD-9403"), lines: ["# PRD-9403: X", "", "## Refines BRD-9403/BR-1"] }, chain, { demote: 2 });
+    t.ok(cited === "#### Refines [BRD-9403/BR-1](/brd/9403-billing/#BR-1)", "markdownFor links a citation inside a demoted heading", cited);
 };

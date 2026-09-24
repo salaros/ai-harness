@@ -4,7 +4,10 @@
 // outline's order rather than the chain's. It is a view and not a stage: nothing is written to
 // docs/, nothing cites it, and docs-check has nothing to validate. The page is built from the model
 // collect() returns and reads nothing itself, so what it renders is what the validator checked.
+import { createRequire } from "node:module";
 import { markdownFor } from "./chain.mjs";
+
+const { DERIVED_RE } = createRequire(import.meta.url)("../../scripts/docs-check.js");
 
 // Where the outline puts what each stage says. A document is placed whole: a TRD's rows are not
 // sorted into the outline's performance, interface and constraint subsections by category, which is
@@ -24,6 +27,9 @@ const SECTIONS = [
     { heading: "## 5 Appendices", appendices: true },
 ];
 
+// The stages rendered in full, in the outline's order: what the command line counts.
+export const SRS_STAGES = SECTIONS.filter(s => s.stage && !s.linksOnly).map(s => s.stage);
+
 const stageOf = (chain, name) => chain.stages.find(s => s.stage === name);
 const docsOf = (chain, name) => chain.docs.filter(d => d.stage === name);
 
@@ -36,13 +42,13 @@ function noneYet(chain, name) {
 
 // The provenance line a document carries, linked as it is on the document's own page.
 function derivedFrom(doc, chain) {
-    const line = doc.lines.find(l => /^\**Derived from:?\**:?/i.test(l));
+    const line = doc.lines.find(l => DERIVED_RE.test(l));
     return line ? markdownFor({ ...doc, lines: [line] }, chain, { anchors: false }) : "";
 }
 
 function body(section, chain) {
     if (section.references) {
-        const rendered = SECTIONS.filter(s => s.stage && !s.linksOnly).flatMap(s => docsOf(chain, s.stage));
+        const rendered = SRS_STAGES.flatMap(stage => docsOf(chain, stage));
         return rendered.length
             ? rendered.map(d => `- [${d.title}](${d.link}), ${derivedFrom(d, chain) || "with no provenance line"}`)
             : ["none yet."];

@@ -64,7 +64,7 @@ An ADR is cross-cutting, because a decision can be forced before the chain start
 
 **How** the system satisfies the requirements: the design that engineering builds from.
 
-Contains: goals and non-goals citing the EARS and BDD documents, the architecture and its components, data model, interfaces between modules and with the outside, decisions taken (citing the ADRs, and the accepted RFC it implements, if any), risks, test strategy, and the sections a later implementation plan will refine (`### D-n`). The `spec` skill writes it.
+Contains: goals and non-goals citing the EARS and BDD documents, the architecture and its components, data model, interfaces between modules and with the outside, the constraints it lives within (the ADRs it obeys, and the accepted RFC it implements, if any), risks, test strategy, and the sections a later implementation plan will refine (`### D-n`). The `spec` skill writes it.
 
 ## Research, the sources beside the chain
 

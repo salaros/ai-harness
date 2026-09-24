@@ -12,6 +12,9 @@
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
+// A cycle by design: srs.mjs renders through markdownFor() below, and the command line here counts
+// the stages srs.mjs owns. Neither module reads the other's bindings while evaluating, so it is safe.
+import { SRS_STAGES } from "./srs.mjs";
 
 const require = createRequire(import.meta.url);
 const { readDocs } = require("../../scripts/docs-check.js");
@@ -48,9 +51,9 @@ export function markdownFor(doc, { byId, refRe, itemRe }, { anchors = true, demo
         if (fenced) { out.push(line); continue; }
         if (!seenH1 && line.startsWith("# ")) { seenH1 = true; continue; }
         const heading = demote && line.match(/^(#{1,6}) /);
-        if (heading) { out.push("#".repeat(Math.min(6, heading[1].length + demote)) + line.slice(heading[1].length)); continue; }
+        const demoted = heading ? "#".repeat(Math.min(6, heading[1].length + demote)) + line.slice(heading[1].length) : line;
 
-        let text = line.replace(refRe, (whole, stage, num, item, offset, full) => {
+        let text = demoted.replace(refRe, (whole, stage, num, item, offset, full) => {
             const target = byId.get(`${stage}-${num}`);
             if (!target) return whole;                          // docs-check is what reports this
             if (target.id === doc.id && !item) return whole;     // a document citing itself
@@ -114,8 +117,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         const mine = chain.docs.filter(d => d.folder === s.folder);
         console.log(`${s.stage}\t${s.lives || "-"}\t${s.folder ? mine.map(d => d.id).join(",") || "none yet" : "not documents"}`);
     }
-    // The SRS view (srs.mjs) renders these three stages; it imports from here, so the count stays here.
-    const inSrs = chain.docs.filter(d => ["PRD", "TRD", "EARS"].includes(d.stage)).length;
-    console.log(`srs\t${inSrs} document(s) across PRD, TRD, EARS`);
+    const inSrs = chain.docs.filter(d => SRS_STAGES.includes(d.stage)).length;
+    console.log(`srs\t${inSrs} document(s) across ${SRS_STAGES.join(", ")}`);
     console.log(`docs-site: ${chain.docs.length} document(s) from ${chain.docStages.length} stage(s), read live from docs/`);
 }

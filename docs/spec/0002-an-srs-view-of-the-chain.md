@@ -1,6 +1,5 @@
 # SPEC-0002: An SRS view of the chain
 
-**Status:** Agreed
 **Derived from:** ADR-0005, docs/research/interviews/2026-09-23-trd-rfc-chain.md
 
 A client who asks for a Software Requirements Specification is asking for one document in the shape IEEE 29148 gives it. The chain already holds everything such a document says, spread over the PRD, the TRD and the EARS document, and the interview settled that the SRS is a generated view of those three in `tools/docs-site`, not a stage: nothing is written to `docs/`, nothing is cited, and `docs-check` has nothing new to validate.
@@ -27,7 +26,7 @@ A client who asks for a Software Requirements Specification is asking for one do
 
 ### D-1 The outline
 
-The page is the IEEE 29148-2018 SRS outline, each section an H2 in this order: 1 Introduction, 2 References, 3 Requirements, 4 Verification, 5 Appendices. The documents sit where the outline puts what they say: the PRD under Introduction (purpose, scope, product overview and its users), the EARS document under 3.1 Functions, the TRD under 3.2 Quality requirements and constraints, which stands for the outline's 3.2 to 3.7 (performance, usability, interface, logical database, design constraints, software system attributes) without splitting the document across them. References lists every document rendered with a link to its page and what it derives from. Verification lists the BDD documents by link. Appendices holds the outline's assumptions and acronyms as one sentence pointing at `CONTEXT.md` when the repo has one, and is otherwise empty. Satisfies: the goal of one page in the outline's order.
+The page is the IEEE 29148-2018 SRS outline, each section an H2 in this order: 1 Introduction, 2 References, 3 Requirements, 4 Verification, 5 Appendices. The documents sit where the outline puts what they say: the PRD under Introduction (purpose, scope, product overview and its users), the EARS document under 3.1 Functions, the TRD under 3.2 Quality requirements and constraints, which stands for the outline's 3.2 to 3.7 (performance, usability, interface, logical database, design constraints, software system attributes) without splitting the document across them. References lists every document rendered with a link to its page and what it derives from. Verification lists the BDD documents by link. Appendices holds the outline's assumptions and acronyms as one sentence pointing at `CONTEXT.md` when the repo has one, and otherwise says nothing is recorded yet. Satisfies: the goal of one page in the outline's order.
 
 ### D-2 Rendering a document into a section
 
@@ -39,17 +38,18 @@ A section whose stage has no documents says so in the overview's voice, `none ye
 
 ### D-4 Where the page appears
 
-The page's collection id is `srs`, its route `/srs/`, its title `SRS`, and its sidebar entry comes straight after Overview, outside the stage groups, because it is not a stage. The command line prints `srs\t<n> document(s) across PRD, TRD, EARS` after the stage lines, so the smoke that reads the stages in pipeline order still finds them where it looks. Satisfies: reachable from the sidebar and the command line.
+The page's collection id is `srs`, its route `/srs/`, its title `SRS`, and its sidebar entry comes straight after Overview, outside the stage groups, because it is not a stage. The command line prints `srs\t<n> document(s) across PRD, EARS, TRD` after the stage lines, the stages named from the view's own table so the list lives in one place, so the smoke that reads the stages in pipeline order still finds them where it looks. Satisfies: reachable from the sidebar and the command line.
 
 ## Data model
 
-Nothing new is stored. The view reads the model `collect()` returns: `stages` (for each stage's name, folder and skills), `docs` (in stage then file order, each with `stage`, `title`, `link`, `lines`) and the `byId`, `refRe` and `itemRe` that `markdownFor()` needs. Its output is one markdown string.
+Nothing new is stored. The view reads the model `collect()` returns: `stages` (for each stage's name, folder and skills), `docs` (in stage then file order, each with `stage`, `title`, `link`, `lines`), the `byId`, `refRe` and `itemRe` that `markdownFor()` needs, and `glossary`, whether the repo has a `CONTEXT.md`, which the appendices need and nothing else does. Its output is one markdown string.
 
 ## Interfaces
 
 - `srs(chain)` in `tools/docs-site/srs.mjs`: takes what `collect()` returns, gives the page body. Pure, throws on nothing: a stage missing from the table renders as an empty section.
-- `markdownFor(doc, chain, options)` in `tools/docs-site/chain.mjs`: `options.anchors` (default `true`) and `options.demote` (default `0`, a number of heading levels). The two existing callers pass no options and get what they got.
-- `sidebar(chain)` gains one entry; `collect()` is unchanged.
+- `markdownFor(doc, chain, options)` in `tools/docs-site/chain.mjs`: `options.anchors` (default `true`) and `options.demote` (default `0`, a number of heading levels). The two existing callers pass no options and get what they got. A citation inside a heading is linked whether or not the heading is demoted.
+- `collect(view)` takes a repo view and defaults to the working tree, so a decision table can hand it a repo held in memory through the same read seam; it adds `glossary` to the model.
+- `sidebar(chain)` gains one entry.
 
 ## Risks
 
