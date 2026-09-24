@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // .agents/hooks/session-start.js
 // One-screen brief for an agent starting a session in this repo. Harness-neutral: takes no
-// arguments, ignores stdin, always exits 0. Whatever it prints lands in the agent's context.
+// arguments, ignores stdin, always exits 0. Its one call off the machine is `gh pr list`, and only on
+// a GitHub clone. Whatever it prints lands in the agent's context.
 // Wire it to your harness's session-start event (.agents/README.md, "Files per AI tool").
 const fs = require("fs");
 const lib = require("./lib");
@@ -25,5 +26,18 @@ if (fs.existsSync("INTENT.md")) say("intent: product and MVP stories in INTENT.m
 if (fs.existsSync("CONTEXT-MAP.md")) say("domain: multi-context, start at CONTEXT-MAP.md");
 if (fs.existsSync("CONTEXT.md")) say("domain: glossary in CONTEXT.md");
 if (fs.existsSync("docs/adr")) say(`decisions: docs/adr (${fs.readdirSync("docs/adr").length} ADRs)`);
+// The pull requests open on GitHub, by number, so the agent can offer a pr-sweep; the skill says how
+// to ask. Listed every session rather than once: an offer nobody has to remember cannot be used up by
+// a worktree, a harness or a session that never asked, and a pull request that gained comments since
+// is offered again. Numbers only, since a title is text anyone with a fork can write into the brief.
+// An origin that is not GitHub, or a gh that is missing or signed out, says nothing; so does a test
+// run (HOOK_TEST), which has no network to wait on.
+if (!process.env.HOOK_TEST && /github\.com[:/]/.test(git(["remote", "get-url", "origin"]))) {
+    const r = lib.run("gh", ["pr", "list", "--state", "open", "--json", "number,isDraft", "--limit", "50"],
+        { timeout: 5000, env: { ...process.env, GH_NO_UPDATE_NOTIFIER: "1", GH_PROMPT_DISABLED: "1" } });
+    let open = [];
+    try { if (r.status === 0) open = JSON.parse(r.output).filter(p => !p.isDraft).map(p => `#${p.number}`); } catch { /* nothing to say */ }
+    if (open.length) say(`pull requests open: ${open.join(", ")}. Offer a pr-sweep of them, as the skill says.`);
+}
 if (!fs.existsSync("docs/agents/issue-tracker.md")) say('issue tracker: not configured. code-review, to-tickets and triage need docs/agents/issue-tracker.md (.agents/README.md, "What each skill expects")');
 process.exit(0);

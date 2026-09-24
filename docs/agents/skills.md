@@ -9,3 +9,4 @@ After vendoring:
 - `node scripts/skills.js relink` repairs the links in any other harness folder this clone wires up, which `npx skills` recreates absolute where Git needs them relative.
 - A skill from an upstream nothing here has used before needs a row in `scripts/skill-licences.tsv`, then `node scripts/skills.js notices`, which rewrites `THIRD-PARTY-NOTICES.md`. Vendoring copies the work; the licence notice does not come with it. `node scripts/check-harness.js` fails until the row exists.
 - Removing the last skill of an upstream takes its licence row with it.
+- A skill copied in by hand, with a licence file or a `license:` line in its folder and no `skills-lock.json` entry, fails the same check: the lock is the only record of where a skill came from. Vendor it with `npx skills` from somewhere it can fetch, or remove the licence when the skill really was written here. ADR-0006 has the argument.

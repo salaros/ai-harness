@@ -75,8 +75,10 @@ const inChain = file => CHAIN_FILES.includes(file) || /^docs\/.+\.md$/.test(file
 const tokensOf = text => text.split(/[\s,;]+/).filter(Boolean)
     .map(t => t.replace(/^[("'<[]+|[)"'>\].]+$/g, ""))
     .filter(Boolean);
+// The provenance marker every document carries, owned here for the checker and the portal alike.
+const DERIVED_RE = /^\**Derived from:?\**:?/i;
 // "**Derived from:** x, y" -> ["x", "y"].
-const referenceTokens = line => tokensOf(line.replace(/^\**Derived from:?\**:?/i, ""));
+const referenceTokens = line => tokensOf(line.replace(DERIVED_RE, ""));
 
 // The three expressions that say what the chain's markers look like. They are ASCII whatever
 // language the prose is (AGENTS.md, "Working here"), and they live here rather than at each reader
@@ -214,7 +216,7 @@ function check(root, view = repoView.worktree(root)) {
         else if (!h1.startsWith(`# ${id}:`)) say(d.file, `first heading must start with "# ${id}:" (found "${h1.slice(0, 40)}")`);
 
         // Every document says where it came from: an upstream document, or a source.
-        const derived = lines.find(l => /^\**Derived from:?\**:?/i.test(l));
+        const derived = lines.find(l => DERIVED_RE.test(l));
         if (!derived) say(d.file, `missing a "**Derived from:**" line naming an upstream document or a source (${SOURCE_HELP})`);
         else {
             const tokens = referenceTokens(derived);
@@ -306,7 +308,7 @@ function check(root, view = repoView.worktree(root)) {
     return { problems, summary: `docs-check: ${chain.length} stage(s) in ${AGENTS}, ${docs.size} document(s) under ${DOCS}/, no problems` };
 }
 
-module.exports = { check, readChain, readDocs, isSource, SOURCE_HELP, inChain, CHAIN_PATHS };
+module.exports = { check, readChain, readDocs, isSource, SOURCE_HELP, inChain, CHAIN_PATHS, DERIVED_RE };
 
 if (require.main === module) {
     const { problems, summary } = check(lib.root());
