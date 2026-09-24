@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // .agents/hooks/session-start.js
 // One-screen brief for an agent starting a session in this repo. Harness-neutral: takes no
-// arguments, ignores stdin, always exits 0. Whatever it prints lands in the agent's context.
+// arguments, ignores stdin, always exits 0. Its one call off the machine is `gh pr list`, and only on
+// a GitHub clone. Whatever it prints lands in the agent's context.
 // Wire it to your harness's session-start event (.agents/README.md, "Files per AI tool").
 const fs = require("fs");
-const path = require("path");
 const lib = require("./lib");
 
 process.chdir(lib.root());
@@ -26,24 +26,18 @@ if (fs.existsSync("INTENT.md")) say("intent: product and MVP stories in INTENT.m
 if (fs.existsSync("CONTEXT-MAP.md")) say("domain: multi-context, start at CONTEXT-MAP.md");
 if (fs.existsSync("CONTEXT.md")) say("domain: glossary in CONTEXT.md");
 if (fs.existsSync("docs/adr")) say(`decisions: docs/adr (${fs.readdirSync("docs/adr").length} ADRs)`);
-// Open pull requests nobody has been offered a sweep of: the pr-sweep skill reviews, fixes and merges
-// them once the user says yes. Named once each -- the numbers offered are kept in the git dir every
-// worktree of the clone shares, and a pull request no longer open drops out of it. An origin that is
-// not GitHub, or a gh that is missing or signed out, says nothing. Neither does a test run
-// (HOOK_TEST), which would otherwise use up the offer by reading it.
+// The pull requests open on GitHub, by number, so the agent can offer a pr-sweep; the skill says how
+// to ask. Listed every session rather than once: an offer nobody has to remember cannot be used up by
+// a worktree, a harness or a session that never asked, and a pull request that gained comments since
+// is offered again. Numbers only, since a title is text anyone with a fork can write into the brief.
+// An origin that is not GitHub, or a gh that is missing or signed out, says nothing; so does a test
+// run (HOOK_TEST), which has no network to wait on.
 if (!process.env.HOOK_TEST && /github\.com[:/]/.test(git(["remote", "get-url", "origin"]))) {
-    const r = lib.run("gh", ["pr", "list", "--state", "open", "--json", "number,title,isDraft", "--limit", "50"], { timeout: 8000 });
+    const r = lib.run("gh", ["pr", "list", "--state", "open", "--json", "number,isDraft", "--limit", "50"],
+        { timeout: 5000, env: { ...process.env, GH_NO_UPDATE_NOTIFIER: "1", GH_PROMPT_DISABLED: "1" } });
     let open = [];
-    try { if (r.status === 0) open = JSON.parse(r.output).filter(p => !p.isDraft); } catch { /* nothing to say */ }
-    const file = path.join(git(["rev-parse", "--git-common-dir"]) || ".git", "pr-sweep-offered");
-    let offered = [];
-    try { offered = fs.readFileSync(file, "utf8").split(/\s+/).filter(Boolean).map(Number); } catch { /* none yet */ }
-    const fresh = open.filter(p => !offered.includes(p.number));
-    if (fresh.length) {
-        say(`pull requests: ${fresh.map(p => `#${p.number} "${p.title}"`).join(", ")} ${fresh.length > 1 ? "are" : "is"} open and not yet offered. ` +
-            "Ask the user through the question tool whether to run the pr-sweep skill on them.");
-    }
-    if (r.status === 0) try { fs.writeFileSync(file, open.map(p => p.number).join("\n") + "\n"); } catch { /* ask again next time */ }
+    try { if (r.status === 0) open = JSON.parse(r.output).filter(p => !p.isDraft).map(p => `#${p.number}`); } catch { /* nothing to say */ }
+    if (open.length) say(`pull requests open: ${open.join(", ")}. Offer a pr-sweep of them, as the skill says.`);
 }
 if (!fs.existsSync("docs/agents/issue-tracker.md")) say('issue tracker: not configured. code-review, to-tickets and triage need docs/agents/issue-tracker.md (.agents/README.md, "What each skill expects")');
 process.exit(0);
