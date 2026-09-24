@@ -70,6 +70,8 @@ Contains: goals and non-goals citing the EARS and BDD documents, the architectur
 
 `docs/research/` holds what the chain's documents cite as evidence but that is not itself a stage, so `docs-check` checks nothing inside it beyond its being there to cite. Its first kind is interviews: `docs/research/interviews/YYYY-MM-DD-<slug>.md`, one conversation per file, written with `interview-notes`. A `user` interview is with someone who has the problem, and feeds a PDD's evidence. A `stakeholder` interview is with someone who decides or pays, including a grilling session that settled requirements or a decision, and feeds a PDD, a BRD, a TRD or an ADR. Real names are allowed; what the participant asked to keep off the record stays off it.
 
+Its second kind is syntheses: `docs/research/syntheses/YYYY-MM-DD-<slug>.md`, written with `interview-synthesis`, weighing several interviews on one question. Each lists the records it read, counts every theme as "X of Y participants" with the quotes behind it, and ends in insights and recommendations with a confidence each. The recommendations are advice: a PDD citing the synthesis still takes its verdict from the user.
+
 ## After the documents
 
 Tests (`tests/`), the implementation plan (`.scratch/`, published to Jira by `to-tickets`) and code (`src/`) are the remaining stages; they are not documents and the validator does not read them.

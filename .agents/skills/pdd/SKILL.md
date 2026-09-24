@@ -13,7 +13,7 @@ Read `docs/agents/chain.md` first, then `CONTEXT.md` if it exists, and any earli
 
 ## Steps
 
-1. **Gather the evidence.** Collect what the idea rests on: interview notes under `docs/research/interviews/` (written with `interview-notes`), support tickets, analytics, a roadmap entry, a market report. Done when every claim you expect to make has a reference, or is marked as an assumption.
+1. **Gather the evidence.** Collect what the idea rests on: interview notes under `docs/research/interviews/` (written with `interview-notes`) and, when there are several, their synthesis under `docs/research/syntheses/` (written with `interview-synthesis`), support tickets, analytics, a roadmap entry, a market report. Done when every claim you expect to make has a reference, or is marked as an assumption.
 2. **Interview** with `grilling`, walking the ten questions below in order. Push for evidence behind each answer, and write "unknown" where there is none rather than an optimistic guess. Done when every question has an answer or an explicit "unknown" with who could find out.
 3. **Draft** `docs/pdd/NNNN-<slug>.md`, numbered after the highest existing file, with the template below. Done when every `EV-n` names its reference and every `RISK-n` says how discovery would retire it.
 4. **Decide.** Put the verdict to the user through the question tool, with your recommendation first and its reason. The user decides; record their verdict in `Status`, and in `Verdict`, what would have to change to reverse it. Done when `Status` is `Go`, `No-go` or `Parked`, and `node scripts/docs-check.js` is clean.
@@ -41,7 +41,7 @@ After Marty Cagan's opportunity assessment (*Inspired*):
 
 **Status:** Draft | Go | No-go | Parked
 **Owner:** <who is accountable for the verdict>
-**Derived from:** <the evidence: docs/research/interviews/<file>.md, a URL, jira:KEY-123>
+**Derived from:** <the evidence: docs/research/syntheses/<file>.md, docs/research/interviews/<file>.md, a URL, jira:KEY-123>
 
 ## Problem
 <The problem in the customer's words, and how painful it is. Quote interviews where you can.>
