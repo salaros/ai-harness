@@ -55,7 +55,7 @@ Three Node scripts in `.agents/hooks/`. Each reads the tool's JSON payload on st
 
 | Script | Event | What it does |
 | --- | --- | --- |
-| `session-start.js` | session start | Prints the branch, whether Git hooks are installed, skills missing from disk, and whether `CONTEXT.md`, `docs/adr/` and the issue-tracker config exist. |
+| `session-start.js` | session start | Prints the branch, whether Git hooks are installed, skills missing from disk, and whether `CONTEXT.md`, `docs/adr/` and the issue-tracker config exist. On a GitHub clone with `gh` signed in, it also lists open pull requests not yet offered for a sweep, each once, so the agent can ask whether to run `pr-sweep`. |
 | `guard-command.js` | before a shell command | Blocks force pushes, `git reset --hard`, `git clean -f`, `git branch -D` and recursive deletes of `/`, `~`, `.git` or `*`, and tells the agent to ask you instead. |
 | `chain-skill.js` | before a file is created | Asks for the skill that writes that stage of the chain, reading the mapping from `AGENTS.md`'s table: a PRD with `prd`, a SPEC with `design-doc`, a new module under `src/` with `implement` and `codebase-design`. Only a creation fires it, and only when the session's transcript shows the skill was never loaded. |
 | `check-edit.js` | after a file edit | Syntax-checks `*.js`, validates `*.json`, runs `docs-check.js` after changes to `docs/` or `AGENTS.md`, runs `check-harness.js` after harness changes, and refuses edits to vendored skills. |
@@ -141,6 +141,7 @@ To switch to GitHub, GitLab or local Markdown, run `/setup-matt-pocock-skills`.
 | Skill | Reads | Writes |
 | --- | --- | --- |
 | `code-review` | `issue-tracker.md`, `CODING_STANDARDS.md`, the originating spec | nothing |
+| `pr-sweep` | open pull requests through `gh`, their review comments, what `code-review` reads | fixes on each pull request's branch, replies to comments it declines, the merge |
 | `to-tickets` | `issue-tracker.md` | drafts in `.scratch/<feature>/`, then tracker issues |
 | `triage` | `issue-tracker.md`, `triage-labels.md`, `.out-of-scope/` | `.out-of-scope/<concept>.md`, labels and comments |
 | `grill-with-docs` | the ask being sharpened | nothing of its own: it calls `grilling` and `domain-modeling` |
