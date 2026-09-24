@@ -362,4 +362,83 @@ exports.docsSiteRendersTheChain = function docsSiteRendersTheChain(t) {
     const order = PIPELINE.map(s => r.output.indexOf(`${s}\t`));
     t.ok(order.every((at, i) => at >= 0 && (i === 0 || at > order[i - 1])),
         "docs-site reads the stages in pipeline order", r.output);
+    // The SRS view (SPEC-0002/D-4) is summarised after the stages, so the order above still holds.
+    t.ok(r.output.indexOf("srs\t") > order[order.length - 1], "docs-site summarises the SRS view after the stage lines", r.output);
+};
+
+// The SRS view (SPEC-0002): one page rendering the PRD, TRD and EARS documents under the IEEE 29148
+// outline, in that outline's order rather than the chain's. It lives inside the optional portal and
+// is an ES module, loaded here with require(esm), so the cases skip when the portal is gone or the
+// runtime cannot load the module.
+function portalModule(name) {
+    const file = path.join(lib.checkout, "tools", "docs-site", name);
+    if (!fs.existsSync(file)) return null;
+    try { return require(file); } catch { return null; }
+}
+
+const SRS_SECTIONS = ["## 1 Introduction", "## 2 References", "## 3 Requirements", "## 4 Verification", "## 5 Appendices"];
+const inOrder = at => at.every((i, n) => i >= 0 && (n === 0 || i > at[n - 1]));
+
+exports.srsViewRendersTheOutline = function srsViewRendersTheOutline(t) {
+    const portal = portalModule("chain.mjs"), srs = portalModule("srs.mjs");
+    if (!portal || !srs) { t.skip("srs view: the optional portal is not installed, or the runtime cannot load an ES module"); return; }
+    const chain = portal.collect(chainView({
+        "docs/brd/9402-billing.md": ["# BRD-9402: Billing", "", "**Derived from:** jira:AB-42", "", "- BR-1: Bill monthly."],
+        "docs/prd/9402-billing.md": ["# PRD-9402: Billing product", "", "**Derived from:** BRD-9402", "", "## Users", "", "- FR-1: A monthly invoice, refining BRD-9402/BR-1."],
+        "docs/trd/9402-billing.md": ["# TRD-9402: Billing limits", "", "**Derived from:** PRD-9402", "", "## Requirements", "", "- TR-1: p95 under 200 ms."],
+        "docs/ears/9402-billing.md": ["# EARS-9402: Billing", "", "**Derived from:** PRD-9402, TRD-9402", "", "- REQ-1: When the month ends, the system shall invoice PRD-9402/FR-1."],
+        "docs/bdd/9402-billing.md": ["# BDD-9402: Billing", "", "**Derived from:** EARS-9402"],
+    }));
+    t.ok(!chain.notes.length, "the SRS fixture is a chain docs-check accepts", chain.notes.join("\n"));
+    const page = srs.srs(chain);
+
+    // D-1: the five sections, in the outline's order.
+    const at = SRS_SECTIONS.map(h => page.indexOf(`\n${h}\n`));
+    t.ok(inOrder(at), "the SRS page has the outline's five sections in order", page);
+
+    // D-1 and D-2: the documents sit where the outline puts them, PRD then EARS then TRD, each under
+    // an H3 that links to its own page.
+    const titles = ["### [PRD-9402: Billing product](/prd/9402-billing/)", "### [EARS-9402: Billing](/ears/9402-billing/)", "### [TRD-9402: Billing limits](/trd/9402-billing/)"]
+        .map(h => page.indexOf(h));
+    t.ok(inOrder(titles), "the SRS renders the PRD, then the EARS, then the TRD, each titled with a link to its page", page);
+    t.ok(titles[0] > at[0] && titles[0] < at[1], "the PRD sits under Introduction", page);
+    t.ok(titles[1] > at[2] && titles[2] < at[3], "the EARS and the TRD sit under Requirements", page);
+
+    // D-2: rendered as on the document's page, minus the anchors and with the headings pushed down.
+    t.ok(page.includes("[PRD-9402/FR-1](/prd/9402-billing/#FR-1)"), "a citation on the SRS links where it links on the document's page", page);
+    t.ok(!page.includes("<span id="), "the SRS carries no item anchors", page);
+    t.ok(page.includes("\n#### Users\n") && !page.includes("\n## Users\n"), "a document's headings are pushed down two levels under the outline", page);
+
+    // D-1: References lists what was rendered, Verification lists the BDD documents by link.
+    const refs = page.slice(at[1], at[2]), verification = page.slice(at[3], at[4]);
+    t.ok(["[PRD-9402: Billing product](/prd/9402-billing/)", "[EARS-9402: Billing](/ears/9402-billing/)", "[TRD-9402: Billing limits](/trd/9402-billing/)"].every(l => refs.includes(l)),
+        "References lists every document the SRS renders", refs);
+    t.ok(verification.includes("[BDD-9402: Billing](/bdd/9402-billing/)"), "Verification lists the BDD documents by link", verification);
+};
+
+exports.srsViewOfAnEmptyRepo = function srsViewOfAnEmptyRepo(t) {
+    const portal = portalModule("chain.mjs"), srs = portalModule("srs.mjs");
+    if (!portal || !srs) { t.skip("srs view: the optional portal is not installed, or the runtime cannot load an ES module"); return; }
+    const page = srs.srs(portal.collect(chainView()));
+    t.ok(inOrder(SRS_SECTIONS.map(h => page.indexOf(`\n${h}\n`))), "an empty repo still renders the five sections", page);
+    // D-3: an empty section says so in the overview's voice and names the skill that writes the stage.
+    for (const skill of ["prd", "feature-forge", "trd"]) {
+        t.ok(new RegExp("none yet[^\\n]*`" + skill + "`").test(page), `an empty section names the ${skill} skill`, page);
+    }
+};
+
+// markdownFor() gained options for the SRS view, and its two existing callers pass none: pin what
+// no options renders, so the document pages stay as they were.
+exports.markdownForWithoutOptionsIsUnchanged = function markdownForWithoutOptionsIsUnchanged(t) {
+    const portal = portalModule("chain.mjs");
+    if (!portal) { t.skip("markdownFor: the optional portal is not installed, or the runtime cannot load an ES module"); return; }
+    const chain = portal.collect(chainView({
+        "docs/brd/9403-billing.md": ["# BRD-9403: Billing", "", "**Derived from:** jira:AB-42", "", "## Needs", "", "- BR-1: Bill monthly."],
+        "docs/prd/9403-billing.md": ["# PRD-9403: Billing product", "", "**Derived from:** BRD-9403", "", "- FR-1: Refines BRD-9403/BR-1."],
+    }));
+    const page = portal.markdownFor(chain.byId.get("PRD-9403"), chain);
+    t.ok(page === '**Derived from:** [BRD-9403](/brd/9403-billing/)\n\n- <span id="FR-1"></span>FR-1: Refines [BRD-9403/BR-1](/brd/9403-billing/#BR-1).',
+        "markdownFor without options drops the H1, links the citations and anchors the items as before", page);
+    const demoted = portal.markdownFor(chain.byId.get("BRD-9403"), chain, { anchors: false, demote: 2 });
+    t.ok(demoted.includes("\n#### Needs\n") && !demoted.includes("<span id="), "markdownFor with options pushes headings down and writes no anchors", demoted);
 };

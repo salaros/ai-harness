@@ -4,6 +4,7 @@
 import { docsSchema } from "@astrojs/starlight/schema";
 import { defineCollection } from "astro:content";
 import { collect, DOCS, markdownFor, overview, siteTitle } from "../chain.mjs";
+import { srs } from "../srs.mjs";
 
 // A custom loader rather than Starlight's docsLoader(), which only reads src/content/docs/.
 const chainLoader = {
@@ -18,6 +19,7 @@ const chainLoader = {
 
             const pages = [
                 { id: "index", title: siteTitle(), body: overview(chain), order: 0 },
+                { id: "srs", title: "SRS", body: srs(chain), order: 1 },
                 ...chain.docs.map(d => ({
                     id: d.entryId, title: d.title, body: markdownFor(d, chain), order: d.number,
                 })),
