@@ -38,8 +38,8 @@ Read by `devops` and `engineer`.
 | --- | --- |
 | behaviour to build or fix | `tdd`; `implement` when working from a spec or tickets; `ponytail` throughout |
 | a technical requirement to pin down: performance, availability, security, compatibility, compliance, a constraint; or engineering-driven work with no business or product document behind it | `trd`, then `docs-check` |
-| a technical problem with two or more viable solutions and no obvious winner | `rfc` before the ADR and the SPEC; `docs-check` after it. Never `design-doc`, whatever its description says about RFCs |
-| a decision hard to reverse, or a design to write down before it is built | `grill-with-docs` writes the ADR, `design-doc` the SPEC, `create-implementation-plan` the IPLAN; `docs-check` after each |
+| a technical problem with two or more viable solutions and no obvious winner | `rfc` before the ADR and the SPEC; `docs-check` after it |
+| a decision hard to reverse, or a design to write down before it is built | `grill-with-docs` writes the ADR, `spec` the SPEC, `create-implementation-plan` the IPLAN; `docs-check` after each |
 | code or tooling being designed or restructured | `codebase-design` for the vocabulary; `improve-codebase-architecture` to scan the whole repo for candidates |
 | something over-built, or that works but reads badly | `ponytail-audit` ranks what to delete or replace; `code-simplification` where there is nothing to delete |
 | an issue or external PR to classify | `triage` |

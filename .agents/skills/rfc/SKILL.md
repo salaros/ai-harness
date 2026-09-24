@@ -24,7 +24,7 @@ Read `docs/agents/chain.md` first, then `CONTEXT.md` and the ADRs touching the a
 3. **Draft options**, `OPT-n`, two or more and each genuinely viable, one of them doing nothing or the smallest change. Give every option its real strengths: a reader who prefers it should feel it was represented honestly. Save the file as `Draft`. Done when each option is scored against every criterion.
 4. **Debate** (below), status `Open`. Done when the three rounds are in the Discussion section.
 5. **Resolve.** Put the debate to the user with the question tool: which option, or reject, or withdraw. Write their Resolution, what it gives up, and the follow-ups, and set the status. The user decides; no agent closes an RFC. Done when `node scripts/docs-check.js` is clean.
-6. **Hand off.** An accepted RFC produces an ADR per hard-to-reverse choice it settled (`grill-with-docs`, citing `RFC-NNNN/OPT-n`) and a SPEC for the design (`design-doc`, citing the RFC). Name them in the Resolution's follow-ups.
+6. **Hand off.** An accepted RFC produces an ADR per hard-to-reverse choice it settled (`grill-with-docs`, citing `RFC-NNNN/OPT-n`) and a SPEC for the design (`spec`, citing the RFC). Name them in the Resolution's follow-ups.
 
 ## Debate
 

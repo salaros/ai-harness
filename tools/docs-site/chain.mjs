@@ -12,10 +12,14 @@
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
+// A cycle by design: srs.mjs renders through markdownFor() below, and the command line here counts
+// the stages srs.mjs owns. Neither module reads the other's bindings while evaluating, so it is safe.
+import { SRS_STAGES } from "./srs.mjs";
 
 const require = createRequire(import.meta.url);
 const { readDocs } = require("../../scripts/docs-check.js");
 const { readFactsAt } = require("../../scripts/project-facts.js");
+const repoView = require("../../scripts/repo-view.js");
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const DOCS = path.join(REPO, "docs");
@@ -27,30 +31,36 @@ const memoryFact = name => readFactsAt(REPO)[name] || "";
 // The chain as the portal renders it: the model, with the documents as an array in stage order and
 // then file order, and the problems as notes for the loader to log. A document the validator refuses
 // is one of those notes rather than a page, so the portal never renders what nothing checked.
-export function collect() {
-    const { stages, docStages, docs, problems, refRe, itemRe } = readDocs(REPO);
-    return { stages, docStages, docs: [...docs.values()], byId: docs, notes: problems, refRe, itemRe };
+// It reads the working tree unless given a repo view, which is how a check hands it a repo held in
+// memory. Whether the repo has a glossary is the one fact the SRS view needs beyond the documents.
+export function collect(view = repoView.worktree(REPO)) {
+    const { stages, docStages, docs, problems, refRe, itemRe } = readDocs(REPO, view);
+    return { stages, docStages, docs: [...docs.values()], byId: docs, notes: problems, refRe, itemRe, glossary: view.isFile("CONTEXT.md") };
 }
 
 // One document as markdown for Starlight: the H1 goes (Starlight renders the title itself), every
 // citation that resolves becomes a link, and every item ID becomes a link target so a citation can
-// land on it. Fenced code is left exactly as written.
-export function markdownFor(doc, { byId, refRe, itemRe }) {
+// land on it. Fenced code is left exactly as written. The SRS view renders several documents on one
+// page, so it asks for no anchors (an item ID is unique on a document's page, not across several)
+// and for the headings pushed down under its own, by `demote` levels and never past H6.
+export function markdownFor(doc, { byId, refRe, itemRe }, { anchors = true, demote = 0 } = {}) {
     const out = [];
     let fenced = false, seenH1 = false;
     for (const line of doc.lines) {
         if (/^\s*(```|~~~)/.test(line)) { fenced = !fenced; out.push(line); continue; }
         if (fenced) { out.push(line); continue; }
         if (!seenH1 && line.startsWith("# ")) { seenH1 = true; continue; }
+        const heading = demote && line.match(/^(#{1,6}) /);
+        const demoted = heading ? "#".repeat(Math.min(6, heading[1].length + demote)) + line.slice(heading[1].length) : line;
 
-        let text = line.replace(refRe, (whole, stage, num, item, offset, full) => {
+        let text = demoted.replace(refRe, (whole, stage, num, item, offset, full) => {
             const target = byId.get(`${stage}-${num}`);
             if (!target) return whole;                          // docs-check is what reports this
             if (target.id === doc.id && !item) return whole;     // a document citing itself
             if (full[offset - 1] === "[") return whole;          // already inside a link
             return `[${whole}](${target.link}${item ? `#${item}` : ""})`;
         });
-        const item = text.match(itemRe);
+        const item = anchors && text.match(itemRe);
         if (item) text = text.replace(item[1], `<span id="${item[1]}"></span>${item[1]}`);
         out.push(text);
     }
@@ -89,8 +99,9 @@ export function overview(chain) {
     ].join("\n");
 }
 
+// The SRS view sits right after the overview and outside the stage groups, because it is not a stage.
 export function sidebar(chain) {
-    const out = [{ label: "Overview", link: "/" }];
+    const out = [{ label: "Overview", link: "/" }, { label: "SRS", link: "/srs/" }];
     for (const s of chain.docStages) {
         const items = chain.docs.filter(d => d.folder === s.folder)
             .map(d => ({ label: d.title, slug: d.entryId }));
@@ -106,5 +117,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         const mine = chain.docs.filter(d => d.folder === s.folder);
         console.log(`${s.stage}\t${s.lives || "-"}\t${s.folder ? mine.map(d => d.id).join(",") || "none yet" : "not documents"}`);
     }
+    const inSrs = chain.docs.filter(d => SRS_STAGES.includes(d.stage)).length;
+    console.log(`srs\t${inSrs} document(s) across ${SRS_STAGES.join(", ")}`);
     console.log(`docs-site: ${chain.docs.length} document(s) from ${chain.docStages.length} stage(s), read live from docs/`);
 }
