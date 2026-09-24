@@ -43,6 +43,7 @@ Read by `devops` and `engineer`.
 | code or tooling being designed or restructured | `codebase-design` for the vocabulary; `improve-codebase-architecture` to scan the whole repo for candidates |
 | something over-built, or that works but reads badly | `ponytail-audit` ranks what to delete or replace; `code-simplification` where there is nothing to delete |
 | an issue or external PR to classify | `triage` |
+| open pull requests to review, fix and merge, once the user has said yes to sweeping them | `pr-sweep`, which runs `code-review` on each |
 | "what did we agree to fix later" | `duck-debt` for the `TODO`, `FIXME`, `HACK` and `XXX` comments; `ponytail-debt` for the `ponytail:` ones |
 | "that did not land" | `wait-what` |
 | the end of a session | `duck-debt`, then `retro` to improve this harness, then `handoff` for a successor |
