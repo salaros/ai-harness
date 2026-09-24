@@ -142,9 +142,10 @@ function noticesFor(skills, rows) {
             // A skill the lock does not record is this repository's own work -- unless it carries a
             // licence signal, which is what a hand-copied skill brings with it and a skill written
             // here has no reason to have. `npx skills` writes the lock entry, so only a copy somebody
-            // made by hand lands here, and the lock is the one record of provenance (ADR-0006). Saying "written for this repository,
-            // with no upstream" about that skill would be the notice claiming authorship of work
-            // this repository did not write, which is the failure the file exists to prevent.
+            // made by hand lands here, and the lock is the one record of provenance (ADR-0006).
+            // Saying "written for this repository, with no upstream" about that skill would be the
+            // notice claiming authorship of work this repository did not write, which is the
+            // failure the file exists to prevent.
             if (s.carries) orphans.push(`${s.name} (no ${LOCK} entry, but carries ${s.carries})`);
             continue;
         }

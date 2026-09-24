@@ -1,6 +1,6 @@
 # ADR-0006: A licence inside a skill marks a copy
 
-**Derived from:** scripts/skills.js, THIRD-PARTY-NOTICES.md, scripts/skill-licences.tsv
+**Derived from:** docs/research/interviews/2026-09-24-licence-signal.md, scripts/skills.js, THIRD-PARTY-NOTICES.md, scripts/skill-licences.tsv
 
 `THIRD-PARTY-NOTICES.md` is generated from `skills-lock.json` and `scripts/skill-licences.tsv`, and its last section names the skills written for this repository. A skill copied in by hand has no lock entry, so without a further rule that section would claim it: the notice would state authorship of work this repository did not write, which is the one failure the file exists to prevent.
 
@@ -8,7 +8,7 @@
 
 ### D-1 a licence signal inside a skill folder means the skill came from somewhere
 
-A file whose name starts with `LICENSE`, `LICENCE`, `NOTICE` or `COPYING`, in any case and with any extension, or a `license:` line in `SKILL.md`'s frontmatter, is a licence signal. A skill written here is covered by the `LICENSE` at the root and has no reason to restate it, so a licence inside the folder is the fingerprint of a copy, whatever it says.
+A file named `LICENSE`, `LICENCE`, `NOTICE` or `COPYING`, in any case, on its own or followed by an extension or a suffix such as `-MIT`, or a `license:` line in `SKILL.md`'s frontmatter, is a licence signal. A skill written here is covered by the `LICENSE` at the root and has no reason to restate it, so a licence inside the folder is the fingerprint of a copy, whatever it says.
 
 ### D-2 the lock is the only record of provenance
 
@@ -33,5 +33,5 @@ The way out is `npx skills` from somewhere it can fetch, which writes the lock e
 
 - `COPYING` joins the signal names, so a GPL skill copied by hand, the case the rule is most for, is caught on arrival.
 - The orphan message says what D-3 says: vendor it with `npx skills`, or remove the licence if it really is this repository's own. It no longer asks for an origin to be "recorded", since there is nowhere to record one but the lock.
-- A skill legitimately carrying its own `LICENSE.txt`, as every skill from `openai/skills` and `anthropics/skills` does, is untouched: it has a lock entry, so it is vendored and never an orphan.
+- A skill legitimately carrying its own `LICENSE.txt`, as every skill from `openai/skills` and `anthropics/skills` does, is untouched: it has a lock entry, so it is vendored, and the licence row for its source keeps it out of the orphans.
 - `CONTEXT.md` carries the two terms, licence signal and orphan, so the code and the notice can use them without redefining them.

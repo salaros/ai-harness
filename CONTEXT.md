@@ -37,11 +37,11 @@ What a repo's harness knows about its skills at one moment: every entry under `.
 _Avoid_: skill registry, skill index, skill list
 
 **Licence signal**:
-A licence file (`LICENSE`, `LICENCE`, `NOTICE` or `COPYING`, any case, any extension) or a `license:` line in the frontmatter, inside a skill's own folder. A skill written here is covered by the repository's licence and restates nothing, so a signal is the fingerprint of a copy, whatever it says.
+A licence file (`LICENSE`, `LICENCE`, `NOTICE` or `COPYING`, in any case, alone or with an extension or suffix) or a `license:` line in the frontmatter, inside a skill's own folder. A skill written here is covered by the repository's licence and restates nothing, so a signal is the fingerprint of a copy, whatever it says.
 _Avoid_: licence header, licence marker, attribution
 
 **Orphan**:
-A skill the third-party notice cannot account for: one the lock records with no licence row for its source, or one the lock does not record that carries a licence signal. The notice is not written while there is one. The way out is vendoring with `npx skills`, or removing the licence from a skill that really was written here.
+A skill the third-party notice cannot account for: one the lock records with no licence row for its source, or one the lock does not record that carries a licence signal. The notice is not written while there is one.
 _Avoid_: unlicensed skill, unknown skill, stray skill
 
 **Repo view**:
