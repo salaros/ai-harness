@@ -27,9 +27,11 @@ const repoView = require("./repo-view");
 
 // What the invariants below read, as the path a harness reports for an edit: an exact file, or a
 // prefix ending in / for everything under it. check-edit.js runs this script for an edit to any of
-// them, so an invariant reading a new file adds it here and the trigger widens with it.
+// them, so an invariant reading a new file adds it here and the trigger widens with it. The suite
+// records what the invariants read and fails on a path missing here: see
+// theEditTriggerCoversEveryPathTheInvariantsRead in .agents/hooks/tests/tables/harness.js.
 const PATHS = [
-    ".agents/skills/", ".claude/skills", ".agents/agents/", ".agents/routing.md", ".githooks/",
+    ".agents/skills/", ".claude/skills", ".claude/skills/", ".agents/agents/", ".agents/routing.md", ".githooks/",
     "skills-lock.json", "scripts/", "THIRD-PARTY-NOTICES.md", "AGENTS.md",
     ".claude/settings.json", "tools/docs-site/", ".agents/hooks/package.json", "CLAUDE.md",
 ];
