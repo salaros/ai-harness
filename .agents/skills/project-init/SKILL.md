@@ -1,6 +1,6 @@
 ---
 name: project-init
-description: Turn a repo cloned from this template into a named project. Asks the developer, through the harness's own question tool, for the project name and purpose, the language its prose is written in, where the requirements live, the unit type, the stack and, if there is one, the issue tracker, and records the answers in MEMORY.md, README.md and docs/agents/issue-tracker.md, plus a CONTEXT-MAP.md for a microservices repo. Reads an existing INTENT.md for the name and purpose, and offers to write one when absent. Use when a project starts, when MEMORY.md is missing, or when the stack or issue tracker changes.
+description: Turn a repo cloned from this template into a named project. Asks the developer, through the harness's own question tool, for the project name and purpose, the language its prose is written in, where the requirements live, the unit type, the stack, if there is one the issue tracker, and whether agents may merge the pull requests they sweep, and records the answers in MEMORY.md, README.md and docs/agents/issue-tracker.md, plus a CONTEXT-MAP.md for a microservices repo and a `gh pr merge` permission rule for each harness it wires. Reads an existing INTENT.md for the name and purpose, and offers to write one when absent. Use when a project starts, when MEMORY.md is missing, or when the stack or issue tracker changes.
 disable-model-invocation: true
 ---
 
@@ -28,6 +28,7 @@ The template knows nothing about the project it hosts. This skill asks the devel
    | Which frontend framework? | Frontend | Only when the project has browser code: `React`, `Vue`, `Blazor`, or `none`. The `engineer` agent routes its framework skills on this, so a guess here sends it to the wrong ones |
    | Which issue tracker? | Issue tracker | `Jira`, `Linear`, `Asana`, `GitHub Issues`, or `none`. A project can plan entirely in `docs/`, and many do before a tracker exists; take `none` at face value and skip the next question. Jira is what the template ships configured for, so any other answer means step 5 rewrites `docs/agents/issue-tracker.md` for that tracker |
    | Where does it live, and under which key? | Issue tracker | Only when a tracker was named: its URL, and the key or project identifier as that tracker shows it (`https://<org>.atlassian.net` and `AB` for Jira). With the Atlassian MCP authorised, offer the keys `listJiraProjects` returns as options |
+   | May agents merge the pull requests they sweep? | Merge permission | Options: `this clone only` (recommended, first), `everyone`, `no`. `pr-sweep` merges with `gh pr merge`, which a harness may refuse an agent until a permission rule allows it. Not a `MEMORY.md` fact: step 6 writes it into the harness's own permissions |
 
    Done when every fact is a specific string that passes its "accept only" column.
 
@@ -113,15 +114,17 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
    Otherwise, replace every occurrence of the current key (`TODO-PROJECT-KEY` on a first run, the previous key on an update) with `<KEY>`, including the JQL examples and the bare-reference rule. Make the key line read exactly `**Project key:** \`<KEY>\`` with the placeholder note removed, and put `**Site:** <jira site>` on the line under it (replace the existing `Site` line on an update). Done when the file mentions no other key and both lines are present.
 
-6. **Remember, in your harness too.** If your harness keeps persistent memory (Claude Code auto-memory), save one `project` memory saying that the project facts live in `MEMORY.md` at the repo root and repeating the name, stack and, if there is one, the Jira key, so they are in context before the repo is read. Skip this in a harness without memory. Done when the memory exists or the harness has none.
+6. **Allow the merge**, unless the answer was `no`. Add `gh pr merge` to the allow list of every harness this repo wires, keeping what the list already holds: Claude Code `"permissions": { "allow": ["Bash(gh pr merge:*)"] }`, in `.claude/settings.local.json` for `this clone only` or `.claude/settings.json` for `everyone`; OpenCode `"permission": { "bash": { "gh pr merge *": "allow" } }` in `opencode.json`, which is shared, so only for `everyone`. For a harness with no permission file, say that the sweep will stop at each merge and hand it back. Allow nothing wider than the merge: `git push` and the read-only `gh` calls already run, and a blanket `Bash(gh:*)` would also let an agent close issues or edit repository settings. Done when each wired harness has the rule or the report says why not.
 
-7. **Hand over the scaffold.** Read `scripts/stacks.tsv` and take the scaffold column of the row for the stack (for `microservices` on .NET, the `dotnet-aspire` row instead of `dotnet`); replace `{Name}` with the PascalCase project name, `{name}` with the kebab-case one, and `{template}` with the unit type's template (`classlib`, `console`, `webapi` or `blazor` for .NET by library, cli, service or monolith and frontend; `--lib` for a Python library, `--app --package` otherwise). Give the developer the commands as a code block, one per line. Do not run them: scaffolding is the developer's call and a separate step. For a stack with no row, add one to `scripts/stacks.tsv` (triggers, needs, restore, scaffold, formats, format) so the post-merge hook restores it and the pre-push hook format-checks it too, and point at `src/README.md` and `tests/README.md`. Done when the developer has the commands and the table has a row for the stack.
+7. **Remember, in your harness too.** If your harness keeps persistent memory (Claude Code auto-memory), save one `project` memory saying that the project facts live in `MEMORY.md` at the repo root and repeating the name, stack and, if there is one, the Jira key, so they are in context before the repo is read. Skip this in a harness without memory. Done when the memory exists or the harness has none.
+
+8. **Hand over the scaffold.** Read `scripts/stacks.tsv` and take the scaffold column of the row for the stack (for `microservices` on .NET, the `dotnet-aspire` row instead of `dotnet`); replace `{Name}` with the PascalCase project name, `{name}` with the kebab-case one, and `{template}` with the unit type's template (`classlib`, `console`, `webapi` or `blazor` for .NET by library, cli, service or monolith and frontend; `--lib` for a Python library, `--app --package` otherwise). Give the developer the commands as a code block, one per line. Do not run them: scaffolding is the developer's call and a separate step. For a stack with no row, add one to `scripts/stacks.tsv` (triggers, needs, restore, scaffold, formats, format) so the post-merge hook restores it and the pre-push hook format-checks it too, and point at `src/README.md` and `tests/README.md`. Done when the developer has the commands and the table has a row for the stack.
 
    For `microservices` on a stack with no scaffold for it, hand over the stack's own row and say that the services are laid out by hand as `docs/agents/domain.md` ("Microservices") describes. With .NET, the `dotnet-aspire` row creates the AppHost, ServiceDefaults and an Aspire test project but no service: give the developer the "Adding a service" steps from `docs/agents/domain.md` for the first one.
 
    For .NET, the scaffold ends by installing Husky.NET as a local tool and then running `git config core.hooksPath .githooks`. That last command is not redundant: `dotnet husky install` repoints `core.hooksPath` at `.husky`, which would disable this repo's own hooks. Tell the developer to keep it, and that `dotnet tool restore` is what a teammate runs after cloning.
 
-8. **Seed the pre-push task, for .NET only.** After the developer says the scaffold has run, replace the example task in `.husky/task-runner.json` with the one below. Husky.NET's default task carries no group, so `dotnet husky run --group pre-push` would match nothing and exit 0, and the pre-push formatting gate would pass without checking anything.
+9. **Seed the pre-push task, for .NET only.** After the developer says the scaffold has run, replace the example task in `.husky/task-runner.json` with the one below. Husky.NET's default task carries no group, so `dotnet husky run --group pre-push` would match nothing and exit 0, and the pre-push formatting gate would pass without checking anything.
 
    ```json
    {
@@ -139,7 +142,7 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
    Done when `dotnet husky run --group pre-push` reports the task, not an empty run. Skip this step entirely for any other stack.
 
-9. **Set up the context map, for `microservices` only.** Each service owns its vocabulary, so the repo is multi-context, and the `domain-modeling` skill, both agents and the session-start hook recognise that by a root `CONTEXT-MAP.md`. Write it if it is absent, from the template below, with the one `Shared` entry and no services yet: `domain-modeling` adds a service's entry and its `src/<Service>/CONTEXT.md` when the first term of that service is resolved. Keep the root `CONTEXT.md` for the terms every service uses. On an update that changes the unit type away from `microservices`, leave an existing map alone and say so in the report.
+10. **Set up the context map, for `microservices` only.** Each service owns its vocabulary, so the repo is multi-context, and the `domain-modeling` skill, both agents and the session-start hook recognise that by a root `CONTEXT-MAP.md`. Write it if it is absent, from the template below, with the one `Shared` entry and no services yet: `domain-modeling` adds a service's entry and its `src/<Service>/CONTEXT.md` when the first term of that service is resolved. Keep the root `CONTEXT.md` for the terms every service uses. On an update that changes the unit type away from `microservices`, leave an existing map alone and say so in the report.
 
    ```md
    # Context Map
@@ -153,11 +156,11 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
    Done when `CONTEXT-MAP.md` exists and names `CONTEXT.md`. Skip this step for every other unit type.
 
-10. **Close the loop.** Ask the developer to commit (`git add -A`, then a commit such as `initialise <name>`). If Requirements was `none yet`, hand off to the `pdd` skill when the idea is still in question, or to `brd` when the need is settled; otherwise point out that the `business-analyst` agent can start the documentation chain from the requirements location now on record. The post-merge Git hook restores whatever `scripts/stacks.tsv` says for the changed manifests, so the row added in step 7 is all it needs.
+11. **Close the loop.** Ask the developer to commit (`git add -A`, then a commit such as `initialise <name>`). If Requirements was `none yet`, hand off to the `pdd` skill when the idea is still in question, or to `brd` when the need is settled; otherwise point out that the `business-analyst` agent can start the documentation chain from the requirements location now on record. The post-merge Git hook restores whatever `scripts/stacks.tsv` says for the changed manifests, so the row added in step 8 is all it needs.
 
 ## Report
 
-The facts recorded, whether `INTENT.md` was read, written or declined, whether the Git hooks were installed, which files changed, the scaffold commands handed over, whether `CONTEXT-MAP.md` was written, and the next skill to run.
+The facts recorded, whether `INTENT.md` was read, written or declined, whether the Git hooks were installed, where the merge permission was written or that it was declined, which files changed, the scaffold commands handed over, whether `CONTEXT-MAP.md` was written, and the next skill to run.
 
 ## Gotchas
 
