@@ -11,7 +11,7 @@ Takes each open pull request from "opened" to "merged": reviewed, fixed, up to d
 
 Works through `gh`. A repository hosted elsewhere, or a `gh` that is not signed in, gets a sentence saying so and no sweep.
 
-**Permissions.** A harness may refuse `gh pr merge` from an agent: Claude Code's auto mode does unless a permission rule allows it. `project-init` offers to write that rule, for this clone or for everyone. Say before the sweep starts when you know it is missing, so the user can add it or plan to merge by hand; the rest of the sweep runs either way.
+**Permissions.** A harness may refuse `gh pr merge` from an agent: Claude Code's auto mode does unless a permission rule allows it. `project-init` offers to write that rule, for this clone or for everyone. Before the sweep starts, look for that rule in `.claude/settings.json` and `.claude/settings.local.json`; when neither holds it, say so, so the user can add it or plan to merge by hand. Every step up to the merge runs either way.
 
 ## Steps
 
@@ -35,5 +35,5 @@ Stop and ask the user, rather than working around it, when:
 - a hook rejects a commit or a push;
 - a push would need `--force`;
 - branch protection or a required review blocks the merge;
-- the harness refuses `gh pr merge`: give the user the command to run and point at `project-init`'s permissions step, rather than merging some other way;
+- the harness refuses `gh pr merge`: give the user the command to run and point at `project-init`'s **Allow the merge** step, rather than merging some other way;
 - a fix would change behaviour the pull request did not set out to change.
