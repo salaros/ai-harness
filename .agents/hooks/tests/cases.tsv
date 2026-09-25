@@ -22,6 +22,8 @@
 .agents/hooks/guard-command.js	guard-unknown-shape.json	2	-	blocked this command	a payload in no known shape is scanned, not waved through
 .agents/hooks/session-start.js	empty.json	0	-	branch:	session brief always exits 0
 .agents/hooks/session-start.js	empty.json	0	plant INTENT.md # INTENT.md	intent: product and MVP stories in INTENT.md	the session brief points at INTENT.md when a project keeps one
+.agents/hooks/session-start.js	empty.json	0	-	session end: run duck-debt, then offer the user /retro	the session brief closes a session on the deferred-work ledger, then the retrospective only the user can start
+.agents/hooks/session-start.js	empty.json	0	plant .agents/skills/retro/SKILL.md ---	session end: offer the user /retro	a brief names only the session-end skills a repo installed
 scripts/check-staged-docs.js --dry-run	staged-chain.txt	0	-	would check the staged chain	a staged chain document triggers the check
 scripts/check-staged-docs.js --dry-run	staged-intent.txt	0	-	would check the staged chain (1 file(s)): INTENT.md	a staged INTENT.md triggers the chain check
 scripts/check-staged-docs.js --dry-run	staged-none.txt	0	-	nothing staged	a commit touching no chain file is skipped
