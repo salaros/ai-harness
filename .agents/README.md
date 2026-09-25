@@ -55,7 +55,7 @@ Three Node scripts in `.agents/hooks/`. Each reads the tool's JSON payload on st
 
 | Script | Event | What it does |
 | --- | --- | --- |
-| `session-start.js` | session start | Prints the branch, whether Git hooks are installed, skills missing from disk, and whether `CONTEXT.md`, `docs/adr/` and the issue-tracker config exist. On a GitHub clone with `gh` signed in, it also lists the open pull requests by number, so the agent can offer `pr-sweep`. |
+| `session-start.js` | session start | Prints the branch, whether Git hooks are installed, skills missing from disk, and whether `CONTEXT.md`, `docs/adr/` and the issue-tracker config exist. On a GitHub clone with `gh` signed in, it also lists the open pull requests by number, so the agent can offer `pr-sweep`. Last, how to end the session, from the routing row of that name. |
 | `guard-command.js` | before a shell command | Blocks force pushes, `git reset --hard`, `git clean -f`, `git branch -D` and recursive deletes of `/`, `~`, `.git` or `*`, and tells the agent to ask you instead. |
 | `chain-skill.js` | before a file is created | Asks for the skill that writes that stage of the chain, reading the mapping from `AGENTS.md`'s table: a PRD with `prd`, a SPEC with `spec`, a new module under `src/` with `implement` and `codebase-design`. Only a creation fires it, and only when the session's transcript shows the skill was never loaded. |
 | `check-edit.js` | after a file edit | Syntax-checks `*.js`, validates `*.json`, runs `docs-check.js` after changes to `docs/` or `AGENTS.md`, runs `check-harness.js` after harness changes, and refuses edits to vendored skills. |

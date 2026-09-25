@@ -319,6 +319,13 @@ exports.invariantScopeDecisions = function invariantScopeDecisions(t) {
         }
     };
     const portal = text("import fs from 'node:fs';", "fs.readdirSync('docs');");
+    // A routing file with one row, beside the two skills and the agent that row may name.
+    const routed = (row, prose = "") => ({
+        ".agents/routing.md": text("# Routing", "", "## Shared", "", "Read by `engineer`.", "", "| The ask is… | Skill(s) |", "| --- | --- |", row, "", prose),
+        ".agents/agents/engineer.md": text("---", "name: engineer", "---", "See routing.md, Shared."),
+        ".agents/skills/duck-debt/SKILL.md": text("---", "name: duck-debt", "description: Does one thing.", "---"),
+        ".agents/skills/retro/SKILL.md": text("---", "name: retro", "description: Does one thing.", "---"),
+    });
     const rows = [
         // invariant, files, setup (null: the files are all of it, so a map stands in for a checkout), expected, why
         ["gitHooksAreExecutable", { ".githooks/pre-commit": text("#!/bin/sh"), ".githooks/task-runner.json": text("{}") },
@@ -326,6 +333,15 @@ exports.invariantScopeDecisions = function invariantScopeDecisions(t) {
             "a project file in .githooks/ that Git never runs need not be executable"],
         ["gitHooksAreExecutable", { ".githooks/pre-commit": text("#!/bin/sh") },
             hooks({ "pre-commit": false }), "fail", "a harness hook committed 100644 still fails"],
+        ["everyRoutedSkillIsInstalled", routed("| the end of a session | `duck-debt`, then `retro` |"), null, "pass",
+            "a routing row naming installed skills passes"],
+        ["everyRoutedSkillIsInstalled", routed("| the end of a session | `duck-debt`, then `ghost` |"), null, "fail",
+            "a routing row naming a skill that is not installed routes nothing"],
+        ["everyRoutedSkillIsInstalled", routed("| a spec to build | hand it to `engineer` |"), null, "pass",
+            "a row may hand the work to another agent"],
+        ["everyRoutedSkillIsInstalled", routed("| the end of a session | `duck-debt`, not `TODO.md` |", "Run `ghost` first, in prose."), null, "pass",
+            "only the skill column of a row routes; prose around the table does not"],
+        ["everyRoutedSkillIsInstalled", {}, null, "skip", "a repo with no routing has nothing to route"],
         ["theDocsPortalReadsTheChainModel", { "tools/docs-site/chain.mjs": portal }, null, "skip",
             "a project's own portal may read docs/ however it likes"],
         ["theDocsPortalReadsTheChainModel", { "tools/docs-site/chain.mjs": portal, "scripts/update-harness.js": "" }, null, "fail",
