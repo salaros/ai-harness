@@ -367,3 +367,45 @@ exports.skillLinkShapeDecisions = function skillLinkShapeDecisions(t) {
         t.ok(wants === null ? !said : said.includes(wants), `skill links: ${why}`, said || "(nothing reported)");
     }
 };
+
+// check-edit.js runs the invariants after an edit to one of check-harness's PATHS, and nothing but
+// prose kept that list beside the invariants: an invariant reading a new file without adding it to
+// PATHS never fired on an edit and still passed here. So the suite runs every invariant through a
+// view that records each path asked about, and holds PATHS to what was asked. A path passes the way
+// check-edit.js would see an edit to it: reads() takes it, or, for a folder, the folder with a
+// slash. A folder only asked whether it exists passes when PATHS watches anything under it, since an
+// edit names a file and never a folder; one that is listed must be watched whole. A call naming no
+// path reads the whole tree, and nothing in PATHS covers that.
+// One checkout is one shape, and an invariant reads only what its shape leads it to, so the rows are
+// this checkout, which must skip nothing, and the shapes it is not.
+exports.theEditTriggerCoversEveryPathTheInvariantsRead = function theEditTriggerCoversEveryPathTheInvariantsRead(t) {
+    const skill = name => text("---", `name: ${name}`, "description: Does one thing.", "---");
+    const WHOLE = new Set(["list", "recorded", "modes"]);
+    const covered = (how, p) => checkHarness.reads(p) || checkHarness.reads(`${p}/`)
+        || (!WHOLE.has(how) && checkHarness.PATHS.some(watched => watched.startsWith(`${p}/`)));
+    const rows = [
+        // view, skips allowed, why
+        [repoView.worktree(lib.checkout), false, "this checkout"],
+        [repoView.fromMap({
+            ".agents/skills/one/SKILL.md": skill("one"),
+            ".claude/skills/one": { link: "../../.agents/skills/one" },
+        }), true, "a folder of per-skill links"],
+    ];
+    for (const [view, mayskip, shape] of rows) {
+        const asked = [];
+        const recording = new Proxy(view, {
+            get: (target, how) => typeof target[how] !== "function" ? target[how] : (...args) => {
+                const paths = [].concat(args[0] ?? []).filter(p => typeof p === "string");
+                for (const p of paths.length ? paths : ["."]) asked.push([how, path.posix.normalize(p.split("\\").join("/")).replace(/\/+$/, "")]);
+                return target[how](...args);
+            },
+        });
+        const result = checkHarness.check(recording);
+        if (!mayskip) t.ok(!result.skipped.length, `edit trigger: ${shape} skips no invariant, so the probe sees every read`,
+            result.skipped.join("\n"));
+        const missed = [...new Set(asked.filter(([how, p]) => !covered(how, p)).map(([how, p]) => `${how} ${p}`))].sort();
+        t.ok(asked.length > 0 && !missed.length,
+            `edit trigger: check-harness PATHS covers every path an invariant reads in ${shape}, so check-edit.js runs them on an edit to it`,
+            missed.join("\n") || "nothing was read");
+    }
+};

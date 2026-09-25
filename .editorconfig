@@ -393,8 +393,9 @@ dotnet_diagnostic.SA1651.severity = warning  # Do not use placeholder elements
 ###############################
 # EF Core migrations          #
 ###############################
-# Scaffolded by `dotnet ef migrations add`; not hand-maintained, so exempt from analysis.
-[**/Migrations/*.cs]
+# Scaffolded by `dotnet ef migrations add`, straight into Migrations/ or a folder per context under
+# it; not hand-maintained, so exempt from analysis.
+[**/Migrations/**.cs]
 generated_code = true
 dotnet_analyzer_diagnostic.severity = none
 
