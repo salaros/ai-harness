@@ -289,6 +289,26 @@ function agentRoutingSectionsAgreeOnTheirAudience(t, repo, roster = rosterOf(rep
     }
 }
 
+// A routing row sends a task to the skills in its last column, and a name there with no skill behind
+// it routes the task nowhere: the agent looks for the skill, finds nothing and improvises. That is how
+// a renamed or dropped skill fails, and nothing else reports it. The column may also hand the work to
+// another agent, which is not a skill. Prose around the tables is left alone: it names files and
+// commands in the same backticks.
+function everyRoutedSkillIsInstalled(t, repo, roster = rosterOf(repo)) {
+    const text = repo.read(".agents/routing.md");
+    if (text === null) { t.skip("routed skills: no routing.md"); return; }
+    const { skills, routing } = roster();
+    const known = new Set([...skills.map(s => s.name), ...Object.keys(routing.agents)]);
+    const rows = text.split(/\r?\n/).filter(l => /^\|/.test(l) && !/^\|[\s|:-]+\|?$/.test(l));
+    const routed = rows.flatMap(l => {
+        const cells = l.split("|").slice(1, -1);
+        return [...(cells[cells.length - 1] || "").matchAll(/`([a-z0-9][a-z0-9-]*)`/g)].map(m => m[1]);
+    });
+    const unknown = [...new Set(routed.filter(n => !known.has(n)))];
+    t.ok(!unknown.length, "every skill a routing row names is installed",
+        `not in .agents/skills: ${unknown.join(", ")}`);
+}
+
 // docs-check reads the stages of the documentation chain out of the table in AGENTS.md, so a table
 // it cannot read turns every document check into a problem about the table. AGENTS.md reconciles on
 // every update, and a merge that mangles the table is exactly what a harness invariant is for.
@@ -366,6 +386,7 @@ const INVARIANTS = [
     noSkillIsMissingFromDisk,
     vendoredSkillsAreAttributed,
     agentRoutingSectionsAgreeOnTheirAudience,
+    everyRoutedSkillIsInstalled,
     chainTableIsReadable,
     onlyTheStacksReaderNamesTheTable,
     theDocsPortalReadsTheChainModel,
