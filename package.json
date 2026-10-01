@@ -5,6 +5,12 @@
   "bin": {
     "ai-harness": "scripts/update-harness.js"
   },
+  "dependencies": {
+    "npm-insights": "^2.0.1"
+  },
+  "scripts": {
+    "postinstall": "npm-insights:log"
+  },
   "files": [
     "scripts/update-harness.js",
     "scripts/install-policy.js",
