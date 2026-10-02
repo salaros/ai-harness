@@ -11,7 +11,7 @@ How the harness is put together: what each file is for, how skills, hooks and ag
 | `CLAUDE.md` | One line, `@AGENTS.md`, because Claude Code reads `CLAUDE.md` instead of `AGENTS.md`. |
 | `MEMORY.md` | The project facts, one per line: name, purpose, prose language, requirements, stack, and the issue tracker if there is one. The `project-init` skill writes it. |
 | `INTENT.md` | Optional. The product's intent in the [INTENT.md format](https://www.intentdocs.com/intent-md): product, MVP stories with their done-when criteria, and optionally personas, the user journey and later releases. When present, its `## Product` gives the name and purpose `MEMORY.md` would otherwise hold, and `docs-check` requires its `# INTENT.md` title, `## Product` and `## MVP stories`. The harness neither ships nor requires one; `project-init` offers to write it. |
-| `CONTEXT.md`, `CONTEXT-MAP.md` | The domain glossary, written by `domain-modeling`. A `microservices` repo adds `CONTEXT-MAP.md` and one `CONTEXT.md` per service; see `docs/agents/domain.md`. |
+| `GLOSSARY.md`, `CONTEXT.md`, `CONTEXT-MAP.md` | The domain glossary, one entry per term, and beside it what the domain is and how its terms relate. `domain-modeling` writes both. A `microservices` repo adds `CONTEXT-MAP.md` and one pair per service; see `docs/agents/domain.md`. |
 | `TODO.md` | Loose ends: unanswered questions, unverified assumptions and deferred work, in the [todo-md](https://github.com/todo-md/todo-md) format. The `loose-ends` skill writes it. A settled entry is deleted, not ticked. |
 | `CODING_STANDARDS.md` | Rules the `code-review` skill applies. Anything a tool enforces stays out of it. |
 | `skills-lock.json` | Source, path and hash of every vendored skill, written by `npx skills`. |
@@ -55,7 +55,7 @@ Three Node scripts in `.agents/hooks/`. Each reads the tool's JSON payload on st
 
 | Script | Event | What it does |
 | --- | --- | --- |
-| `session-start.js` | session start | Prints the branch, whether Git hooks are installed, skills missing from disk, and whether `CONTEXT.md`, `docs/adr/` and the issue-tracker config exist. On a GitHub clone with `gh` signed in, it also lists the open pull requests by number, so the agent can offer `pr-sweep`. Last, how to end the session, from the routing row of that name. |
+| `session-start.js` | session start | Prints the branch, whether Git hooks are installed, skills missing from disk, and whether a glossary (`GLOSSARY.md`, or terms still in `CONTEXT.md`), `docs/adr/` and the issue-tracker config exist. On a GitHub clone with `gh` signed in, it also lists the open pull requests by number, so the agent can offer `pr-sweep`. Last, how to end the session, from the routing row of that name. |
 | `guard-command.js` | before a shell command | Blocks force pushes, `git reset --hard`, `git clean -f`, `git branch -D` and recursive deletes of `/`, `~`, `.git` or `*`, and tells the agent to ask you instead. |
 | `chain-skill.js` | before a file is created | Asks for the skill that writes that stage of the chain, reading the mapping from `AGENTS.md`'s table: a PRD with `prd`, a SPEC with `spec`, a new module under `src/` with `implement` and `codebase-design`. Only a creation fires it, and only when the session's transcript shows the skill was never loaded. |
 | `check-edit.js` | after a file edit | Syntax-checks `*.js`, validates `*.json`, runs `docs-check.js` after changes to `docs/` or `AGENTS.md`, runs `check-harness.js` after harness changes, and refuses edits to vendored skills. |
@@ -131,7 +131,7 @@ A tracker is optional: a project can plan entirely in `docs/` and record `Issue 
 
 - `issue-tracker.md` names the MCP tools that create, read, label, link and close issues. Replace `TODO-PROJECT-KEY` with your project key, or let `project-init` do it.
 - `triage-labels.md` maps the five triage roles to Jira labels of the same names.
-- `domain.md` tells skills to read `CONTEXT.md` and `docs/adr/` first.
+- `domain.md` tells skills to read `GLOSSARY.md`, `CONTEXT.md` and `docs/adr/` first, and gives the two formats a glossary entry is written in.
 - `questions.md` names the question tool of each harness.
 
 To switch to GitHub, GitLab or local Markdown, run `/setup-matt-pocock-skills`.
@@ -145,12 +145,12 @@ To switch to GitHub, GitLab or local Markdown, run `/setup-matt-pocock-skills`.
 | `to-tickets` | `issue-tracker.md` | drafts in `.scratch/<feature>/`, then tracker issues |
 | `triage` | `issue-tracker.md`, `triage-labels.md`, `.out-of-scope/` | `.out-of-scope/<concept>.md`, labels and comments |
 | `grill-with-docs` | the ask being sharpened | nothing of its own: it calls `grilling` and `domain-modeling` |
-| `domain-modeling` | `CONTEXT.md`, `docs/adr/` | `CONTEXT.md`, `docs/adr/NNNN-<slug>.md` |
-| `brd`, `prd`, `feature-forge`, `bdd-scenarios`, `spec`, `create-implementation-plan` | the document one stage upstream, `CONTEXT.md` | `docs/<stage>/NNNN-<slug>.md`, or `.scratch/<feature>/` for the plan |
+| `domain-modeling` | `GLOSSARY.md`, `CONTEXT.md`, `docs/adr/` | `GLOSSARY.md`, `CONTEXT.md`, `docs/adr/NNNN-<slug>.md` |
+| `brd`, `prd`, `feature-forge`, `bdd-scenarios`, `spec`, `create-implementation-plan` | the document one stage upstream, `GLOSSARY.md` | `docs/<stage>/NNNN-<slug>.md`, or `.scratch/<feature>/` for the plan |
 | `docs-check` | the `AGENTS.md` chain table, `docs/`, `MEMORY.md`, `INTENT.md` | repairs in place |
 | `loose-ends` | `TODO.md` | `TODO.md` |
 | `project-init` | your answers, `INTENT.md` if present | `MEMORY.md`, `INTENT.md` if you accept one, the Project section of `README.md`, `issue-tracker.md`, and `CONTEXT-MAP.md` for `microservices` |
-| `teach` | the working directory | `MISSION.md`, `RESOURCES.md`, `NOTES.md` and lesson folders |
+| `teach` | the working directory, which is a folder of its own such as `.scratch/learn/<topic>/` and never the repo root | `MISSION.md`, `RESOURCES.md`, `NOTES.md`, a `GLOSSARY.md` of the topic's own and lesson folders |
 | `loop-me` | `NOTES.md` | `workflows/<name>.md`, `NOTES.md` |
 | `implement`, `tdd`, `prototype` | a spec or tickets, the stack's tooling | code in `src/` and `tests/` |
 | `agent-browser` | the `agent-browser` CLI | nothing |

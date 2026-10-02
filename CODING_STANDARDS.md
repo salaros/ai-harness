@@ -9,7 +9,7 @@ Mechanical rules live elsewhere: encoding, indentation and line endings in `.edi
 ## Structure
 
 - Organise `src/` by feature or domain, not by file type (see `src/README.md`).
-- Name modules, types and tests with the terms in `CONTEXT.md`; avoid the synonyms it lists.
+- Name modules, types and tests with the terms in `GLOSSARY.md`; avoid the synonyms it lists.
 
 ## Tests
 

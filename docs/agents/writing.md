@@ -22,7 +22,7 @@ Files written for agents are the exception, and follow `writing-for-agents` inst
 
 ## Language
 
-Write what this project owns in the language `MEMORY.md` gives as `Prose language`, and reply to the developer in it: the `docs/` chain, `INTENT.md`, `CONTEXT.md`, `TODO.md`, `MEMORY.md`'s own values and the README's Project section. A missing line means English.
+Write what this project owns in the language `MEMORY.md` gives as `Prose language`, and reply to the developer in it: the `docs/` chain, `INTENT.md`, `CONTEXT.md`, `GLOSSARY.md`, `TODO.md`, `MEMORY.md`'s own values and the README's Project section. A missing line means English.
 
 The harness stays English whatever that line says -- `AGENTS.md`, `docs/agents/`, the route tables and every `SKILL.md` -- because an update merges those from upstream and would overwrite a translation or collide with it. Commit messages stay English too, so one log reads the same in every repo.
 

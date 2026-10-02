@@ -26,7 +26,7 @@ A client who asks for a Software Requirements Specification is asking for one do
 
 ### D-1 The outline
 
-The page is the IEEE 29148-2018 SRS outline, each section an H2 in this order: 1 Introduction, 2 References, 3 Requirements, 4 Verification, 5 Appendices. The documents sit where the outline puts what they say: the PRD under Introduction (purpose, scope, product overview and its users), the EARS document under 3.1 Functions, the TRD under 3.2 Quality requirements and constraints, which stands for the outline's 3.2 to 3.7 (performance, usability, interface, logical database, design constraints, software system attributes) without splitting the document across them. References lists every document rendered with a link to its page and what it derives from. Verification lists the BDD documents by link. Appendices holds the outline's assumptions and acronyms as one sentence pointing at `CONTEXT.md` when the repo has one, and otherwise says nothing is recorded yet. Satisfies: the goal of one page in the outline's order.
+The page is the IEEE 29148-2018 SRS outline, each section an H2 in this order: 1 Introduction, 2 References, 3 Requirements, 4 Verification, 5 Appendices. The documents sit where the outline puts what they say: the PRD under Introduction (purpose, scope, product overview and its users), the EARS document under 3.1 Functions, the TRD under 3.2 Quality requirements and constraints, which stands for the outline's 3.2 to 3.7 (performance, usability, interface, logical database, design constraints, software system attributes) without splitting the document across them. References lists every document rendered with a link to its page and what it derives from. Verification lists the BDD documents by link. Appendices holds the outline's assumptions and acronyms as one sentence pointing at the glossary when the repo has terms in one (SPEC-0003 gave the glossary a page of its own), and otherwise says nothing is recorded yet. Satisfies: the goal of one page in the outline's order.
 
 ### D-2 Rendering a document into a section
 
@@ -42,7 +42,7 @@ The page's collection id is `srs`, its route `/srs/`, its title `SRS`, and its s
 
 ## Data model
 
-Nothing new is stored. The view reads the model `collect()` returns: `stages` (for each stage's name, folder and skills), `docs` (in stage then file order, each with `stage`, `title`, `link`, `lines`), the `byId`, `refRe` and `itemRe` that `markdownFor()` needs, and `glossary`, whether the repo has a `CONTEXT.md`, which the appendices need and nothing else does. Its output is one markdown string.
+Nothing new is stored. The view reads the model `collect()` returns: `stages` (for each stage's name, folder and skills), `docs` (in stage then file order, each with `stage`, `title`, `link`, `lines`), the `byId`, `refRe` and `itemRe` that `markdownFor()` needs, and `glossary`, the repo's terms or nothing, which the appendices need. Its output is one markdown string.
 
 ## Interfaces
 

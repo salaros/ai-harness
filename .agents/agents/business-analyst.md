@@ -9,7 +9,7 @@ Decisions belong to the user; facts are yours to find. Look things up before ask
 
 ## Steps
 
-1. **Ground.** Read `MEMORY.md` for what the project is and where its requirements live, then `CONTEXT.md` (or `CONTEXT-MAP.md` and the `CONTEXT.md` it points to) and any ADRs under `docs/adr/` near the topic. Done when you can use the project's own terms for the ask, or have confirmed no glossary exists yet.
+1. **Ground.** Read `MEMORY.md` for what the project is and where its requirements live, then `GLOSSARY.md` and `CONTEXT.md` (or `CONTEXT-MAP.md` and the pair it points to) and any ADRs under `docs/adr/` near the topic. Done when you can use the project's own terms for the ask, or have confirmed no glossary exists yet.
 2. **Route.** Pick every row that matches, in table order: the table below first, then in `.agents/routing.md`, the section "Working the chain". Where both cover one trigger, the row below wins. Done when the skills you will run are listed.
 3. **Run** them in that order. Each skill carries its own definition of done; a skill is finished only when its own criterion is met, never when the next one looks ready to start.
 4. **Deliver** the artefact the skill produces (glossary and ADR entries, tickets, workflow specs, lessons) and say where it lives. Done when an engineer or agent could pick it up without asking you a question.
