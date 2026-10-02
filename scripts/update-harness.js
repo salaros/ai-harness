@@ -289,9 +289,9 @@ function policies(templateDir) {
 
 // ---------------------------------------------------------------- skeletons
 
-// Three files the upstream does not ship, because there they would be lies: MEMORY.md
-// describes a project this repo is not, and CONTEXT.md and TODO.md are written by the skills that
-// own them, when there is something real to put in them. A repo that just took the harness has
+// Four files the upstream does not ship, because there they would be lies: MEMORY.md
+// describes a project this repo is not, and CONTEXT.md, GLOSSARY.md and TODO.md are written by the
+// skills that own them, when there is something real to put in them. A repo that just took the harness has
 // neither the files nor any sign the harness expects them, so an empty one is laid down: it names
 // the file, says which skill fills it, and is valid to every check that reads it. Written only when
 // absent, and never touched again.
@@ -307,9 +307,17 @@ const SKELETONS = {
     "CONTEXT.md": [
         "# Context",
         "",
-        "The project's glossary: one entry per term the code and the documents both use, in the words",
+        "What this project's domain is and where it ends, in a paragraph the `domain-modeling` skill",
+        "writes once there is something to say. Its terms are in `GLOSSARY.md`, and the decisions",
+        "those terms come out of live in `docs/adr/`.",
+        "",
+    ],
+    "GLOSSARY.md": [
+        "# Glossary",
+        "",
+        "The project's terms: one entry per term the code and the documents both use, in the words",
         "the business uses. The `domain-modeling` skill writes an entry the moment a term is settled,",
-        "and the decisions those terms come out of live in `docs/adr/`.",
+        "in either format `docs/agents/domain.md` gives.",
         "",
     ],
     "TODO.md": [

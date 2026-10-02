@@ -36,7 +36,8 @@ LICENSE	skip	The project chooses its own.
 MEMORY.md	skip	Written by project-init, and the one file that says what this project is.
 INTENT.md	skip	The product's intent, when the project keeps one. Optional: the harness neither ships nor requires it.
 TODO.md	skip	The loose-ends ledger, all of it the project's own.
-CONTEXT.md	skip	The domain glossary. The upstream's names the harness's own terms; a project's names its domain.
+CONTEXT.md	skip	What the project's domain is. The upstream's describes the harness; a project's describes its own.
+GLOSSARY.md	skip	The domain glossary. The upstream's names the harness's own terms; a project's names its domain.
 THIRD-PARTY-NOTICES.md	skip	Generated from the project's own lock file after the update, not copied.
 stylecop.json	template	.NET analyzer configuration. Meaningless in a repo that is not .NET, and confusing to find there.
 opencode.json	template	Wiring for one agent tool. A team that does not use OpenCode would carry dead config.

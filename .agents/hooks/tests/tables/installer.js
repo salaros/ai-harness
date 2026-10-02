@@ -3,6 +3,8 @@
 // how a conflicted merge is settled, and the whole plan against an upstream and a target held in
 // memory. What each policy decides for one path is in install-policy.js beside this file.
 const os = require("os");
+const lib = require("../../lib");
+const glossary = require("../../../../scripts/check-glossary");
 const projectFacts = require("../../../../scripts/project-facts");
 const repoView = require("../../../../scripts/repo-view");
 const repoEdit = require("../../../../scripts/repo-edit");
@@ -167,8 +169,13 @@ exports.installPlanCoversEveryCase = function installPlanCoversEveryCase(t) {
     is(pick(update, "TODO.md"), { outcome: "deleted here", write: undefined }, "a skeleton the project deleted stays deleted");
     const older = run(target, { commit: "c1", ref: "master", skeletons: ["MEMORY.md", "CONTEXT.md"] });
     is(pick(older, "TODO.md"), { outcome: "created", bucket: "seeded" }, "a skeleton newer than the receipt is laid down");
+    // GLOSSARY.md arrived after CONTEXT.md, so a repo installed before the split gains it on an update,
+    // and what it gains is a glossary the check accepts.
+    is(pick(older, "GLOSSARY.md"), { outcome: "created", bucket: "seeded" }, "a repo installed before the glossary had a file of its own gains one");
+    const laid = glossary.check(pick(older, "GLOSSARY.md").write || "", lib.checkout);
+    t.ok(!laid.problems.length && laid.terms === 0, "install plan: the GLOSSARY.md skeleton is a glossary with no terms yet", laid.problems.join("\n") || laid.summary);
     t.ok(JSON.parse(pick(update, "harness-lock.json").write).skeletons.includes("TODO.md"), "install plan: the receipt lists the skeletons it knew", pick(update, "harness-lock.json").write);
-    t.ok(pick(update, "harness-lock.json").write.includes('  "skeletons": ["MEMORY.md", "CONTEXT.md", "TODO.md"]\n'),
+    t.ok(pick(update, "harness-lock.json").write.includes('  "skeletons": ["MEMORY.md", "CONTEXT.md", "GLOSSARY.md", "TODO.md"]\n'),
         "install plan: the receipt writes the list on one line, as Prettier does", pick(update, "harness-lock.json").write);
 
     const stale = run({ ".githooks/pre-commit": "hook mine\n", "AGENTS.md": "# Agents\nold rule\n", ".claude/agents": ".agents/agents" }, null);
