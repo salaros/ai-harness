@@ -5,7 +5,8 @@
 // The chain itself comes from readDocs() in scripts/docs-check.js: the stage table, the documents,
 // and the expressions that recognise a citation and an item. The portal renders what the validator
 // checks, down to the file-name rule, so a document either takes part in both or in neither. What
-// is left here is presentation: markdown for Starlight, the overview page, the sidebar. readDocs()
+// is left here is presentation: markdown for Starlight, the overview page, the sidebar. The glossary
+// comes the same way, from read() in scripts/check-glossary.js, and glossary.mjs presents it. readDocs()
 // is given REPO and leaves the working directory alone, so Astro's own root stays where Astro put it.
 // Run it directly for a summary of what the portal will render:
 //   node tools/docs-site/chain.mjs
@@ -15,14 +16,18 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // A cycle by design: srs.mjs renders through markdownFor() below, and the command line here counts
 // the stages srs.mjs owns. Neither module reads the other's bindings while evaluating, so it is safe.
 import { SRS_STAGES } from "./srs.mjs";
+import { GLOSSARY_LINK, linkTerms } from "./glossary.mjs";
 
 const require = createRequire(import.meta.url);
-const { readDocs } = require("../../scripts/docs-check.js");
+const { readDocs, DERIVED_RE } = require("../../scripts/docs-check.js");
+const glossary = require("../../scripts/check-glossary.js");
 const { readFactsAt } = require("../../scripts/project-facts.js");
 const repoView = require("../../scripts/repo-view.js");
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const DOCS = path.join(REPO, "docs");
+// The two files a glossary is read from, which the loader watches beside docs/.
+export const GLOSSARY_FILES = [glossary.FILE, glossary.CONTEXT].map(name => path.join(REPO, name));
 
 // One project fact, read as the initialisation gate reads it, or "" while it is unanswered. With an
 // INTENT.md the name and purpose are its "## Product"'s alone.
@@ -32,10 +37,11 @@ const memoryFact = name => readFactsAt(REPO)[name] || "";
 // then file order, and the problems as notes for the loader to log. A document the validator refuses
 // is one of those notes rather than a page, so the portal never renders what nothing checked.
 // It reads the working tree unless given a repo view, which is how a check hands it a repo held in
-// memory. Whether the repo has a glossary is the one fact the SRS view needs beyond the documents.
+// memory. The glossary is the one thing it holds beyond the documents: the repo's terms as the hooks
+// check them, or null in a repo that has no glossary.
 export function collect(view = repoView.worktree(REPO)) {
     const { stages, docStages, docs, problems, refRe, itemRe } = readDocs(REPO, view);
-    return { stages, docStages, docs: [...docs.values()], byId: docs, notes: problems, refRe, itemRe, glossary: view.isFile("CONTEXT.md") };
+    return { stages, docStages, docs: [...docs.values()], byId: docs, notes: problems, refRe, itemRe, glossary: glossary.read(view) };
 }
 
 // One document as markdown for Starlight: the H1 goes (Starlight renders the title itself), every
@@ -43,8 +49,10 @@ export function collect(view = repoView.worktree(REPO)) {
 // land on it. Fenced code is left exactly as written. The SRS view renders several documents on one
 // page, so it asks for no anchors (an item ID is unique on a document's page, not across several)
 // and for the headings pushed down under its own, by `demote` levels and never past H6.
-export function markdownFor(doc, { byId, refRe, itemRe }, { anchors = true, demote = 0 } = {}) {
-    const out = [];
+// A term the glossary defines is linked to its entry where the document first mentions it. A heading
+// stays plain, and so does the provenance line, whose sources are paths rather than prose.
+export function markdownFor(doc, { byId, refRe, itemRe, glossary: terms }, { anchors = true, demote = 0 } = {}) {
+    const out = [], mentioned = new Set();
     let fenced = false, seenH1 = false;
     for (const line of doc.lines) {
         if (/^\s*(```|~~~)/.test(line)) { fenced = !fenced; out.push(line); continue; }
@@ -60,6 +68,7 @@ export function markdownFor(doc, { byId, refRe, itemRe }, { anchors = true, demo
             if (full[offset - 1] === "[") return whole;          // already inside a link
             return `[${whole}](${target.link}${item ? `#${item}` : ""})`;
         });
+        if (terms && !/^#{1,6} /.test(demoted) && !DERIVED_RE.test(line)) text = linkTerms(text, terms, mentioned);
         const item = anchors && text.match(itemRe);
         if (item) text = text.replace(item[1], `<span id="${item[1]}"></span>${item[1]}`);
         out.push(text);
@@ -92,6 +101,9 @@ export function overview(chain) {
         "- **Derived from** names where the document came from: the upstream document, or a source outside the chain (a URL, a repo-relative path, or a Jira key) where the chain holds nothing earlier.",
         "- A citation like `PRD-0002/FR-3` is a link here: it opens that document at that requirement.",
         "- Items a later stage refines carry a short ID at the start of their line (`BR-2`, `FR-3`, `AC-1`, `D-1`), and each is a link target.",
+        ...(chain.glossary && chain.glossary.terms.length
+            ? [`- A term the [glossary](${GLOSSARY_LINK}) defines is a link at its first mention in a document: it opens the glossary at that entry.`]
+            : []),
         "",
         docs.length
             ? `${docs.length} document${docs.length === 1 ? "" : "s"} across ${stageCount} stage${stageCount === 1 ? "" : "s"}, read live from \`docs/\`. \`node scripts/docs-check.js\` checks that the citations above all resolve.`
@@ -100,8 +112,10 @@ export function overview(chain) {
 }
 
 // The SRS view sits right after the overview and outside the stage groups, because it is not a stage.
+// The glossary follows it for the same reason, in a repo that has one.
 export function sidebar(chain) {
     const out = [{ label: "Overview", link: "/" }, { label: "SRS", link: "/srs/" }];
+    if (chain.glossary) out.push({ label: "Glossary", link: GLOSSARY_LINK });
     for (const s of chain.docStages) {
         const items = chain.docs.filter(d => d.folder === s.folder)
             .map(d => ({ label: d.title, slug: d.entryId }));
@@ -119,5 +133,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     }
     const inSrs = chain.docs.filter(d => SRS_STAGES.includes(d.stage)).length;
     console.log(`srs\t${inSrs} document(s) across ${SRS_STAGES.join(", ")}`);
+    if (chain.glossary) console.log(`glossary\t${chain.glossary.terms.length} term(s) from ${chain.glossary.file}`);
     console.log(`docs-site: ${chain.docs.length} document(s) from ${chain.docStages.length} stage(s), read live from docs/`);
 }

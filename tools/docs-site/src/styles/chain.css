@@ -19,9 +19,11 @@
     color: var(--sl-color-gray-2);
 }
 
-/* An item ID (BR-2, FR-3, AC-1) is a link target; mark the one the reader jumped to. */
+/* An item ID (BR-2, FR-3, AC-1) is a link target, and so is a glossary entry's heading; mark the one
+   the reader jumped to. */
 .sl-markdown-content [id]:target,
-.sl-markdown-content li:has(> span[id]:target) {
+.sl-markdown-content li:has(> span[id]:target),
+.sl-markdown-content :is(h2, h3):has(> span[id]:target) {
     background: var(--sl-color-accent-low);
     scroll-margin-top: 6rem;
 }

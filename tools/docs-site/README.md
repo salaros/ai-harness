@@ -38,13 +38,15 @@ Starlight needs a frontmatter `title` on every page and the chain's documents ha
 - a citation, `DOC-ID` or `DOC-ID/ITEM`, becomes a link to that document, or to that item in it;
 - fenced code is left exactly as written, so an ID inside an example stays plain text;
 - the overview page is built from the chain table, so it shows the whole pipeline including `TDD`, `IPLAN` and `Code`, which are not documents;
-- the SRS page, `/srs/`, is the Software Requirements Specification a client asks for: the PRD, TRD and EARS documents rendered under the IEEE 29148-2018 outline, in that outline's order, with the BDD documents linked under Verification. It is a view and not a stage, so nothing is written to `docs/` and `docs-check` has nothing to validate; `srs.mjs` builds it, and SPEC-0002 is its design.
+- the SRS page, `/srs/`, is the Software Requirements Specification a client asks for: the PRD, TRD and EARS documents rendered under the IEEE 29148-2018 outline, in that outline's order, with the BDD documents linked under Verification. It is a view and not a stage, so nothing is written to `docs/` and `docs-check` has nothing to validate; `srs.mjs` builds it, and SPEC-0002 is its design;
+- the glossary page, `/glossary/`, lists every term in the root `GLOSSARY.md` in alphabetical order, in whichever of the two formats the file is written (`docs/agents/domain.md` has both), with its aliases and the words it avoids. A repo with no glossary gets no page and no sidebar entry;
+- a term the glossary defines, or one of its aliases, becomes a link to its entry where a document first mentions it, in any case. Headings, the `**Derived from:**` line, code, existing links, URLs, paths and file names are left alone, so `invoice.js` is never the term Invoice. `glossary.mjs` builds both, from the model `scripts/check-glossary.js` reads, and SPEC-0003 is its design.
 
 A citation that does not resolve is left as plain text rather than linked to a page that does not exist. `node scripts/docs-check.js` is what reports those; this tool only renders.
 
 ## Notes
 
-- `docs/` sits outside the Astro project, so the loader adds it to the dev watcher explicitly. Editing a document and adding a new one were both picked up without a restart.
+- `docs/` and the glossary sit outside the Astro project, so the loader adds them to the dev watcher explicitly. Editing a document and adding a new one were both picked up without a restart.
 - Every build logs `The collection "i18n" does not exist or is empty`. The portal is single-language, and declaring an empty `i18n` collection produces two warnings instead of one, so the warning stays.
 - The sitemap integration warns that `site` is unset, and it stays unset here: this portal is read locally, so there is no URL to give it and no sitemap worth building. A repo that deploys its documentation sets `site` in `astro.config.mjs` to the URL it deploys to, and the warning goes with it.
-- Links are root-absolute (`/prd/0001-x/`). Deploying under a path prefix needs `base` in `astro.config.mjs` and a matching prefix in `chain.mjs`.
+- Links are root-absolute (`/prd/0001-x/`). Deploying under a path prefix needs `base` in `astro.config.mjs` and a matching prefix in `chain.mjs` and `glossary.mjs`.

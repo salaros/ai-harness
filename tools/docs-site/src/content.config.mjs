@@ -3,7 +3,8 @@
 // heading the chain requires, links its citations, and hands the result to Starlight in memory.
 import { docsSchema } from "@astrojs/starlight/schema";
 import { defineCollection } from "astro:content";
-import { collect, DOCS, markdownFor, overview, siteTitle } from "../chain.mjs";
+import { collect, DOCS, GLOSSARY_FILES, markdownFor, overview, siteTitle } from "../chain.mjs";
+import { glossaryPage } from "../glossary.mjs";
 import { srs } from "../srs.mjs";
 
 // A custom loader rather than Starlight's docsLoader(), which only reads src/content/docs/.
@@ -20,6 +21,7 @@ const chainLoader = {
             const pages = [
                 { id: "index", title: siteTitle(), body: overview(chain), order: 0 },
                 { id: "srs", title: "SRS", body: srs(chain), order: 1 },
+                ...(chain.glossary ? [{ id: "glossary", title: "Glossary", body: glossaryPage(chain.glossary), order: 2 }] : []),
                 ...chain.docs.map(d => ({
                     id: d.entryId, title: d.title, body: markdownFor(d, chain), order: d.number,
                 })),
@@ -42,10 +44,10 @@ const chainLoader = {
 
         await read();
 
-        // In dev, docs/ sits outside the Astro project, so it is watched explicitly.
+        // In dev, docs/ and the glossary sit outside the Astro project, so they are watched explicitly.
         if (watcher && !watcher.__chainWatched) {
             watcher.__chainWatched = true;
-            watcher.add(DOCS);
+            watcher.add([DOCS, ...GLOSSARY_FILES]);
             const reload = path => { if (path.endsWith(".md")) read().catch(e => logger.error(String(e))); };
             watcher.on("add", reload);
             watcher.on("change", reload);

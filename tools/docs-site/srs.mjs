@@ -6,6 +6,7 @@
 // collect() returns and reads nothing itself, so what it renders is what the validator checked.
 import { createRequire } from "node:module";
 import { markdownFor } from "./chain.mjs";
+import { GLOSSARY_LINK } from "./glossary.mjs";
 
 const { DERIVED_RE } = createRequire(import.meta.url)("../../scripts/docs-check.js");
 
@@ -54,8 +55,8 @@ function body(section, chain) {
             : ["none yet."];
     }
     if (section.appendices) {
-        return [chain.glossary
-            ? "Assumptions, dependencies and acronyms: the terms this project uses are in `CONTEXT.md`, the glossary the chain's documents share."
+        return [chain.glossary && chain.glossary.terms.length
+            ? `Assumptions, dependencies and acronyms: the terms this project uses are in the [glossary](${GLOSSARY_LINK}), which the chain's documents share.`
             : "Nothing recorded yet."];
     }
     if (!section.stage) return [];

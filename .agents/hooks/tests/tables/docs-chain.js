@@ -449,3 +449,97 @@ exports.markdownForWithoutOptionsIsUnchanged = function markdownForWithoutOption
     const cited = portal.markdownFor({ ...chain.byId.get("PRD-9403"), lines: ["# PRD-9403: X", "", "## Refines BRD-9403/BR-1"] }, chain, { demote: 2 });
     t.ok(cited === "#### Refines [BRD-9403/BR-1](/brd/9403-billing/#BR-1)", "markdownFor links a citation inside a demoted heading", cited);
 };
+
+// The glossary in the portal (SPEC-0003): the repo's terms on a page of their own, and a link to an
+// entry from where a chain document first mentions the term. The fixture is the heading format with
+// an alias; scripts/check-glossary.js's own table pins that both formats give one model.
+const GLOSSARY = [
+    "# Billing glossary", "", "The words billing uses.", "",
+    "## Invoice", "<!-- aliases: bill -->", "", "A request for payment sent to a Customer.", "",
+    "## Customer", "", "Whoever pays an Invoice.", "",
+    "## Credit note", "", "A Credit note is an Invoice in reverse.",
+];
+
+exports.glossaryLinksTheFirstMention = function glossaryLinksTheFirstMention(t) {
+    const portal = portalModule("chain.mjs"), site = portalModule("glossary.mjs");
+    if (!portal || !site) { t.skip("glossary links: the optional portal is not installed, or the runtime cannot load an ES module"); return; }
+    const chain = portal.collect(chainView({
+        "GLOSSARY.md": GLOSSARY,
+        "src/invoice.js": "",
+        "docs/brd/9404-billing.md": ["# BRD-9404: Billing", "", "**Derived from:** src/invoice.js", "", "## The invoice", "", "- BR-1: Send every customer an invoice, and a second invoice on request.", "", "```", "invoice --send", "```", ""],
+    }));
+    t.ok(!chain.notes.length, "the glossary fixture is a chain docs-check accepts", chain.notes.join("\n"));
+    const linked = line => site.linkTerms(line, chain.glossary);
+
+    const page = portal.markdownFor(chain.byId.get("BRD-9404"), chain);
+    t.ok(page.includes("Send every [customer](/glossary/#term-customer) an [invoice](/glossary/#term-invoice), and a second invoice on request."),
+        "a term is a link at its first mention in a document, in the case it was written, and plain after that", page);
+    t.ok(page.includes("\n## The invoice\n"), "a heading is left as written", page);
+    t.ok(page.includes("**Derived from:** src/invoice.js"), "the provenance line is left as written", page);
+    t.ok(page.includes("\ninvoice --send\n"), "fenced code is left as written", page);
+    t.ok(page.includes('<span id="BR-1"></span>BR-1:'), "an item keeps its anchor on a line with a linked term", page);
+
+    for (const [line, want, title] of [
+        ["Pay the bill.", "Pay the [bill](/glossary/#term-invoice).", "an alias links to its term's entry"],
+        ["A Credit Note cancels it.", "A [Credit Note](/glossary/#term-credit-note) cancels it.", "a term of two words is matched whole, in any case"],
+        ["Run `invoice` now.", "Run `invoice` now.", "inline code is not linked"],
+        ["See [the invoice](https://example.com/invoice).", "See [the invoice](https://example.com/invoice).", "a link's text and target are not linked"],
+        ["See [the invoice][inv].", "See [the invoice][inv].", "a reference link is not linked"],
+        ["At https://example.com/invoice today.", "At https://example.com/invoice today.", "a bare URL is not linked"],
+        ["In src/invoice.js and invoice.pdf.", "In src/invoice.js and invoice.pdf.", "a path or a file name is not the term"],
+        ["The pre-invoice step and invoices_sent.", "The pre-invoice step and invoices_sent.", "part of a longer word is not the term"],
+        ["Nothing here.", "Nothing here.", "a line naming no term is unchanged"],
+    ]) t.ok(linked(line) === want, title, linked(line));
+
+    const seen = new Set();
+    const twice = [site.linkTerms("An invoice.", chain.glossary, seen), site.linkTerms("The bill.", chain.glossary, seen)].join(" ");
+    t.ok(twice === "An [invoice](/glossary/#term-invoice). The bill.", "a term linked once is not linked again by its alias", twice);
+    t.ok(site.linkTerms("An invoice.", null) === "An invoice.", "no glossary, no links");
+};
+
+exports.glossaryPageListsTheTerms = function glossaryPageListsTheTerms(t) {
+    const portal = portalModule("chain.mjs"), site = portalModule("glossary.mjs"), srs = portalModule("srs.mjs");
+    if (!portal || !site || !srs) { t.skip("glossary page: the optional portal is not installed, or the runtime cannot load an ES module"); return; }
+    const chain = portal.collect(chainView({ "GLOSSARY.md": GLOSSARY }));
+    const page = site.glossaryPage(chain.glossary);
+
+    t.ok(page.startsWith("The words billing uses.\n"), "the page opens with the glossary's own lead", page);
+    t.ok(page.includes("Read live from `GLOSSARY.md`."), "the page names the file it reads", page);
+    const at = ["Credit note", "Customer", "Invoice"].map(name => page.indexOf(`\n## <span id="term-${name.toLowerCase().replace(/ /g, "-")}"></span>${name}\n`));
+    t.ok(inOrder(at), "each term is a heading carrying its anchor, in alphabetical order whatever the file's", page);
+    t.ok(page.includes("A request for payment sent to a [Customer](#term-customer)."), "a definition links the other terms it uses, on the page", page);
+    t.ok(page.includes("A Credit note is an [Invoice](#term-invoice) in reverse."), "a definition does not link its own term", page);
+    t.ok(page.endsWith("\n\nAlso: bill."), "an entry lists its aliases", page);
+
+    // The portal's own pages name the glossary once there are terms to open.
+    const side = portal.sidebar(chain).map(e => `${e.label}:${e.link || ""}`);
+    t.ok(side[2] === "Glossary:/glossary/", "the sidebar lists the glossary after the SRS", side.join(" "));
+    t.ok(portal.overview(chain).includes("[glossary](/glossary/)"), "the overview says a term is a link", portal.overview(chain));
+    t.ok(srs.srs(chain).includes("the terms this project uses are in the [glossary](/glossary/)"), "the SRS appendix points at the glossary", srs.srs(chain));
+};
+
+// A repo's terms may still sit under CONTEXT.md's "## Language", a repo may have a glossary with no
+// terms yet, and a repo may have neither: three states the portal must tell apart.
+exports.glossaryOfAPortalWithoutTerms = function glossaryOfAPortalWithoutTerms(t) {
+    const portal = portalModule("chain.mjs"), site = portalModule("glossary.mjs"), srs = portalModule("srs.mjs");
+    if (!portal || !site || !srs) { t.skip("glossary states: the optional portal is not installed, or the runtime cannot load an ES module"); return; }
+
+    const none = portal.collect(chainView());
+    t.ok(none.glossary === null, "a repo with neither file has no glossary", JSON.stringify(none.glossary));
+    t.ok(!portal.sidebar(none).some(e => e.label === "Glossary"), "and no glossary in the sidebar");
+    t.ok(!portal.overview(none).includes("/glossary/"), "and no word of one on the overview", portal.overview(none));
+    t.ok(srs.srs(none).includes("Nothing recorded yet."), "and an SRS appendix that says so", srs.srs(none));
+
+    const empty = portal.collect(chainView({ "GLOSSARY.md": ["# Glossary", "", "No term is settled yet."] }));
+    const page = site.glossaryPage(empty.glossary);
+    t.ok(portal.sidebar(empty).some(e => e.label === "Glossary"), "a glossary without terms is still a page in the sidebar");
+    t.ok(page.includes("No terms yet.") && !page.includes("## "), "and the page says there are none", page);
+    t.ok(!portal.overview(empty).includes("/glossary/") && srs.srs(empty).includes("Nothing recorded yet."),
+        "and nothing promises links to entries that do not exist", portal.overview(empty));
+
+    const legacy = portal.collect(chainView({ "CONTEXT.md": ["# Billing", "", "## Language", "", "**Invoice**:", "A request for payment.", "_Avoid_: receipt"] }));
+    const old = site.glossaryPage(legacy.glossary);
+    t.ok(legacy.glossary && legacy.glossary.terms.length === 1, "terms still in CONTEXT.md are the glossary until they move", JSON.stringify(legacy.glossary));
+    t.ok(old.includes("Read live from `CONTEXT.md`.") && old.includes('## <span id="term-invoice"></span>Invoice') && old.includes("\nAvoid: receipt."),
+        "and the page renders them, naming the file and the words to avoid", old);
+};
