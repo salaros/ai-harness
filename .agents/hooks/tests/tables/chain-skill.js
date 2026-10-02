@@ -80,4 +80,17 @@ exports.chainSkillDecisions = function chainSkillDecisions(t) {
     const d = chainSkill.decide(["docs/prd/0001-billing.md"], STAGES, "");
     for (const want of ["docs/prd/0001-billing.md", "PRD", "prd", "AGENTS.md"])
         t.ok(d.message.includes(want), `chain skill: the message names ${want}`, d.message);
+
+    // A skill only the user can start is one the agent cannot load, so "load it first" is an order
+    // nobody can follow. A stage with no other skill says what to ask the user for and what to do
+    // until they answer; a stage with one the agent can load names that one and sets the other aside.
+    const theirs = name => name === "domain-modeling" || name === "implement";
+    const adr = chainSkill.decide(["docs/adr/0003-x.md"], STAGES, "", theirs);
+    for (const want of ["Only the user can start it", "/domain-modeling", "#deferred", "TODO.md"])
+        t.ok(adr.verdict === "block" && adr.message.includes(want), `chain skill: a stage only the user can write says ${want}`, adr.message);
+    t.ok(!/Load (it|them) first/.test(adr.message), "chain skill: and does not tell the agent to load what it cannot", adr.message);
+    const code = chainSkill.decide(["src/billing.js"], STAGES, "", theirs);
+    t.ok(code.verdict === "block" && code.message.includes("Load `codebase-design` first (/codebase-design)")
+        && code.message.includes("`implement` is the user's to start") && !code.message.includes("/implement"),
+        "chain skill: a stage with one loadable skill names that one and sets the user's aside", code.message);
 };

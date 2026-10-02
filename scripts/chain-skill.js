@@ -10,7 +10,7 @@
 // exits nothing, so a case about a chain nobody has is a row rather than a clone.
 //   stageFor(rel, stages)              the stage whose folder the path is under, or null
 //   used(transcript, skill)            whether the session loaded it
-//   decide(files, stages, transcript)  the verdict, or null when no file is in the chain
+//   decide(files, stages, transcript, userOnly)  the verdict, or null when no file is in the chain
 // `transcript` is null when the harness named none, which is not the same as an empty one: a hook
 // that cannot read its input fails open, the way every other hook here does.
 const fs = require("fs");
@@ -53,24 +53,41 @@ function used(transcript, skill) {
 //   allow  a stage's skill is already loaded, or none of the files is in the chain
 //   block  a chain file is being created and no skill of its stage was loaded
 //   warn   the harness named no transcript, so the hook cannot tell and says so instead
-function decide(files, stages, transcript) {
+// `userOnly(skill)` says whether a skill is one only the user can start. An agent told to load such
+// a skill cannot, and the message that tells it to anyway leaves it to improvise: so a stage whose
+// every skill is the user's says what to ask for and what to do meanwhile, and a stage with one the
+// agent can load names that one. With no predicate every skill is taken as loadable.
+function decide(files, stages, transcript, userOnly = () => false) {
     for (const file of files) {
         const stage = stageFor(file, stages);
         if (!stage) continue;
         const skills = stage.skills || [];
         if (!skills.length) continue;
         if (transcript !== null && skills.some(s => used(transcript, s))) continue;
-        const list = skills.map(s => `\`${s}\``).join(" and ");
-        const how = skills.map(s => `/${s}`).join(" then ");
+        const quoted = names => names.map(s => `\`${s}\``).join(" and ");
+        const list = quoted(skills);
         const many = skills.length > 1;
         const verdict = transcript === null ? "warn" : "block";
+        const theirs = skills.filter(s => userOnly(s));
+        const mine = skills.filter(s => !userOnly(s));
+        const intro = `${file} is the ${stage.stage} stage of the documentation chain, and ${list} ${many ? "are the skills" : "is the skill"} that ${many ? "write" : "writes"} it.\n`;
+        const why = `The skill carries the questions that stage has to answer; a file written without it has the right name and not the work.`;
+        const load = mine.length > 1
+            ? `Load them first (${mine.map(s => `/${s}`).join(" then ")}), then create the file.`
+            : `Load ${theirs.length ? quoted(mine) : "it"} first (/${mine[0]}), then create the file.`;
         const message = verdict === "warn"
             ? `chain skill: ${file} is the ${stage.stage} stage, which ${list} ${many ? "write" : "writes"}. This harness `
                 + `sent no transcript, so whether ${many ? "they are" : "it is"} loaded cannot be checked here -- `
                 + `load ${many ? "them" : "it"} before writing the file.`
-            : `${file} is the ${stage.stage} stage of the documentation chain, and ${list} ${many ? "are the skills" : "is the skill"} that ${many ? "write" : "writes"} it.\n`
-                + `Load ${many ? "them" : "it"} first (${how}), then create the file. AGENTS.md's chain table is where that mapping lives.\n`
-                + `The skill carries the questions that stage has to answer; a file written without it has the right name and not the work.`;
+            : !mine.length
+                ? intro
+                    + `Only the user can start ${theirs.length > 1 ? "them" : "it"}: ask them to run ${theirs.map(s => `/${s}`).join(" or ")} with what the file is to record.\n`
+                    + `Until they do, finish what does not depend on the file and leave a #deferred line in TODO.md for what does. AGENTS.md's chain table is where that mapping lives.\n`
+                    + why
+                : intro
+                    + `${load} AGENTS.md's chain table is where that mapping lives.`
+                    + (theirs.length ? ` ${quoted(theirs)} ${theirs.length > 1 ? "are" : "is"} the user's to start, so ${theirs.length > 1 ? "they are" : "it is"} not yours to load.` : "") + "\n"
+                    + why;
         return { verdict, stage, skills, files: [file], message };
     }
     return null;

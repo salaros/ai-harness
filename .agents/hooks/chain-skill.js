@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // .agents/hooks/chain-skill.js
 // Runs before the harness creates a file, and asks for the skill that stage of the chain is written
-// with: a PRD with `prd`, an ADR with `domain-modeling`, a new module with `implement` and
+// with: a PRD with `prd`, an ADR with `grill-with-docs`, a new module with `implement` and
 // `codebase-design`. AGENTS.md's chain table is where the mapping lives, and this hook reads it
 // there rather than keeping a copy, so a project that renames a stage's skill renames it once.
 // Only a creation fires it. A file that already exists is being edited, and an edit is work the
@@ -24,8 +24,23 @@ const { root, paths, transcript } = lib.event();
 const creating = paths.filter(p => !fs.existsSync(path.join(root, p)));
 if (!creating.length) process.exit(0);
 
-const { stages } = docsCheck.readChain(repoView.worktree(root));
-const decision = chainSkill.decide(creating, stages, chainSkill.readTranscript(transcript));
+// Which skills only the user can start, from the roster, read when the decision first asks: a skill
+// with `disable-model-invocation` is one the agent cannot load however clearly it is told to. A
+// roster that cannot be read leaves every skill loadable, which is what the message said before.
+const view = repoView.worktree(root);
+let theirs = null;
+const userOnly = name => {
+    if (!theirs) {
+        try {
+            theirs = new Set(require("../../scripts/skills").readRoster(view).skills
+                .filter(s => (s.frontmatter || {})["disable-model-invocation"] === "true").map(s => s.name));
+        } catch { theirs = new Set(); }
+    }
+    return theirs.has(name);
+};
+
+const { stages } = docsCheck.readChain(view);
+const decision = chainSkill.decide(creating, stages, chainSkill.readTranscript(transcript), userOnly);
 if (!decision) process.exit(0);
 
 process.stderr.write(decision.message + "\n");

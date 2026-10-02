@@ -17,4 +17,6 @@ The stages, their folders and their skills are the table in `AGENTS.md` ("Docume
 
 Each stage is written with its skill, and `chain-skill.js` asks for it: creating a file in a stage's folder without having loaded that skill is blocked, with the skill named. It reads the mapping from the same table and fires on a creation only, so an edit to a document already written is nobody's business but yours. A harness that sends its hooks no transcript cannot be checked this way and is warned instead of blocked.
 
+A stage whose skill only the user can start is the user's to open: an ADR, since `grill-with-docs` runs when they type it. Ask them to run `/grill-with-docs` with what there is to decide, finish what does not depend on the document, and leave a `#deferred` line in `TODO.md` for what does. A SPEC that would cite the ADR derives from the source the decision came from until the ADR exists.
+
 The edit hook runs `docs-check` after every change under `docs/` or to `AGENTS.md`, the `pre-commit` Git hook runs it over the staged content and blocks a commit that breaks the chain (`git commit --no-verify` to override), and the `docs-check` skill repairs what it reports. The chain covers `docs/` at the repo root only: a repo split into contexts is out of scope.
