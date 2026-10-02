@@ -5,7 +5,7 @@ How the engineering skills consume this repo's domain documentation when explori
 ## Before exploring, read these
 
 - **`GLOSSARY.md`** at the repo root: the terms, one entry each.
-- **`CONTEXT.md`** beside it: what the domain is and where it ends, how its terms relate, and the ambiguities already settled.
+- **`CONTEXT.md`** beside it: what the domain is and where it ends.
 - **`CONTEXT-MAP.md`** at the repo root if it exists: it points at one `CONTEXT.md` per context, each with a `GLOSSARY.md` beside it. Read the pair for each context relevant to the topic.
 - **`docs/adr/`**: read ADRs that touch the area you are about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
 
@@ -29,9 +29,9 @@ Switch to multi-context (a root `CONTEXT-MAP.md` pointing at `src/<context>/CONT
 
 ## The glossary
 
-`GLOSSARY.md` holds the terms and nothing else: no implementation detail, no decision, no plan. `CONTEXT.md` keeps the rest of what `domain-modeling` records, which is the context's description, its `Relationships`, its example dialogue and its flagged ambiguities. `domain-modeling`'s own format file puts the terms under `## Language` in `CONTEXT.md`; here they go in `GLOSSARY.md`, created with the first term, and terms a repo still has under `## Language` are read as its glossary until they are moved.
+`GLOSSARY.md` holds the terms and nothing else: no implementation detail, no decision, no plan. `CONTEXT.md` is the boundary and the signpost: what the context is, where it ends, and a line in plain words sending the reader to `GLOSSARY.md`. It defines no term. `domain-modeling`'s own format file, like every vendored skill that names the file, puts the terms under `## Language` in `CONTEXT.md`; here they go in `GLOSSARY.md`, created with the first term, whatever a skill's own instructions say. Terms a repo still has under `## Language` are read as its glossary for as long as they stay there, and the session brief says how many are waiting to move. ADR-0007 has the decisions.
 
-The file opens with a `# <title>` heading and is written in one of two formats, never both:
+The file opens with a `# <title>` heading and is written in one of two formats, never both. Neither is preferred: whoever writes the first entry chooses.
 
 ```markdown
 # Billing glossary
@@ -42,7 +42,7 @@ The file opens with a `# <title>` heading and is written in one of two formats, 
 A request for payment sent to a Customer after delivery.
 ```
 
-A term is a heading, and its definition is what follows until the next heading. The `aliases` comment is optional and lists the other words that mean this term. A heading with no text of its own, followed by deeper headings, is a group and not a term. This is the format of [glossarify-md](https://github.com/about-code/glossarify-md/blob/master/doc/glossary.md), so that tool can read the file too.
+A term is a heading, and its definition is what follows until the next heading. The `aliases` comment is optional and lists other forms of the term's own name: an abbreviation, its long form, a plural. A different word for the same thing is a synonym, not an alias, and goes on an `_Avoid_` line. A heading with no text of its own, followed by deeper headings, is a group and not a term. This is the format of [glossarify-md](https://github.com/about-code/glossarify-md/blob/master/doc/glossary.md), so that tool can read the file too.
 
 ```markdown
 # Billing glossary
@@ -113,4 +113,4 @@ If the concept you need is not in the glossary yet, that is a signal: either you
 
 If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
 
-> _Contradicts ADR-0007 (event-sourced orders), but worth reopening because…_
+> _Contradicts ADR-0042 (event-sourced orders), but worth reopening because…_

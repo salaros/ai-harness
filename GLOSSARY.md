@@ -81,5 +81,13 @@ One labelled entry of the project memory, such as Requirements or Issue tracker.
 _Avoid_: field, setting, key
 
 **Glossary**:
-The terms a repo has settled, one entry each, in `GLOSSARY.md`: this file at the root, and one beside each `CONTEXT.md` in a repo that keeps several contexts. An entry is written as a heading with the definition under it, or as a bold term with the definition on the next line. Terms a repo has not moved out of `CONTEXT.md` yet are read from its `## Language` section.
+The terms a context has settled, one entry each, in the `GLOSSARY.md` beside its `CONTEXT.md`: the only place a term is defined.
 _Avoid_: dictionary, vocabulary file, ubiquitous language
+
+**Alias**:
+Another form of a term's own name, such as an abbreviation, its long form or a plural, that the term's entry also answers to.
+_Avoid_: synonym
+
+**Context**:
+One bounded vocabulary: a folder holding a `CONTEXT.md`, which says what the context is and where it ends, and the glossary beside it. The repo root is the only context unless `CONTEXT-MAP.md` lists more.
+_Avoid_: domain area, namespace

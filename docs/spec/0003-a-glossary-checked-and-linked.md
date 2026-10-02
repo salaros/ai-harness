@@ -1,8 +1,8 @@
 # SPEC-0003: A glossary the hooks check and the portal links
 
-**Derived from:** ADR-0001, docs/research/interviews/2026-10-02-glossary-file.md
+**Derived from:** ADR-0001, ADR-0007, docs/research/interviews/2026-10-02-glossary-file.md
 
-A repo's terms were a section of `CONTEXT.md`, `## Language`, in a format only `domain-modeling` wrote and nothing read. The interview settled three things: the terms get a file of their own, `GLOSSARY.md`; an entry is written in either of two formats, the heading format of glossarify-md or the bold format the vendored skills write; and support goes as far as linking a term to its definition in the docs portal. This is the design that follows. The decision that a glossary is its own file is not recorded as an ADR yet; `TODO.md` holds that.
+A repo's terms were a section of `CONTEXT.md`, `## Language`, in a format only `domain-modeling` wrote and nothing read. The interview settled three things: the terms get a file of their own, `GLOSSARY.md`; an entry is written in either of two formats, the heading format of glossarify-md or the bold format the vendored skills write; and support goes as far as linking a term to its definition in the docs portal. ADR-0007 records the decisions, and this is the design that follows.
 
 ## Goals and non-goals
 
@@ -26,7 +26,7 @@ A repo's terms were a section of `CONTEXT.md`, `## Language`, in a format only `
 
 ### D-1 One model for two formats
 
-A file is in the bold format when one line of it outside fenced code is `**Term**:`, and in the heading format otherwise. In the heading format every heading below the title with text under it is a term, and a heading with nothing under it but deeper headings is a group; an HTML comment holding an `aliases:` line, on one line or several, lists the term's other names. In the bold format a term is the bold name with its colon, its definition is the lines after it up to the next term or heading, and an `_Avoid_:` line lists the words not to use for it; headings group the entries. An aliases comment works in a bold entry and an `_Avoid_` line in a heading one, so the model is the same whichever was written: `term`, `line`, `aliases`, `avoid`, `definition`, a `slug` unique in the file, and `names`, the lower-cased names the entry answers to. A term written `Short (Long form)` answers to either half. Satisfies: the interview's second answer, that both formats are accepted.
+A file is in the bold format when one line of it outside fenced code is `**Term**:`, and in the heading format otherwise. In the heading format every heading below the title with text under it is a term, and a heading with nothing under it but deeper headings is a group; an HTML comment holding an `aliases:` line, on one line or several, lists the term's other names. In the bold format a term is the bold name with its colon, its definition is the lines after it up to the next term or heading, and an `_Avoid_:` line lists the words not to use for it; headings group the entries. An aliases comment works in a bold entry and an `_Avoid_` line in a heading one, so the model is the same whichever was written: `term`, `line`, `aliases`, `avoid`, `definition`, a `slug` unique in the file, and `names`, the lower-cased names the entry answers to. A term written `Short (Long form)` answers to either half. Satisfies: ADR-0007/D-3 and ADR-0007/D-4.
 
 ### D-2 The shape check
 
@@ -34,15 +34,15 @@ A file is in the bold format when one line of it outside fenced code is `**Term*
 
 ### D-3 Where the check runs
 
-`isGlossary(file)` is true for any `GLOSSARY.md` except one under `.agents/`, `.claude/` or `node_modules/`, so a context's glossary is checked like the root's and a vendored skill's example is not. The edit hook checks the file just written and sends the problems back to the agent. The `pre-commit` hook checks each staged glossary as the index holds it, skips one being deleted, and blocks the commit; `--dry-run` says which files it would check. Only `GLOSSARY.md` is held to the check: terms left in `CONTEXT.md` are read and never refused. Satisfies: the interview's third answer.
+`isGlossary(file)` is true for any `GLOSSARY.md` except one under `.agents/`, `.claude/` or `node_modules/`, so a context's glossary is checked like the root's and a vendored skill's example is not. The edit hook checks the file just written and sends the problems back to the agent. The `pre-commit` hook checks each staged glossary as the index holds it, skips one being deleted, and blocks the commit; `--dry-run` says which files it would check. Only `GLOSSARY.md` is held to the check: terms left in `CONTEXT.md` are read and never refused. Satisfies: the interview's third answer, ADR-0007/D-5 and, for a context's own glossary, ADR-0007/D-7.
 
 ### D-4 A repo's glossary, and the terms still in CONTEXT.md
 
-`read(view, dir)` returns nothing when the folder has neither file. Otherwise it returns the title and lead of `GLOSSARY.md` when there is one, then its terms, then the terms under `## Language` in `CONTEXT.md` whose names `GLOSSARY.md` does not already define, each carrying the file it came from, with `legacy` the count of those. The session brief prints `domain: glossary in GLOSSARY.md`, adds how many terms are still in `CONTEXT.md` to move, and says `glossary in CONTEXT.md` for a repo that has not split yet. Satisfies: the interview's first answer, with nothing lost in a repo that has not caught up with it.
+`read(view, dir)` returns nothing when the folder has neither file. Otherwise it returns the title and lead of `GLOSSARY.md` when there is one, then its terms, then the terms under `## Language` in `CONTEXT.md` whose names `GLOSSARY.md` does not already define, each carrying the file it came from, with `legacy` the count of those. The session brief prints `domain: glossary in GLOSSARY.md`, adds how many terms are still in `CONTEXT.md` to move, and says `glossary in CONTEXT.md` for a repo that has not split yet. Satisfies: ADR-0007/D-1 and ADR-0007/D-5.
 
 ### D-5 The file in a target
 
-`scripts/harness-files.tsv` lists `GLOSSARY.md` as `skip`, like `CONTEXT.md`: the upstream's names the harness's own terms, and a project's names its domain, so an install never overwrites one. `update-harness.js` writes a skeleton, a title and three lines saying what goes in it, into a target that has none; the skeleton passes D-2 with no terms. This repository's own terms move from `CONTEXT.md` to `GLOSSARY.md` unchanged, in the bold format they were written in. Satisfies: the interview's first answer.
+`scripts/harness-files.tsv` lists `GLOSSARY.md` as `skip`, like `CONTEXT.md`: the upstream's names the harness's own terms, and a project's names its domain, so an install never overwrites one. `update-harness.js` writes a skeleton, a title and three lines saying what goes in it, into a target that has none; the skeleton passes D-2 with no terms. This repository's own terms move from `CONTEXT.md` to `GLOSSARY.md` unchanged, in the bold format they were written in. Satisfies: ADR-0007/D-1 and ADR-0007/D-2.
 
 ### D-6 The glossary page
 
@@ -67,7 +67,7 @@ Nothing is stored beyond the files themselves. The model is rebuilt on each read
 
 - R-1: a term that is also an everyday word, such as "target" in this repository's own glossary, is linked at its first mention whether or not the sentence means the term. One link per document keeps the cost low, and the fix where it matters is a more specific term.
 - R-2: a repo whose install receipt predates the skeleton list is taken to have every skeleton, so it gains no `GLOSSARY.md` from an update. Its terms are still read from `CONTEXT.md` (D-4), and the first `domain-modeling` session creates the file.
-- R-3: `teach` writes a `GLOSSARY.md` of the topic being learned into its working directory. Run from the repo root it would write into the domain glossary, so `docs/agents/domain.md` says to run it from a folder of its own; a glossary it left there is checked like any other (D-3) and is not what the portal renders.
+- R-3: `teach` writes a `GLOSSARY.md` of the topic being learned into its working directory. Run from the repo root it would write into the domain glossary, so ADR-0007/D-8 and `docs/agents/domain.md` say to run it from a folder of its own; a glossary it left there is checked like any other (D-3) and is not what the portal renders.
 - R-4: the file's format is decided by one `**Term**:` line, so a heading-format glossary that quotes such a line outside a code fence is read as bold. The check then reports its terms as missing, which is loud rather than silent.
 
 ## Test strategy
