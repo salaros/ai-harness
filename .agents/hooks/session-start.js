@@ -24,7 +24,17 @@ try {
 say(fs.existsSync("MEMORY.md") ? "project: facts in MEMORY.md" : "project: not initialised (no MEMORY.md). Run the project-init skill first");
 if (fs.existsSync("INTENT.md")) say("intent: product and MVP stories in INTENT.md");
 if (fs.existsSync("CONTEXT-MAP.md")) say("domain: multi-context, start at CONTEXT-MAP.md");
-if (fs.existsSync("CONTEXT.md")) say("domain: glossary in CONTEXT.md");
+// Where the terms are: GLOSSARY.md, and CONTEXT.md's "## Language" in a repo that has not moved them
+// out yet. A glossary nobody can read is left for the edit hook and the commit to report.
+try {
+    const glossary = require("../../scripts/check-glossary");
+    const found = glossary.read(require("../../scripts/repo-view").worktree(process.cwd()));
+    if (found && fs.existsSync(glossary.FILE)) {
+        say(`domain: glossary in ${glossary.FILE}` + (found.legacy ? `, and ${found.legacy} term(s) still in ${glossary.CONTEXT} to move there` : ""));
+    } else if (found) {
+        say(`domain: glossary in ${glossary.CONTEXT}`);
+    }
+} catch { /* nothing to say */ }
 if (fs.existsSync("docs/adr")) say(`decisions: docs/adr (${fs.readdirSync("docs/adr").length} ADRs)`);
 // The pull requests open on GitHub, by number, so the agent can offer a pr-sweep; the skill says how
 // to ask. Listed every session rather than once: an offer nobody has to remember cannot be used up by

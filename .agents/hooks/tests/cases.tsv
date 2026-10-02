@@ -13,6 +13,8 @@
 .agents/hooks/check-edit.js	claude-agents-md.json	0	-	-	editing AGENTS.md runs docs-check, whose table it holds
 .agents/hooks/check-edit.js	claude-docs-readme.json	0	-	-	a non-chain Markdown file under docs/ passes docs-check
 .agents/hooks/check-edit.js	claude-intent-md.json	2	plant INTENT.md # Intent	first heading must be "# INTENT.md"	an INTENT.md without its required title fails docs-check
+.agents/hooks/check-edit.js	claude-glossary.json	2	plant GLOSSARY.md **Invoice**:	is not a well-formed glossary	a GLOSSARY.md with no title and a term nobody defined fails the glossary check
+.agents/hooks/check-edit.js	claude-glossary.json	0	plant GLOSSARY.md # Glossary	-	a glossary with a title and no terms yet passes
 .agents/hooks/guard-command.js	guard-force-push.json	2	-	blocked this command	force push is blocked
 .agents/hooks/guard-command.js	guard-safe.json	0	-	-	force-with-lease is allowed
 .agents/hooks/guard-command.js	guard-metadata-not-command.json	0	-	-	dangerous text in an unrelated payload field (not the command) is ignored
@@ -22,6 +24,8 @@
 .agents/hooks/guard-command.js	guard-unknown-shape.json	2	-	blocked this command	a payload in no known shape is scanned, not waved through
 .agents/hooks/session-start.js	empty.json	0	-	branch:	session brief always exits 0
 .agents/hooks/session-start.js	empty.json	0	plant INTENT.md # INTENT.md	intent: product and MVP stories in INTENT.md	the session brief points at INTENT.md when a project keeps one
+.agents/hooks/session-start.js	empty.json	0	plant GLOSSARY.md # Glossary	domain: glossary in GLOSSARY.md	the session brief points at GLOSSARY.md when a project keeps its terms there
+.agents/hooks/session-start.js	empty.json	0	plant CONTEXT.md # Context	domain: glossary in CONTEXT.md	a repo that has not split its terms out is still pointed at CONTEXT.md
 .agents/hooks/session-start.js	empty.json	0	-	session end, after the last push (.agents/routing.md): run duck-debt, then offer the user /retro, which only they can start, then run handoff	the session brief closes a session on the deferred-work ledger, then the retrospective only the user can start
 .agents/hooks/session-start.js	empty.json	0	plant .agents/skills/retro/SKILL.md ---	session end, after the last push (.agents/routing.md): offer the user /retro	a brief names only the session-end skills a repo installed
 scripts/check-staged-docs.js --dry-run	staged-chain.txt	0	-	would check the staged chain	a staged chain document triggers the check
@@ -40,6 +44,7 @@ scripts/check-commit-msg.js	msg-conventional.txt	0	-	conventional	the command li
 scripts/check-todo.js -	todo-valid.txt	0	-	all well formed	the command line reaches the decision; tables.js holds the rest
 scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	-	nothing staged from the documentation chain	pre-commit says what it would check without touching the index
 scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	plant TODO.md # TODO	would check the unstaged TODO.md	a TODO.md nobody staged is still read, where the old shell pipe saw nothing
+scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	plant GLOSSARY.md # Glossary	no glossary staged	a glossary the commit does not touch is not the commit's to check
 scripts/githook.js pre-push --dry-run	paths-empty.txt	0	-	would format-check	pre-push says what it would check
 scripts/githook.js post-merge --dry-run	paths-empty.txt	0	-	-	post-merge works out the merge diff itself
 scripts/githook.js commit-msg .agents/hooks/tests/msg-conventional.txt	paths-empty.txt	0	-	conventional	commit-msg reads the file Git names

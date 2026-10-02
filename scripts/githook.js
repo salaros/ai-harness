@@ -22,6 +22,7 @@ const lib = require("./lib");
 const initialised = require("./check-initialised");
 const commitMsg = require("./check-commit-msg");
 const todo = require("./check-todo");
+const glossary = require("./check-glossary");
 const stagedDocs = require("./check-staged-docs");
 const markers = require("./check-conflict-markers");
 const repoView = require("./repo-view");
@@ -47,13 +48,15 @@ function staged(root, file) {
 const lines = text => text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
 // Before a commit lands: refuse an unconfigured clone, refuse a merge conflict left in what is
-// staged, check the loose-ends ledger, check the documentation chain as the commit will record it.
+// staged, check the loose-ends ledger, every glossary the commit touches, and the documentation
+// chain as the commit will record it.
 function preCommit(root, { dry }) {
     const gate = initialised.check(root);
     const stagedTodo = staged(root, TODO);
     const onDisk = fs.existsSync(path.join(root, TODO));
     const changed = lib.run("git", ["diff", "--cached", "--name-only", "--diff-filter=ACMRD"], { cwd: root });
     const touched = stagedDocs.chainFiles(lines(changed.output));
+    const glossaries = lines(changed.output).filter(glossary.isGlossary);
 
     if (dry) {
         console.log(`project: ${gate.reason}`);
@@ -61,6 +64,8 @@ function preCommit(root, { dry }) {
         console.log(stagedTodo !== null ? `would check the staged ${TODO}`
             : onDisk ? `would check the unstaged ${TODO} and warn about what it finds`
             : `no ${TODO} to check`);
+        console.log(glossaries.length ? `would check the staged glossary (${glossaries.length} file(s)): ${glossaries.join(" ")}`
+            : "no glossary staged");
         console.log(touched.length ? `would check the staged chain (${touched.length} file(s)): ${touched.join(" ")}`
             : "nothing staged from the documentation chain");
         return 0;
@@ -83,6 +88,14 @@ function preCommit(root, { dry }) {
         if (!r.problems.length) console.log(`${TODO}: ${r.summary.replace(/^TODO\.md: /, "")}, not staged`);
     } else {
         console.log(`${TODO}: nothing to check`);
+    }
+
+    // A glossary is judged as the commit records it, like the ledger. One the commit deletes has no
+    // blob and nothing to say.
+    for (const file of glossaries) {
+        const blob = staged(root, file);
+        if (blob === null) continue;
+        if (report(root, glossary.check(blob, root, file), "docs/agents/domain.md has the two formats an entry is written in. To commit anyway: git commit --no-verify")) return 1;
     }
 
     if (changed.status !== 0) console.error(`git diff --cached failed: ${changed.output}`);

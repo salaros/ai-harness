@@ -4,7 +4,7 @@
 // whatever the harness sent) and applies the first matching rule below that objects: a refusal
 // when a vendored skill was edited in place, node --check for *.js, JSON validity for *.json, the
 // documentation chain for any file docs-check counts in it (Markdown under docs/, AGENTS.md, MEMORY.md
-// and INTENT.md),
+// and INTENT.md), the glossary shape for a GLOSSARY.md,
 // the harness invariants (scripts/check-harness.js) when a path they read changed, and, in the
 // upstream only, the whole suite when any harness script, table or Git hook changed. Each rule
 // catches something broken; none of them asks a project to keep bookkeeping current.
@@ -14,6 +14,7 @@ const fs = require("fs");
 const lib = require("./lib");
 const docsCheck = require("../../scripts/docs-check");
 const harness = require("../../scripts/check-harness");
+const glossary = require("../../scripts/check-glossary");
 const skills = require("../../scripts/skills");
 const repoView = require("../../scripts/repo-view");
 
@@ -44,6 +45,11 @@ const rules = [
         // under docs/, the AGENTS.md table, MEMORY.md's Requirements line and INTENT.md.
         when: docsCheck.inChain,
         check: () => { const r = docsCheck.check(root); return r.problems.length > 0 && `documentation chain check failed (see AGENTS.md, Documentation; fix with the docs-check skill):\n${r.problems.join("\n")}`; },
+    },
+    {   // A glossary, the root's or a context's own, in either format check-glossary reads: a term
+        // nobody defined, or one defined twice, is a glossary that answers wrongly.
+        when: glossary.isGlossary,
+        check: file => { const r = glossary.check(fs.readFileSync(file, "utf8"), root, file); return r.problems.length > 0 && `${file} is not a well-formed glossary (docs/agents/domain.md has the two formats):\n${r.problems.join("\n")}`; },
     },
     {   // The links, the skills folder, the routing, the Git hooks: facts every repo with the harness
         // must keep, checked in whichever repo root() names. check-harness owns the path list, so a
