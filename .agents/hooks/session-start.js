@@ -21,7 +21,13 @@ try {
     if (missing) say(`skills in skills-lock.json but missing from .agents/skills: ${missing}. Run: node scripts/skills.js install`);
 } catch { /* nothing to say */ }
 
-say(fs.existsSync("MEMORY.md") ? "project: facts in MEMORY.md" : "project: not initialised (no MEMORY.md). Run the project-init skill first");
+// A clone with no project to configure says so with the empty marker check-initialised.js accepts in
+// place of MEMORY.md. Telling it to run project-init anyway is a line the agent learns to read past,
+// and a brief with one such line teaches it to read past the rest.
+const noProject = (() => { try { return fs.existsSync(require("../../scripts/check-initialised").MARKER); } catch { return false; } })();
+say(fs.existsSync("MEMORY.md") ? "project: facts in MEMORY.md"
+    : noProject ? "project: none to configure (.skip-project-init), so there is no MEMORY.md to read"
+    : "project: not initialised (no MEMORY.md). Run the project-init skill first");
 if (fs.existsSync("INTENT.md")) say("intent: product and MVP stories in INTENT.md");
 if (fs.existsSync("CONTEXT-MAP.md")) say("domain: multi-context, start at CONTEXT-MAP.md");
 // Where the terms are: GLOSSARY.md, and CONTEXT.md's "## Language" in a repo that has not moved them

@@ -8,8 +8,9 @@
 // stdin instead when given no path, so the fixture table can drive it.
 // A failure names the rule and the line, and exits 1; `git commit --no-verify` skips the hook.
 // check(raw, root) is the decision, exported the way check-initialised.js and docs-check.js export
-// theirs: it reads nothing but the message and the two files under `root` that say what an issue
-// reference looks like here, returns what it found, and prints and exits nothing. The command line
+// theirs: it reads nothing but the message and the files under `root` that say what an issue
+// reference looks like here and whether there is a tracker to cite at all, returns what it found,
+// and prints and exits nothing. The command line
 // below is the only part that talks to a terminal, so the suite can put a message in and read the
 // verdict out rather than matching substrings of stderr.
 // Usage:
@@ -19,8 +20,9 @@ const fs = require("fs");
 const path = require("path");
 const lib = require("./lib");
 const projectFacts = require("./project-facts");
+const { MARKER } = require("./check-initialised");
 
-const TYPES = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"];
+const TYPES =["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"];
 const HEADER = new RegExp(`^(${TYPES.join("|")})(\\([^()\\s][^()]*\\))?(!)?: (.+)$`);
 const MAX = 72;
 // "fixing bugs" and "implemented some stuff" tell a reader nothing, so a description is at least
@@ -69,10 +71,14 @@ function strip(raw) {
 // Whether the project has decided it has no issue tracker. `project-init` writes
 // `Issue tracker: none` into MEMORY.md for a project that plans in docs/, and nagging that repo for
 // a key on every commit would be asking for something it has already said it does not have.
-function noTracker(root) {
+// A clone with no project to configure has no MEMORY.md to say it in: the empty marker
+// check-initialised.js accepts in its place answers for it, unless the tracker config names a key or
+// a format, which is a clone saying it has a tracker after all.
+function noTracker(root, configured) {
     try {
-        return /^none\b/i.test(projectFacts.readFactsAt(root)["Issue tracker"] || "");
-    } catch { return false; }
+        if (/^none\b/i.test(projectFacts.readFactsAt(root)["Issue tracker"] || "")) return true;
+    } catch { /* no facts to read */ }
+    return !configured && fs.existsSync(path.join(root, MARKER));
 }
 
 // What an issue reference looks like here, from the file the skills already read. Trackers differ:
@@ -90,12 +96,12 @@ function reference(root) {
     const format = cfg.match(/^\*\*Key format:\*\*\s*`([^`]+)`/m);
     // A hand-written regular expression: unusable ones fall through to the key rather than throwing.
     // A configured format has no sample to show, so the advice names the shape instead of an example.
-    if (format) { try { return { re: new RegExp(format[1]), format: format[1], hashed: null }; } catch { /* fall through */ } }
+    if (format) { try { return { re: new RegExp(format[1]), format: format[1], hashed: null, configured: true }; } catch { /* fall through */ } }
     const k = cfg.match(/^\*\*Project key:\*\*\s*`([^`]+)`/m);
     const key = k && k[1] !== "TODO-PROJECT-KEY" ? k[1] : null;
     return key
-        ? { re: new RegExp(`\\b${key}-\\d+\\b`), example: `${key}-123`, hashed: new RegExp(`#${key}-\\d+\\b`) }
-        : { re: /\b[A-Z][A-Z0-9]+-\d+\b/, example: "PROJ-123", hashed: /#[A-Z][A-Z0-9]+-\d+\b/ };
+        ? { re: new RegExp(`\\b${key}-\\d+\\b`), example: `${key}-123`, hashed: new RegExp(`#${key}-\\d+\\b`), configured: true }
+        : { re: /\b[A-Z][A-Z0-9]+-\d+\b/, example: "PROJ-123", hashed: /#[A-Z][A-Z0-9]+-\d+\b/, configured: false };
 }
 
 // The whole decision: `raw` is the message as Git wrote it, `root` the repo it is being committed
@@ -153,8 +159,8 @@ function check(raw, root) {
     // The key counts only where it means "this commit is that work": the subject, or a trailer. A key
     // named in passing in the body is prose about a ticket, not a reference to one, and a message that
     // merely quotes an example would otherwise read as compliant.
-    const { re: issue, example, format, hashed } = reference(root);
-    if (!noTracker(root)) {
+    const { re: issue, example, format, hashed, configured } = reference(root);
+    if (!noTracker(root, configured)) {
         if (!issue.test(header) && !trailers.some(t => issue.test(t))) {
             warnings.push(example
                 ? `commit message: no issue key (${example}). Add one so the change can be traced to its ticket, ` +

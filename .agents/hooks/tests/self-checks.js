@@ -81,6 +81,21 @@ exports.sessionStartFollowsProjectDir = function sessionStartFollowsProjectDir(t
         "session-start.js follows CLAUDE_PROJECT_DIR", r.output);
 };
 
+// A clone that said it has no project to configure is not told to configure one. The upstream's own
+// checkout is such a clone, and so is every session an agent starts in it: an instruction the brief
+// repeats and nobody can follow is one the agent learns to skip. A clone with neither file is still
+// told, in a directory of its own for the same reason as above.
+exports.sessionStartHonoursTheSkipMarker = function sessionStartHonoursTheSkipMarker(t, env) {
+    const brief = files => withRoot(files, other =>
+        lib.node([".agents/hooks/session-start.js"], { env: { ...env, CLAUDE_PROJECT_DIR: other } })).output;
+    const skipped = brief({ ".skip-project-init": "" });
+    t.ok(skipped.includes("project: none to configure") && !skipped.includes("project-init skill"),
+        "session-start.js does not send a clone with .skip-project-init to project-init", skipped);
+    const bare = brief({ "README.md": "# Nothing configured\n" });
+    t.ok(bare.includes("not initialised") && bare.includes("project-init skill"),
+        "session-start.js still sends an unconfigured clone to project-init", bare);
+};
+
 // The chain rule in check-edit.js must check the repo the harness is editing, the same one root()
 // answers for, and not whichever checkout the hook file sits in. The two were allowed to disagree
 // while docs-check chdir'd to its own location: a repo whose CLAUDE_PROJECT_DIR pointed elsewhere

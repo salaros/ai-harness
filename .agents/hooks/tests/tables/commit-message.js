@@ -66,6 +66,12 @@ exports.commitMessageDecisions = function commitMessageDecisions(t) {
         // commit is asking for something it said it does not have.
         [{ "MEMORY.md": "- **Issue tracker:** none\n" }, text("feat(billing): add a monthly invoice run", "", "Invoices were cut by hand every month."),
             null, null, "conventional", "a project recording no tracker is never warned"],
+        // A clone with no project to configure has no MEMORY.md to record that in, and its marker
+        // answers instead. A tracker config naming a key is the clone saying otherwise.
+        [{ ".skip-project-init": "" }, text("feat(billing): add a monthly invoice run", "", "Invoices were cut by hand every month."),
+            null, null, "conventional", "a clone with no project to configure is never warned"],
+        [{ ".skip-project-init": "", [TRACKER]: "**Project key:** `AB`\n" }, text("feat(billing): add a monthly invoice run", "", "Invoices were cut by hand every month."),
+            null, "AB-123", "conventional", "the same clone with a tracker key configured is warned about that key"],
     ];
     for (const [files, message, blocks, warns, summary, why] of rows) {
         const r = withRoot(files, root => commitMsg.check(message, root));
