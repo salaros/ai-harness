@@ -7,7 +7,7 @@ description: Write or revise a Business Requirements Document (BRD), the busines
 
 The BRD answers **why**: the business justification, the strategic goal it serves, and how the business will know it worked. It is where the documentation chain starts when the need is settled; the PRD is derived from it, so anything vague here is paid for at every later stage. When the need was still in question, a PDD came first and decided it was worth pursuing: the BRD then cites that PDD, and only one whose status is `Go`. With no PDD, it is an entry stage and starts from a source. It contains no solution: no features, screens, or technology.
 
-Read `CONTEXT.md` first if it exists and use its terms. Read any earlier documents under `docs/brd/` so numbering and vocabulary stay consistent, and the PDD this refines, if there is one.
+Read `GLOSSARY.md` first if it exists and use its terms. Read any earlier documents under `docs/brd/` so numbering and vocabulary stay consistent, and the PDD this refines, if there is one.
 
 ## Steps
 

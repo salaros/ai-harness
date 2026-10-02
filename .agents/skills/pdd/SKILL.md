@@ -9,7 +9,7 @@ The PDD answers **whether**: is this problem real, for whom, how big, and is it 
 
 It is the first stage of the chain in `AGENTS.md`, and optional: a BRD may still start from a source when the need is already settled, such as a contract, a regulation, or a decision taken elsewhere. A PDD is worth writing when the idea is still a hunch, when several ideas compete for one team, or when saying no needs a reason on record.
 
-Read `docs/agents/chain.md` first, then `CONTEXT.md` if it exists, and any earlier documents under `docs/pdd/` so numbering and vocabulary stay consistent.
+Read `docs/agents/chain.md` first, then `GLOSSARY.md` if it exists, and any earlier documents under `docs/pdd/` so numbering and vocabulary stay consistent.
 
 ## Steps
 

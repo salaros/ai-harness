@@ -9,7 +9,7 @@ An RFC answers **how should we solve this technical problem, and what do the obj
 
 It is cross-cutting in the chain (`AGENTS.md`), like an ADR: open one the moment a choice needs arguing, at any stage, and derive it from whatever raised it. It is optional. A design with one sensible answer goes straight to the SPEC, and a decision nobody disputes straight to an ADR.
 
-Read `docs/agents/chain.md` first, then `CONTEXT.md` and the ADRs touching the area, and any earlier RFCs under `docs/rfc/`: a rejected one may already have argued this.
+Read `docs/agents/chain.md` first, then `GLOSSARY.md` and the ADRs touching the area, and any earlier RFCs under `docs/rfc/`: a rejected one may already have argued this.
 
 ## Status
 

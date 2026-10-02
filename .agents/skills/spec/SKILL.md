@@ -9,7 +9,7 @@ A SPEC answers **how the system satisfies the requirements**: the design enginee
 
 It sits after ADR in the chain (`AGENTS.md`) and cites backwards only: the EARS and BDD documents it satisfies, the ADRs it obeys and the accepted RFC it implements. `create-implementation-plan` refines its `### D-n` sections into ordered steps.
 
-Read `docs/agents/chain.md` first, then `CONTEXT.md` if it exists, the ADRs touching the area, and any earlier SPEC under `docs/spec/` so components keep their names.
+Read `docs/agents/chain.md` first, then `GLOSSARY.md` if it exists, the ADRs touching the area, and any earlier SPEC under `docs/spec/` so components keep their names.
 
 ## Steps
 

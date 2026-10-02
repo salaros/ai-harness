@@ -9,7 +9,7 @@ The TRD answers **what the system must satisfy**, technically: each requirement 
 
 It sits after the PRD in the chain (`AGENTS.md`) and is an entry stage: it may derive from a source alone even when earlier documents exist, because engineering-driven work has no BRD or PRD behind it. EARS cites its items as it cites the PRD's.
 
-Read `docs/agents/chain.md` first, then `CONTEXT.md` if it exists, and any earlier documents under `docs/trd/` so numbering and vocabulary stay consistent.
+Read `docs/agents/chain.md` first, then `GLOSSARY.md` if it exists, and any earlier documents under `docs/trd/` so numbering and vocabulary stay consistent.
 
 ## Steps
 

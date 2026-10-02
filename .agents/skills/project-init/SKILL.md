@@ -20,7 +20,7 @@ The template knows nothing about the project it hosts. This skill asks the devel
    | What does it do, in one sentence, for whom? | Purpose | One sentence with a subject, an outcome and a user |
    | Write an `INTENT.md` with the product and its MVP stories? | INTENT.md | Only when none exists. Options: `yes` (recommended, first) or `no`. `no` is a complete answer: the harness never requires the file, and the rest of this skill runs as if it did not exist |
    | Which stories must the MVP deliver, and when is each done? | MVP stories | Only after `yes`. At least one story, each a title, a priority (`must`, `should`, `could`) and one or more *Done when* criteria, each a single verifiable statement. Ask for personas and the user journey as optional follow-ups |
-   | Which language is this project's prose written in? | Prose language | A language name (`English`, `Russian`, `Ukrainian`). It governs everything the project authors -- the `docs/` chain, `CONTEXT.md`, `TODO.md`, this file's own values and the README Project section -- and the language you answer the developer in. The harness stays English whatever the answer: `AGENTS.md`, `docs/agents/` and every `SKILL.md` are merged from upstream, so a translation is overwritten or collides |
+   | Which language is this project's prose written in? | Prose language | A language name (`English`, `Russian`, `Ukrainian`). It governs everything the project authors -- the `docs/` chain, `CONTEXT.md`, `GLOSSARY.md`, `TODO.md`, this file's own values and the README Project section -- and the language you answer the developer in. The harness stays English whatever the answer: `AGENTS.md`, `docs/agents/` and every `SKILL.md` are merged from upstream, so a translation is overwritten or collides |
    | Where do the requirements live? | Requirements | One or more sources, comma-separated: a repo-relative path that exists, a URL, or `jira:KEY-123`; `none yet` is allowed and means the `pdd` skill runs next for an idea still in question, or `brd` for a settled need |
    | What kind of unit is it? | Unit type | Options: `library`, `cli`, `service`, `microservices`, `monolith`, `frontend`. `service` is one deployable service; `microservices` is several services in this one repo, orchestrated together (Aspire for .NET), each with its own domain context |
    | Which language? | Language | One language (`C#`, `TypeScript`, `Python`) |
@@ -141,14 +141,14 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
    Done when `dotnet husky run --group pre-push` reports the task, not an empty run. Skip this step entirely for any other stack.
 
-10. **Set up the context map, for `microservices` only.** Each service owns its vocabulary, so the repo is multi-context, and the `domain-modeling` skill, both agents and the session-start hook recognise that by a root `CONTEXT-MAP.md`. Write it if it is absent, from the template below, with the one `Shared` entry and no services yet: `domain-modeling` adds a service's entry and its `src/<Service>/CONTEXT.md` when the first term of that service is resolved. Keep the root `CONTEXT.md` for the terms every service uses. On an update that changes the unit type away from `microservices`, leave an existing map alone and say so in the report.
+10. **Set up the context map, for `microservices` only.** Each service owns its vocabulary, so the repo is multi-context, and the `domain-modeling` skill, both agents and the session-start hook recognise that by a root `CONTEXT-MAP.md`. Write it if it is absent, from the template below, with the one `Shared` entry and no services yet: `domain-modeling` adds a service's entry, its `src/<Service>/CONTEXT.md` and the `GLOSSARY.md` beside it when the first term of that service is resolved. Keep the root `CONTEXT.md` and `GLOSSARY.md` for the terms every service uses. On an update that changes the unit type away from `microservices`, leave an existing map alone and say so in the report.
 
    ```md
    # Context Map
 
    ## Contexts
 
-   - [Shared](./CONTEXT.md): terms every service uses
+   - [Shared](./CONTEXT.md): what every service shares, with its terms in `GLOSSARY.md` beside it
 
    ## Relationships
    ```
