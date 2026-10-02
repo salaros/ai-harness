@@ -326,6 +326,9 @@ exports.invariantScopeDecisions = function invariantScopeDecisions(t) {
         ".agents/skills/duck-debt/SKILL.md": text("---", "name: duck-debt", "description: Does one thing.", "---"),
         ".agents/skills/retro/SKILL.md": text("---", "name: retro", "description: Does one thing.", "---"),
     });
+    // A skill with a body, and the one file that makes a map the upstream's checkout.
+    const local = (name, body) => text("---", `name: ${name}`, "description: Does one thing.", "---", "", body);
+    const upstream = { "scripts/update-harness.js": "" };
     const rows = [
         // invariant, files, setup (null: the files are all of it, so a map stands in for a checkout), expected, why
         ["gitHooksAreExecutable", { ".githooks/pre-commit": text("#!/bin/sh"), ".githooks/task-runner.json": text("{}") },
@@ -346,6 +349,17 @@ exports.invariantScopeDecisions = function invariantScopeDecisions(t) {
             "a project's own portal may read docs/ however it likes"],
         ["theDocsPortalReadsTheChainModel", { "tools/docs-site/chain.mjs": portal, "scripts/update-harness.js": "" }, null, "fail",
             "the upstream's portal must read the chain model"],
+        ["noSteeringFileNamesTheContextAlone", { ...upstream, ".agents/skills/brd/SKILL.md": local("brd", "Read `CONTEXT.md` first and use its terms.") }, null, "fail",
+            "a skill written here that sends its reader to CONTEXT.md alone is caught"],
+        ["noSteeringFileNamesTheContextAlone", { ...upstream, ".agents/skills/brd/SKILL.md": local("brd", "`GLOSSARY.md` holds the terms and `CONTEXT.md` the boundary.") }, null, "pass",
+            "naming both files is knowing there are two"],
+        ["noSteeringFileNamesTheContextAlone", { ...upstream, "docs/agents/domain.md": text("# Domain docs", "", "Read `CONTEXT.md`.") }, null, "fail",
+            "so is a config doc under docs/agents/"],
+        ["noSteeringFileNamesTheContextAlone",
+            { ...upstream, ".agents/skills/tdd/SKILL.md": local("tdd", "Read `CONTEXT.md`."), "skills-lock.json": JSON.stringify({ skills: { tdd: { source: "someone/skills" } } }) },
+            null, "pass", "a vendored skill says what its upstream says"],
+        ["noSteeringFileNamesTheContextAlone", { ".agents/skills/brd/SKILL.md": local("brd", "Read `CONTEXT.md` first and use its terms.") }, null, "skip",
+            "a project that has not moved its terms may send its readers to CONTEXT.md"],
     ];
     for (const [name, files, setup, want, why] of rows) {
         const got = setup

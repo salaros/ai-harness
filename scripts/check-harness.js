@@ -7,7 +7,8 @@
 // .claude/settings.json the text this file writes, every vendored skill attributed and on disk, the
 // chain table in AGENTS.md readable, one reader for the stacks table, and the docs portal reading
 // the chain model rather than walking docs/ itself, the harness scripts CommonJS whatever the
-// project's package.json declares, and CLAUDE.md importing AGENTS.md. Each one fails silently otherwise: nothing else
+// project's package.json declares, CLAUDE.md importing AGENTS.md, and no steering file sending its
+// reader to CONTEXT.md for terms that live in GLOSSARY.md. Each one fails silently otherwise: nothing else
 // in the harness exits non-zero when a skill quietly vanishes from an agent's view.
 // It travels with the harness, so a project can run it after changing any of those files, and
 // check-edit.js does whenever one of PATHS is edited. The installer runs the upstream's copy against
@@ -34,6 +35,7 @@ const PATHS = [
     ".agents/skills/", ".claude/skills", ".claude/skills/", ".agents/agents/", ".agents/routing.md", ".githooks/",
     "skills-lock.json", "scripts/", "THIRD-PARTY-NOTICES.md", "AGENTS.md",
     ".claude/settings.json", "tools/docs-site/", ".agents/hooks/package.json", "CLAUDE.md",
+    ".agents/README.md", "CODING_STANDARDS.md", "docs/README.md", "docs/agents/",
 ];
 const reads = file => PATHS.some(p => p.endsWith("/") ? file.startsWith(p) : file === p);
 
@@ -373,6 +375,34 @@ function claudeImportsAgents(t, repo) {
     t.ok(lines.includes("@AGENTS.md"), "CLAUDE.md imports AGENTS.md on a line of its own, so Claude Code reads the harness", "no @AGENTS.md line");
 }
 
+// A repo's terms live in GLOSSARY.md and CONTEXT.md is the signpost beside it (ADR-0007), so a file
+// of the harness's own that names CONTEXT.md and never GLOSSARY.md is sending its reader to a file
+// with no terms in it. That is how the move went wrong the first time: the fact had been written
+// into a dozen files, six skills kept the old one, and every check stayed green. Naming both is not
+// proof the sentence is right, only that whoever wrote it knew there were two files.
+// The files are the ones an agent is steered by: the maps, the agents, the config docs and the
+// skills written here. A vendored skill says what its upstream says, and docs/agents/domain.md is
+// where it is overridden. The rule binds the upstream only, as the portal's does: a project that
+// has not moved its terms is right to send its readers to CONTEXT.md.
+const STEERING = ["AGENTS.md", "CODING_STANDARDS.md", ".agents/README.md", ".agents/routing.md", "docs/README.md"];
+function noSteeringFileNamesTheContextAlone(t, repo, roster = rosterOf(repo)) {
+    if (!repo.isFile("scripts/update-harness.js")) { t.skip("glossary pointers: the project's own files"); return; }
+    const markdown = dir => repo.exists(dir) ? repo.list(dir).filter(n => n.endsWith(".md")).map(n => `${dir}/${n}`) : [];
+    const files = [
+        ...STEERING,
+        ...markdown(".agents/agents"),
+        ...markdown("docs/agents"),
+        ...roster().skills.filter(s => !s.vendored).map(s => `.agents/skills/${s.name}/SKILL.md`),
+    ];
+    const alone = files.filter(f => {
+        const body = repo.read(f) || "";
+        return body.includes("CONTEXT.md") && !body.includes("GLOSSARY.md");
+    });
+    t.ok(!alone.length,
+        "every steering file that names CONTEXT.md names GLOSSARY.md too, where the terms are (docs/agents/domain.md)",
+        alone.join(", "));
+}
+
 const INVARIANTS = [
     harnessScriptsRunAsCommonJs,
     claudeImportsAgents,
@@ -390,6 +420,7 @@ const INVARIANTS = [
     chainTableIsReadable,
     onlyTheStacksReaderNamesTheTable,
     theDocsPortalReadsTheChainModel,
+    noSteeringFileNamesTheContextAlone,
 ];
 
 // Every invariant against one repo -- a repo-view, or the root of a working tree. A failure carries
