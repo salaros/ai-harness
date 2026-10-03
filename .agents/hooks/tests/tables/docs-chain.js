@@ -505,7 +505,8 @@ exports.glossaryPageListsTheTerms = function glossaryPageListsTheTerms(t) {
 
     t.ok(page.startsWith("The words billing uses.\n"), "the page opens with the glossary's own lead", page);
     t.ok(page.includes("Read live from `GLOSSARY.md`."), "the page names the file it reads", page);
-    const at = ["Credit note", "Customer", "Invoice"].map(name => page.indexOf(`\n## <span id="term-${name.toLowerCase().replace(/ /g, "-")}"></span>${name}\n`));
+    const at = [["credit-note", "Credit note"], ["customer", "Customer"], ["invoice", "Invoice"]]
+        .map(([slug, name]) => page.indexOf(`\n## <span id="term-${slug}"></span>${name}\n`));
     t.ok(inOrder(at), "each term is a heading carrying its anchor, in alphabetical order whatever the file's", page);
     t.ok(page.includes("A request for payment sent to a [Customer](#term-customer)."), "a definition links the other terms it uses, on the page", page);
     t.ok(page.includes("A Credit note is an [Invoice](#term-invoice) in reverse."), "a definition does not link its own term", page);

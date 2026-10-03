@@ -201,7 +201,7 @@ exports.skillRosterDecisions = function skillRosterDecisions(t) {
 // THIRD-PARTY-NOTICES.md exists to stop a vendored skill going unattributed, and it had a way of
 // doing the opposite. A skill somebody copied in by hand rather than vendoring with `npx skills` has
 // no lock entry -- that tool is what writes one -- so the roster called it local and the notice
-// listed it under "written for this repository, with no upstream": authorship claimed, in writing,
+// listed it under "written here rather than copied": authorship claimed, in writing,
 // over somebody else's work. What tells a copy from a skill written here is what a copy brings with
 // it and a new file has no reason to carry, a licence of its own, in the folder or the frontmatter.
 // Both shapes are asked here, beside a skill that really was written here, which has to stay listed.

@@ -179,7 +179,7 @@ function read(view, dir = "") {
     const slugs = new Set(terms.map(t => t.slug));
     const legacy = [];
     for (const term of context ? context.terms : []) {
-        if (taken.has(key(term.term))) continue;
+        if (term.names.some(n => taken.has(key(n)))) continue;
         let slug = term.slug;
         for (let n = 2; slugs.has(slug); n++) slug = `${term.slug}-${n}`;
         slugs.add(slug);

@@ -123,6 +123,8 @@ exports.glossaryOfARepo = function glossaryOfARepo(t) {
         [{ "CONTEXT.md": context }, "Invoice@CONTEXT.md,Refund@CONTEXT.md", 2, "a repo that has not split yet keeps its terms under CONTEXT.md's Language heading"],
         [{ "GLOSSARY.md": HEADINGS, "CONTEXT.md": context }, "Invoice@GLOSSARY.md,Customer@GLOSSARY.md,Credit note@GLOSSARY.md,Refund@CONTEXT.md", 1,
             "with both, GLOSSARY.md's definition wins and CONTEXT.md adds the terms not moved yet"],
+        [{ "GLOSSARY.md": HEADINGS, "CONTEXT.md": text("# Billing", "", "## Language", "", "**Bill of sale**:", "The old name.") },
+            "Invoice@GLOSSARY.md,Customer@GLOSSARY.md,Credit note@GLOSSARY.md", 0, "a CONTEXT.md term GLOSSARY.md already answers to by an alias has moved"],
         [{ "GLOSSARY.md": "# Glossary\n", "CONTEXT.md": "# Billing\n\nWhat billing is.\n" }, "", 0, "a skeleton beside a CONTEXT.md with no terms is an empty glossary"],
     ];
     for (const [files, want, legacy, why] of rows) {

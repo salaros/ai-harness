@@ -28,15 +28,15 @@ if (!creating.length) process.exit(0);
 // with `disable-model-invocation` is one the agent cannot load however clearly it is told to. A
 // roster that cannot be read leaves every skill loadable, which is what the message said before.
 const view = repoView.worktree(root);
-let theirs = null;
+let userOnlySkills = null;
 const userOnly = name => {
-    if (!theirs) {
+    if (!userOnlySkills) {
         try {
-            theirs = new Set(require("../../scripts/skills").readRoster(view).skills
+            userOnlySkills = new Set(require("../../scripts/skills").readRoster(view).skills
                 .filter(s => (s.frontmatter || {})["disable-model-invocation"] === "true").map(s => s.name));
-        } catch { theirs = new Set(); }
+        } catch { userOnlySkills = new Set(); }
     }
-    return theirs.has(name);
+    return userOnlySkills.has(name);
 };
 
 const { stages } = docsCheck.readChain(view);

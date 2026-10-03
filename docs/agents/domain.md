@@ -37,7 +37,7 @@ The file opens with a `# <title>` heading and is written in one of two formats, 
 # Billing glossary
 
 ## Invoice
-<!-- aliases: bill -->
+<!-- aliases: Invoices -->
 
 A request for payment sent to a Customer after delivery.
 ```

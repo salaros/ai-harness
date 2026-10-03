@@ -22,7 +22,7 @@ const lib = require("./lib");
 const projectFacts = require("./project-facts");
 const { MARKER } = require("./check-initialised");
 
-const TYPES =["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"];
+const TYPES = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"];
 const HEADER = new RegExp(`^(${TYPES.join("|")})(\\([^()\\s][^()]*\\))?(!)?: (.+)$`);
 const MAX = 72;
 // "fixing bugs" and "implemented some stuff" tell a reader nothing, so a description is at least

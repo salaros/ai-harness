@@ -93,4 +93,13 @@ exports.chainSkillDecisions = function chainSkillDecisions(t) {
     t.ok(code.verdict === "block" && code.message.includes("Load `codebase-design` first (/codebase-design)")
         && code.message.includes("`implement` is the user's to start") && !code.message.includes("/implement"),
         "chain skill: a stage with one loadable skill names that one and sets the user's aside", code.message);
+    // With no transcript the hook only warns, and the warning holds to the same rule.
+    const unseen = chainSkill.decide(["docs/adr/0003-x.md"], STAGES, null, theirs);
+    t.ok(unseen.verdict === "warn" && unseen.message.includes("Only the user can start it") && unseen.message.includes("#deferred")
+        && !/load (it|them) before/.test(unseen.message),
+        "chain skill: a warning for a stage only the user can write asks for them, not for a load", unseen.message);
+    const unseenCode = chainSkill.decide(["src/billing.js"], STAGES, null, theirs);
+    t.ok(unseenCode.verdict === "warn" && unseenCode.message.includes("load `codebase-design` before")
+        && unseenCode.message.includes("`implement` is the user's to start"),
+        "chain skill: a warning names the loadable skill and sets the user's aside", unseenCode.message);
 };

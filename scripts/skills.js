@@ -143,7 +143,7 @@ function noticesFor(skills, rows) {
             // licence signal, which is what a hand-copied skill brings with it and a skill written
             // here has no reason to have. `npx skills` writes the lock entry, so only a copy somebody
             // made by hand lands here, and the lock is the one record of provenance (ADR-0006).
-            // Saying "written for this repository, with no upstream" about that skill would be the
+            // Saying "written here rather than copied" about that skill would be the
             // notice claiming authorship of work this repository did not write, which is the
             // failure the file exists to prevent.
             if (s.carries) orphans.push(`${s.name} (no ${LOCK} entry, but carries ${s.carries})`);
@@ -174,7 +174,7 @@ function noticesFor(skills, rows) {
     }
     if (local.length) {
         out.push("", "## Written for this repository", "",
-            `Under this repository's own licence, with no upstream: ${local.sort().map(n => `\`${n}\``).join(", ")}.`);
+            `Under this repository's own licence, written here rather than copied: ${local.sort().map(n => `\`${n}\``).join(", ")}. A skill among them that adapts another's method credits it in its own text.`);
     }
     return { text: out.join("\n") + "\n", orphans };
 }
