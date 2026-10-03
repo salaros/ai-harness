@@ -1,6 +1,6 @@
 # Routing
 
-Route rows more than one agent reads. Four agents live in `agents/` beside this file and a row copied into two or three of their tables drifts in two or three directions. Each section below names the agents that read it, and each agent's own file names the sections that apply to it.
+Route rows more than one agent reads. Six agents live in `agents/` beside this file and a row copied into two or three of their tables drifts in two or three directions. Each section below names the agents that read it, and each agent's own file names the sections that apply to it.
 
 What **every** agent needs is not here: it is in `AGENTS.md` ("Working here"), which every session loads whether or not an agent is running. This file holds the middle ground, the rows shared by some agents and not all.
 
@@ -19,16 +19,31 @@ There is a fifth, and it is not a matter of judgement: a skill whose frontmatter
 
 ## Working the chain
 
-Read by `business-analyst`, `devops` and `engineer`.
+Read by `business-analyst`, `devops`, `engineer` and `product-manager`.
 
 | The ask is… | Skill(s) |
 | --- | --- |
+| a repo this template has not been configured for yet, with no `MEMORY.md` | `project-init`, before any document |
 | an ask, plan or decision that is not yet sharp | `grilling`; `grill-with-docs` where terms and decisions should be recorded as they land, which adds `domain-modeling` |
 | a settled plan that needs breaking into work | `to-tickets`, when `MEMORY.md` names a tracker |
 
 Record the interview with `interview-notes` under `docs/research/interviews/`: a document derived from a conversation cites that path as its source. Several of them on one question are weighed together with `interview-synthesis`, under `docs/research/syntheses/`.
 
 Hand `to-tickets` the open `#deferred` entries from `TODO.md` alongside the plan, and delete each entry whose ticket now exists. With no tracker, the drafts it writes under `.scratch/<feature-slug>/issues/` are the work items; say where they are.
+
+## Taking the product to market
+
+Read by `marketing` and `product-manager`.
+
+| The ask is… | Skill(s) |
+| --- | --- |
+| positioning: who the product is for, the problem it solves, why it beats the alternatives | `product-marketing`, before any other marketing skill, drawing on `INTENT.md`, the PDD and the PRD |
+| competitors to profile | `competitor-profiling`, saved under `docs/research/competitors/` |
+| a launch to plan | `launch`, with `pre-mortem` on the plan and `release-notes` for what ships |
+
+The `product-manager` owns a launch's date and scope, and `marketing` its audience, channels and messages; they plan it together. Positioning is shared the same way: the `product-manager` decides whom the product serves, and `marketing` says it so they listen.
+
+Competitor profiles are research a PDD cites as its alternatives and a battle card draws on, so they live beside the interviews rather than in the `competitor-profiles/` folder the skill names.
 
 ## Building and running code
 
