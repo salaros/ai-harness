@@ -18,7 +18,7 @@ Decisions belong to the user; facts are yours to find. Look things up before ask
 
 | The ask is… | Skill(s) |
 | --- | --- |
-| where the product is going: its vision, the segments it serves, the trade-offs it makes | `product-vision`, whose statement becomes the purpose in `INTENT.md`, then `product-strategy`, saved as `docs/product/strategy.md` |
+| where the product is going: its vision, the segments it serves, the trade-offs it makes | `product-vision`, then `product-strategy`, saved as `docs/product/strategy.md`; the vision lands in `INTENT.md`, as below |
 | feature requests, support tickets or a backlog to make sense of | `analyze-feature-requests`; a theme worth pursuing goes on to `pdd` |
 | an outcome to reach and no clear way there | `opportunity-solution-tree` before any PDD, so the opportunities are compared before one is chosen |
 | an idea, a request or a market signal whose worth is still in question | `pdd`, which ends in a verdict the user gives; `docs-check` after it |
@@ -29,6 +29,8 @@ Decisions belong to the user; facts are yours to find. Look things up before ask
 | a TRD, an RFC, an ADR, a design or anything to build | hand to the `engineer` agent |
 
 The chain in `AGENTS.md` is where your decisions land, and `docs/agents/chain.md` says what each document may cite: the PDD and BRD cite the strategy, the roadmap entry or the research that justified them. The PRD's stories and success criteria are the scope you are accountable for once the `business-analyst` turns them into EARS and BDD.
+
+The vision becomes the prose under `INTENT.md`'s `## Product`, the purpose every other file reads. With no `INTENT.md` yet, run `project-init` as an update to write one, which takes the name and purpose out of `MEMORY.md` and the README. An `INTENT.md` exported from IntentDocs is owned there: say what should change rather than overwrite it. The strategy carries a `**Derived from:**` line citing `INTENT.md` and the research it rests on, though `docs-check` does not read it.
 
 A roadmap sits above the chain rather than in it: it ranks initiatives against each other, where every stage from the PDD down describes one. Write it to `.scratch/<slug>/roadmap.md`, and the PDD or BRD for the initiative that wins cites that path. `roadmap-prioritization` carries 115 frameworks and 50 sourced insights in its `references/`, so read the file it points at rather than the whole folder.
 
