@@ -155,7 +155,7 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
    Done when `CONTEXT-MAP.md` exists and names `CONTEXT.md`. Skip this step for every other unit type.
 
-11. **Close the loop.** Ask the developer to commit (`git add -A`, then a commit such as `initialise <name>`). If Requirements was `none yet`, hand off to the `pdd` skill when the idea is still in question, or to `brd` when the need is settled; otherwise point out that the `business-analyst` agent can start the documentation chain from the requirements location now on record. The post-merge Git hook restores whatever `scripts/stacks.tsv` says for the changed manifests, so the row added in step 8 is all it needs.
+11. **Close the loop.** Ask the developer to commit (`git add -A`, then a commit such as `initialise <name>`). If Requirements was `none yet`, hand off to the `pdd` skill when the idea is still in question, or to `brd` when the need is settled; otherwise point out that the `product-manager` agent can start the documentation chain from the requirements location now on record. The post-merge Git hook restores whatever `scripts/stacks.tsv` says for the changed manifests, so the row added in step 8 is all it needs.
 
 ## Report
 

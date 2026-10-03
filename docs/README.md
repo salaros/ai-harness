@@ -76,7 +76,7 @@ Its third kind is competitor profiles: `docs/research/competitors/<slug>.md`, wr
 
 ## Product and marketing, beside the chain
 
-Two more folders sit beside the chain, unchecked by `docs-check` like `docs/research/`. `docs/product/` holds the product's vision and strategy, written by the `product-manager` with `product-vision` and `product-strategy`; a PDD or a BRD cites them as its source. `docs/marketing/` holds what `marketing` makes from the chain: the positioning in `docs/marketing/product-marketing.md`, which every marketing skill reads first, and one folder per campaign, launch or asset beside it. Its claims come from the PDD and the PRD, so the folder can fill up before the MVP exists.
+Two more folders sit beside the chain, unchecked by `docs-check` like `docs/research/`. `docs/product/` holds the product strategy, written by the `product-manager` with `product-strategy`, which a PDD or a BRD cites as its source; the vision it starts from is the purpose in `INTENT.md`. `docs/marketing/` holds what `marketing` makes from the chain: the positioning in `docs/marketing/product-marketing.md`, which every marketing skill reads first, and one folder per campaign, launch or asset beside it. Its claims come from the PDD and the PRD, so the folder can fill up before the MVP exists.
 
 ## After the documents
 
