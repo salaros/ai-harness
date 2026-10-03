@@ -1,6 +1,6 @@
 # Routing
 
-Route rows more than one agent reads. Six agents live in `agents/` beside this file and a row copied into two or three of their tables drifts in two or three directions. Each section below names the agents that read it, and each agent's own file names the sections that apply to it.
+Route rows more than one agent reads. The agents live in `agents/` beside this file, and a row copied into two or three of their tables drifts in two or three directions. Each section below names the agents that read it, and each agent's own file names the sections that apply to it.
 
 What **every** agent needs is not here: it is in `AGENTS.md` ("Working here"), which every session loads whether or not an agent is running. This file holds the middle ground, the rows shared by some agents and not all.
 
@@ -38,12 +38,9 @@ Read by `marketing` and `product-manager`.
 | The ask is… | Skill(s) |
 | --- | --- |
 | positioning: who the product is for, the problem it solves, why it beats the alternatives | `product-marketing`, before any other marketing skill, drawing on `INTENT.md`, the PDD and the PRD |
-| competitors to profile | `competitor-profiling`, saved under `docs/research/competitors/` |
 | a launch to plan | `launch`, with `pre-mortem` on the plan and `release-notes` for what ships |
 
 The `product-manager` owns a launch's date and scope, and `marketing` its audience, channels and messages; they plan it together. Positioning is shared the same way: the `product-manager` decides whom the product serves, and `marketing` says it so they listen.
-
-Competitor profiles are research a PDD cites as its alternatives and a battle card draws on, so they live beside the interviews rather than in the `competitor-profiles/` folder the skill names.
 
 ## Building and running code
 
