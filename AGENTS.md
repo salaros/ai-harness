@@ -39,7 +39,7 @@ Before writing or editing any document of the chain, read `docs/agents/chain.md`
 
 Skills live in `.agents/skills/<name>/SKILL.md`. If your harness has not surfaced them, read the `description` line of each and load the ones that match the task. Vendoring, licence notices and relinking are in `docs/agents/skills.md`.
 
-The agents in `.agents/agents/` route a task through the skills: `engineer`, `devops`, `business-analyst`, `assistant`. A row two or three of them read lives in `.agents/routing.md`; what every agent needs is in "Working here" below.
+The agents in `.agents/agents/` route a task through the skills: `engineer`, `devops`, `product-manager`, `business-analyst`, `marketing`, `assistant`. A row two or three of them read lives in `.agents/routing.md`; what every agent needs is in "Working here" below.
 
 ## Agent skills
 
@@ -47,6 +47,7 @@ The agents in `.agents/agents/` route a task through the skills: `engineer`, `de
 - **Triage labels**: the five default role names, written as a `Status:` line in each `.scratch/` issue file. See `docs/agents/triage-labels.md`.
 - **Domain docs**: `GLOSSARY.md` holds the terms, `CONTEXT.md` what the domain is and where it ends, and `docs/adr/` the decisions, all created lazily by `domain-modeling`, which `grill-with-docs` calls; use their terms when they exist. A term goes in `GLOSSARY.md`, whatever `domain-modeling`'s own format file says about a `## Language` section in `CONTEXT.md`. A `microservices` repo splits them per service instead. `docs/agents/domain.md` has the layout and the two formats a glossary entry is written in.
 - **Architecture reviews**: `improve-codebase-architecture` writes its candidates to `.scratch/reviews/architecture-<date>.md`, whatever its own instructions say about a temp file, because a review worth running is a review somebody reads next month. Its HTML report stays a way to look at that file, opened from the temp directory and never committed. A candidate taken up goes through `grilling` into an ADR for the decision and a SPEC for the design; what is left over keeps its place through one `#deferred` line in `TODO.md` naming the review, rather than by copying its candidates into it. See `docs/agents/chain.md`.
+- **Marketing context**: `product-marketing` writes the positioning to `docs/marketing/product-marketing.md`, whatever the marketing skills say about `.agents/product-marketing.md`, and each of them reads it there.
 - **Coding standards**: `CODING_STANDARDS.md`, read by `code-review` only. Whitespace, encoding, line endings and analyzer severities belong to `.editorconfig`, `.gitattributes` and the stack's own tool configs, not to that file.
 
 ## Working here

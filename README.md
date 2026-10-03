@@ -8,7 +8,7 @@ It assumes no language or framework. What you put in `src/` decides the stack.
 
 - **`AGENTS.md`**: one instruction file that every agent reads.
 - **Skills**: 60 vendored [agent skills](https://skills.sh) for requirements, design, testing, code review and more.
-- **Agents**: `engineer`, `business-analyst`, `devops` and `assistant`, each routing work to the right skills.
+- **Agents**: `engineer`, `devops`, `product-manager`, `business-analyst`, `marketing` and `assistant`, each routing work to the right skills.
 - **Hooks**: agent hooks block dangerous shell commands and check every edit. Git hooks check commit messages, the documentation chain and formatting.
 - **A documentation chain**: PDD → BRD → PRD → TRD → EARS → BDD → RFC → ADR → SPEC → TDD → plan → code, with a checker that keeps every document traceable to the one before it.
 

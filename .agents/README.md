@@ -82,7 +82,9 @@ Agent definitions live in `.agents/agents/*.md`: frontmatter with `name` and `de
 | Agent | For |
 | --- | --- |
 | `engineer` | Engineering work bigger than a one-line edit, and the TRD, RFC, ADR, SPEC, TDD, IPLAN and Code stages of the chain |
-| `business-analyst` | Requirements, process design, interface contracts, interviews, and the PDD, BRD, PRD, EARS and BDD stages of the chain |
+| `product-manager` | Vision, strategy, the roadmap, outcome metrics, and the PDD, BRD and PRD stages of the chain |
+| `business-analyst` | Requirements, process design, interface contracts, interviews, and the EARS and BDD stages of the chain |
+| `marketing` | Positioning, content, SEO, ads, email, social, sales materials and launches, before the MVP and after |
 | `devops` | Containers, CI/CD, Kubernetes, infrastructure as code, rollouts and incidents |
 | `assistant` | Non-technical colleagues |
 

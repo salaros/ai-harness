@@ -72,6 +72,12 @@ Contains: goals and non-goals citing the EARS and BDD documents, the architectur
 
 Its second kind is syntheses: `docs/research/syntheses/YYYY-MM-DD-<slug>.md`, written with `interview-synthesis`, weighing several interviews on one question: themes, insights and recommendations, which a PDD's evidence cites and its verdict may overrule.
 
+Its third kind is competitor profiles: `docs/research/competitors/<slug>.md`, written with `competitor-profiling`, which a PDD cites for today's alternatives and a battle card draws on.
+
+## Product and marketing, beside the chain
+
+Two more folders sit beside the chain, unchecked by `docs-check` like `docs/research/`. `docs/product/` holds the product's vision and strategy, written by the `product-manager` with `product-vision` and `product-strategy`; a PDD or a BRD cites them as its source. `docs/marketing/` holds what `marketing` makes from the chain: the positioning in `docs/marketing/product-marketing.md`, which every marketing skill reads first, and one folder per campaign, launch or asset beside it. Its claims come from the PDD and the PRD, so the folder can fill up before the MVP exists.
+
 ## After the documents
 
 Tests (`tests/`), the implementation plan (`.scratch/`, published to Jira by `to-tickets`) and code (`src/`) are the remaining stages; they are not documents and the validator does not read them.
