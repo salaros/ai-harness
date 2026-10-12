@@ -99,3 +99,15 @@ _Avoid_: synonym
 **Context**:
 One bounded vocabulary: a folder holding a `CONTEXT.md`, which says what the context is and where it ends, and the glossary beside it. The repo root is the only context unless `CONTEXT-MAP.md` lists more.
 _Avoid_: domain area, namespace
+
+**Feature file**:
+The generated copy of a BDD document's scenarios, `tests/features/NNNN-<slug>.feature`, which the extractor writes for the runner before a test run and nobody edits. Ignored by Git: the document is the record.
+_Avoid_: gherkin file, spec file
+
+**Scenario id**:
+The `SC-n` a BDD document gives each scenario on the comment line directly above it, which Gherkin ignores and the chain counts as an item, so a SPEC cites the scenario as `BDD-NNNN/SC-n`.
+_Avoid_: scenario tag, scenario number
+
+**Acceptance test**:
+A BDD document's scenario run as written by the stack's own Gherkin runner against the step definitions under `tests/`. A step without a definition fails it.
+_Avoid_: BDD test, feature test, spec test

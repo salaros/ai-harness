@@ -1,8 +1,9 @@
 // .agents/hooks/tests/tables/bdd-features.js
-// What scripts/bdd-features.js makes of a BDD document and of the folder of them: the feature file
-// it writes, and the shapes it refuses. The rules are the convention docs/agents/chain.md states for
-// the BDD stage, pinned here so a document that passes docs-check and still cannot run is named
-// rather than written out as a feature file nothing executes.
+// What scripts/feature-file.js makes of a BDD document, what scripts/bdd-features.js makes of the
+// folder of them, and that docs-check holds the same rule: the feature file written, the shapes
+// refused, and the refusal reaching a commit. The rules are the convention docs/agents/chain.md
+// states for the BDD stage (ADR-0008), pinned here so a document that passes the chain and still
+// cannot run is named rather than written out as a feature file nothing executes.
 const fs = require("fs");
 const path = require("path");
 const lib = require("../../lib");
@@ -12,9 +13,13 @@ const SCRIPT = path.join(lib.checkout, "scripts", "bdd-features.js");
 const FILE = "docs/bdd/0001-checkout.md";
 // A BDD document around its gherkin blocks: the chain's heading and Derived from line, then each
 // block fenced.
-const doc = (...gherkinBlocks) => text("# BDD-0001: Checkout", "", "**Derived from:** EARS-0001", "",
+const doc = (...gherkinBlocks) => text("# BDD-0001: Checkout", "", "**Derived from:** https://example.com/brief", "",
     ...gherkinBlocks.flatMap(b => ["```gherkin", ...b, "```", ""]));
 const FEATURE = ["Feature: Checkout", "", "# SC-1", "Scenario: Pay", "  Given a cart"];
+// The smallest chain table readDocs accepts, with no skill named so a temp root without
+// .agents/skills/ raises no problem of its own.
+const table = (...rows) => text("# Agents", "", "| Stage | Answers | Lives in | Cites | Status | Skill |", "| --- | --- | --- | --- | --- | --- |", ...rows);
+const BDD_ROW = "| BDD | behaviour | `docs/bdd/` | backwards | | |";
 
 exports.bddFeatureExtraction = function bddFeatureExtraction(t) {
     if (!fs.existsSync(SCRIPT)) { t.skip("bdd-features: no scripts/bdd-features.js here"); return; }
@@ -32,14 +37,16 @@ exports.bddFeatureExtraction = function bddFeatureExtraction(t) {
         "", "# SC-2", "Example: Refund", "  Given a paid order"]), FILE);
     t.ok(!tagged.problems.length, "the SC-n line sits above the scenario's tags, and Scenario Outline and Example are scenarios", tagged.problems.join("\n"));
 
-    const german = extract(doc(["# language: de", "Funktionalität: Kasse", "", "# SC-1", "Szenario: Zahlen", "  Angenommen ein Warenkorb"]), FILE);
-    t.ok(!german.problems.length && (german.feature || "").startsWith("# language: de\n# Generated from"),
-        "a # language: line stays first, above the header, and another language's keywords are the runner's to read", german.feature || german.problems.join("\n"));
+    const english = extract(doc(["# language: en", ...FEATURE]), FILE);
+    t.ok(!english.problems.length && (english.feature || "").startsWith("# language: en\n# Generated from"),
+        "a # language: en line is allowed and stays first, above the header, where Gherkin reads it", english.feature || english.problems.join("\n"));
 
     const refused = (lines, want, title) => {
         const r = extract(doc(lines), FILE);
         t.ok(r.feature === null && r.problems.some(p => p.startsWith(`${FILE}: `) && p.includes(want)), title, r.problems.join("\n") || "(written)");
     };
+    refused(["# language: de", "Funktionalität: Kasse", "", "# SC-1", "Szenario: Zahlen", "  Angenommen ein Warenkorb"], "names a Gherkin dialect",
+        "a # language: line other than en is refused: the keywords are English and the prose language is in the step text");
     refused(["Feature: Checkout", "", "Scenario: Pay", "  Given a cart"], "has no `# SC-n` line directly above it", "a scenario with no # SC-n above it is refused");
     refused(["Feature: Checkout", "", "  # SC-1", "  Scenario: Pay"], "has no `# SC-n` line", "an indented # SC-1 is no item to docs-check, so it does not count here either");
     refused(["Feature: Checkout", "", "# SC-1", "Scenario: Pay", "", "# SC-1", "Scenario: Refund"], "SC-1 names both", "two scenarios sharing an id are refused");
@@ -60,14 +67,12 @@ exports.bddFeatureExtraction = function bddFeatureExtraction(t) {
 };
 
 // The folder: which file each document becomes, what --check sees, and what a run writes, removes
-// and leaves alone. The chain table is the smallest one readDocs accepts, with no skill named so a
-// temp root without .agents/skills/ raises no problem of its own.
+// and leaves alone.
 exports.bddFeatureFolder = function bddFeatureFolder(t) {
     if (!fs.existsSync(SCRIPT)) { t.skip("bdd-features: no scripts/bdd-features.js here"); return; }
     const { features, compare, apply, MARK } = require(SCRIPT);
-    const table = (...rows) => text("# Agents", "", "| Stage | Answers | Lives in | Cites | Status | Skill |", "| --- | --- | --- | --- | --- | --- |", ...rows);
     withRoot({
-        "AGENTS.md": table("| EARS | requirements | `docs/ears/` | backwards | | |", "| BDD | behaviour | `docs/bdd/` | backwards | | |"),
+        "AGENTS.md": table("| EARS | requirements | `docs/ears/` | backwards | | |", BDD_ROW),
         "docs/bdd/0001-checkout.md": doc(FEATURE),
         "docs/bdd/0002-broken.md": doc(["Feature: Broken", "", "Scenario: No id"]),
         "tests/features/0009-gone.feature": `# Generated from docs/bdd/0009-gone.md ${MARK}.\n\nFeature: Gone\n`,
@@ -96,7 +101,36 @@ exports.bddFeatureFolder = function bddFeatureFolder(t) {
 
     withRoot({ "AGENTS.md": table("| PRD | what | `docs/prd/` | backwards | | |") }, root => {
         const r = features(root);
-        t.ok(!r.files.length && r.problems.some(p => p.includes("no stage living in docs/bdd/")),
+        t.ok(!r.files.length && r.problems.some(p => p.includes("no BDD stage")),
             "a chain table without a BDD stage is reported rather than extracting nothing in silence", r.problems.join("\n"));
+    });
+
+    withRoot({ "AGENTS.md": table("| BDD | behaviour | `docs/scenarios/` | backwards | | |"), "docs/scenarios/0001-checkout.md": doc(FEATURE) }, root => {
+        const r = features(root);
+        t.ok(r.files.map(f => f.file).join() === "tests/features/0001-checkout.feature" && !r.problems.length,
+            "the stage is found by its name in the table, whatever folder the table gives it", `${r.files.map(f => f.file).join()}\n${r.problems.join("\n")}`);
+    });
+};
+
+// The same rule is the chain's: docs-check reports a BDD document that would not run, so the
+// pre-commit hook, which runs docs-check over the staged chain, refuses the commit (ADR-0008 D-8).
+exports.bddShapeIsAChainRule = function bddShapeIsAChainRule(t) {
+    if (!fs.existsSync(SCRIPT)) { t.skip("bdd-features: no scripts/bdd-features.js here"); return; }
+    const docsCheck = require(path.join(lib.checkout, "scripts", "docs-check.js"));
+    withRoot({
+        "AGENTS.md": table("| PRD | what | `docs/prd/` | backwards | | |", BDD_ROW),
+        "docs/prd/0001-checkout.md": text("# PRD-0001: Checkout", "", "**Derived from:** https://example.com/brief", "", "```gherkin", "Scenario: not a BDD document, so not held to the shape", "```"),
+        "docs/bdd/0001-checkout.md": text("# BDD-0001: Checkout", "", "**Derived from:** PRD-0001", "", "```gherkin", ...FEATURE, "```"),
+        "docs/bdd/0002-unnumbered.md": text("# BDD-0002: Refund", "", "**Derived from:** PRD-0001", "", "```gherkin", "Feature: Refund", "", "Scenario: No id", "```"),
+        "docs/bdd/0003-dialect.md": text("# BDD-0003: Kasse", "", "**Derived from:** PRD-0001", "", "```gherkin", "# language: de", "Funktionalität: Kasse", "```"),
+    }, root => {
+        const { problems } = docsCheck.check(root);
+        const of = file => problems.filter(p => p.startsWith(`${file}: `));
+        t.ok(!of("docs/prd/0001-checkout.md").length && !of("docs/bdd/0001-checkout.md").length,
+            "a BDD document that would run passes, and a gherkin block in another stage is nobody's business", problems.join("\n"));
+        t.ok(of("docs/bdd/0002-unnumbered.md").some(p => p.includes("has no `# SC-n` line")),
+            "docs-check reports a scenario without an id, so the commit is refused before the runner sees it", problems.join("\n"));
+        t.ok(of("docs/bdd/0003-dialect.md").some(p => p.includes("names a Gherkin dialect")),
+            "docs-check reports a # language: line other than en", problems.join("\n"));
     });
 };

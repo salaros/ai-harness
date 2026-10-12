@@ -44,7 +44,7 @@ Contains: context, requirements (`TR-n`) by ISO/IEC 25010 category, each with a 
 
 **Behaviour as Given / When / Then.** One feature per document, scenarios grouped by rule, each scenario citing the `EARS-NNNN/REQ-n` it exercises; edge cases and failure paths are scenarios too. The `bdd-scenarios` skill writes it.
 
-The document is also the acceptance test. Its scenarios are in ```gherkin blocks, one `Feature:` in all, and each scenario has `# SC-n` on the line above it (above its tags, at the start of the line): the item a SPEC cites as `BDD-NNNN/SC-n`. `node scripts/bdd-features.js` writes the blocks out as `tests/features/NNNN-<slug>.feature`, never committed, and the stack's Gherkin runner (Reqnroll on .NET, cucumber-js with cucumber-tsflow on Node, pytest-bdd on Python) runs them against the step definitions under `tests/`. A scenario whose step has no definition fails, which is where `tdd` starts.
+The document is also the acceptance test (ADR-0008). Its scenarios are in ```gherkin blocks, one `Feature:` in all, with English keywords and the prose language in the titles and step text, and each scenario has `# SC-n` on the line above it (above its tags, at the start of the line): the item a SPEC cites as `BDD-NNNN/SC-n`. The validator holds that shape, so a document that would not run is refused at commit. `node scripts/bdd-features.js` writes the blocks out as `tests/features/NNNN-<slug>.feature`, never committed, and the stack's Gherkin runner (Reqnroll on .NET, cucumber-js with cucumber-tsflow on Node, pytest-bdd on Python) runs them against the step definitions under `tests/`. A scenario whose step has no definition fails, which is where `tdd` starts.
 
 ## RFC, Request for Comments
 

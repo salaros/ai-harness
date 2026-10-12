@@ -17,6 +17,9 @@
 // build on, so no SPEC cites an RFC that is not Accepted. MEMORY.md's
 // Requirements line follows the same reference rule, or says "none yet". INTENT.md is optional;
 // when there is one it must carry the sections its specification requires, as readIntent() in scripts/project-facts.js reads them.
+// A document of the stage named BDD is also held to the shape its feature file needs, the rule in
+// scripts/feature-file.js that scripts/bdd-features.js writes by (ADR-0008), so a document the
+// pre-commit hook lets through is one the Gherkin runner can run.
 // Prints one line per problem and exits 1 when there are any. The edit hook requires check().
 // readDocs() is the model both this file and anything else that renders the chain read: the stages,
 // the documents, and the two expressions that recognise a citation and an item. It is exported
@@ -35,6 +38,10 @@
 const path = require("path");
 const lib = require("./lib");
 const repoView = require("./repo-view");
+const featureFile = require("./feature-file");
+
+// The stage whose documents run, by the name the chain table gives it.
+const BDD_STAGE = "BDD";
 const { readFacts, readIntent } = require("./project-facts");
 
 const DOCS = "docs", AGENTS = "AGENTS.md", MEMORY = "MEMORY.md", INTENT = "INTENT.md";
@@ -238,6 +245,11 @@ function check(root, view = repoView.worktree(root)) {
         const listed = stageOf[d.folder].statuses;
         if (listed.length && !statusOf(d))
             say(d.file, `needs a "**Status:**" line with one of ${listed.map(s => s.value).join(", ")}`);
+
+        // A BDD document is the acceptance test (ADR-0008): what scripts/bdd-features.js could not
+        // write out as a feature file is a broken document, reported here so the commit is refused
+        // before the runner sees it. The rule is feature-file.js's, so the two never disagree.
+        if (stageOf[d.folder].stage === BDD_STAGE) problems.push(...featureFile.extract(d.text, d.file).problems);
 
         for (const [ref, stage, num, item] of d.text.matchAll(refRe)) {
             const docId = `${stage}-${num}`;

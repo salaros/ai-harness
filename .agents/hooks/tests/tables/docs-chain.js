@@ -142,7 +142,7 @@ exports.docsCheckCitesColumn = function docsCheckCitesColumn(t) {
         "trd/9501-refines.md": ["# TRD-9501: Refines", "", "**Derived from:** PRD-9500", "", "| TR-1 | Performance | p95 < 200 ms | PRD-9500/NFR-1 |"],
         "ears/9500-shall.md": ["# EARS-9500: Shall", "", "**Derived from:** TRD-9501", "", "- REQ-1: The search shall answer in 200 ms (TRD-9501/TR-1)."],
         "rfc/9500-late.md": rfc(9500, "Accepted", ["", "Constrained by SPEC-9500.", "", "### OPT-1: Cache"]),
-        "bdd/9500-early.md": ["# BDD-9500: Early", "", "**Derived from:** EARS-9500", "", "Follows RFC-9500/OPT-1."],
+        "bdd/9500-early.md": ["# BDD-9500: Early", "", "**Derived from:** EARS-9500", "", "Follows RFC-9500/OPT-1.", "", "```gherkin", "Feature: Early", "", "# SC-1", "Scenario: Cached", "  Given a warm cache", "```"],
         "spec/9500-design.md": ["# SPEC-9500: Design", "", "**Derived from:** RFC-9500"],
     });
     t.ok(r.for("trd/9500-migration.md").length === 0, "docs-check: a TRD may derive from a source alone once a PRD exists", r.all);
@@ -391,7 +391,7 @@ exports.srsViewRendersTheOutline = function srsViewRendersTheOutline(t) {
         "docs/prd/9402-billing.md": ["# PRD-9402: Billing product", "", "**Derived from:** BRD-9402", "", "## Users", "", "- FR-1: A monthly invoice, refining BRD-9402/BR-1."],
         "docs/trd/9402-billing.md": ["# TRD-9402: Billing limits", "", "**Derived from:** PRD-9402", "", "## Requirements", "", "- TR-1: p95 under 200 ms."],
         "docs/ears/9402-billing.md": ["# EARS-9402: Billing", "", "**Derived from:** PRD-9402, TRD-9402", "", "- REQ-1: When the month ends, the system shall invoice PRD-9402/FR-1."],
-        "docs/bdd/9402-billing.md": ["# BDD-9402: Billing", "", "**Derived from:** EARS-9402"],
+        "docs/bdd/9402-billing.md": ["# BDD-9402: Billing", "", "**Derived from:** EARS-9402", "", "```gherkin", "Feature: Billing", "", "# SC-1", "Scenario: Month end", "  Given a month ends (EARS-9402/REQ-1)", "```"],
     }));
     t.ok(!chain.notes.length, "the SRS fixture is a chain docs-check accepts", chain.notes.join("\n"));
     const page = srs.srs(chain);

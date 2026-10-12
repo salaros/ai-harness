@@ -5,7 +5,7 @@ description: Verify and repair the documentation chain under docs/. Use after wr
 
 # Docs check
 
-The chain in `AGENTS.md` ("Documentation") only pays off when every document can be walked back to the business need. `scripts/docs-check.js` verifies that mechanically: file names give IDs, first headings carry them, every document says what it was derived from, and every citation resolves to an existing document or item earlier in the chain. `MEMORY.md`'s `Requirements` line is checked the same way, because it is the entry point to the chain.
+The chain in `AGENTS.md` ("Documentation") only pays off when every document can be walked back to the business need. `scripts/docs-check.js` verifies that mechanically: file names give IDs, first headings carry them, every document says what it was derived from, every citation resolves to an existing document or item earlier in the chain, and every BDD document has the shape its feature file needs. `MEMORY.md`'s `Requirements` line is checked the same way, because it is the entry point to the chain.
 
 ## Steps
 
@@ -27,7 +27,8 @@ The chain in `AGENTS.md` ("Documentation") only pays off when every document can
    - a citation to a missing item: add the ID to the item's line in the upstream document (`- FR-3: …`) if the item exists without an ID, otherwise fix the reference;
    - a forward citation: the document is citing a later stage; move that content downstream or drop the reference. A stage whose `Cites` column in `AGENTS.md` says `any` (ADR, RFC) is exempt in both directions, so this never fires on one;
    - a missing or unlisted `**Status:**`: give the document one of the values its stage's `Status` column lists;
-   - a citation to a document whose status a later stage may not build on (a BRD citing a PDD that is not `Go`, a SPEC citing an RFC that is not `Accepted`): ask the user whether the verdict or the resolution is in, and never change its status yourself; until it is, the later document waits.
+   - a citation to a document whose status a later stage may not build on (a BRD citing a PDD that is not `Go`, a SPEC citing an RFC that is not `Accepted`): ask the user whether the verdict or the resolution is in, and never change its status yourself; until it is, the later document waits;
+   - a BDD document that would not run (ADR-0008): no ```gherkin block, more or fewer than one `Feature:` line across its blocks, a scenario without a `# SC-n` line directly above it (above its tags, at the start of the line), two scenarios sharing an id, or a `# language:` line other than `en`. Put the scenarios in gherkin blocks under one Feature, number each with the next free `SC-n`, and keep the keywords English with the prose language in the titles and step text.
 
    Done when the script prints "no problems".
 
