@@ -4,7 +4,8 @@
 // that must hold whatever the project around them does. Every skill visible to the agent, the skill
 // links committed as links, every SKILL.md readable, the routing sections and the agents naming them
 // in agreement, every Git hook executable and still a two-line wrapper, each hook launcher in
-// .claude/settings.json the text this file writes, every vendored skill attributed and on disk, the
+// .claude/settings.json the text this file writes, the hook table in .agents/README.md naming every
+// hook that launcher table wires, every vendored skill attributed and on disk, the
 // chain table in AGENTS.md readable, one reader for the stacks table, and the docs portal reading
 // the chain model rather than walking docs/ itself, the harness scripts CommonJS whatever the
 // project's package.json declares, CLAUDE.md importing AGENTS.md, and no steering file sending its
@@ -34,7 +35,7 @@ const repoView = require("./repo-view");
 const PATHS = [
     ".agents/skills/", ".claude/skills", ".claude/skills/", ".agents/agents/", ".agents/routing.md", ".githooks/",
     "skills-lock.json", "scripts/", "THIRD-PARTY-NOTICES.md", "AGENTS.md",
-    ".claude/settings.json", "tools/docs-site/", ".agents/hooks/package.json", "CLAUDE.md",
+    ".claude/settings.json", "tools/docs-site/", ".agents/hooks/", "CLAUDE.md",
     ".agents/README.md", "CODING_STANDARDS.md", "docs/README.md", "docs/agents/",
 ];
 const reads = file => PATHS.some(p => p.endsWith("/") ? file.startsWith(p) : file === p);
@@ -149,6 +150,29 @@ function claudeHookLaunchersAreWired(t, repo) {
         t.ok(ours[0].command === launcher(script),
             `the ${event} command for ${script} is the launcher every shell runs`, ours[0].command);
     }
+}
+
+// The hook table in .agents/README.md is where a person learns what runs on which event, and it was
+// held to nothing: the launcher table above gained a fourth script and the prose beside the table
+// kept counting three until somebody read it. So the table is held to the wiring both ways: every
+// script CLAUDE_HOOKS launches has a row, and every row names a script that is on disk. A row a
+// project added for a hook of its own passes on the second rule alone, since .agents/ merges rather
+// than overwrites. The table is the rows under "## Agent hooks" whose first cell is one file name in
+// backticks; the heading is part of the shape, so a README that lost it fails rather than skips.
+function hookTableNamesEveryHook(t, repo) {
+    const file = ".agents/README.md";
+    if (!repo.isFile(file)) { t.skip("hook table: no .agents/README.md"); return; }
+    const lines = repo.read(file).split(/\r?\n/);
+    const start = lines.findIndex(l => /^## Agent hooks\s*$/.test(l));
+    t.ok(start >= 0, `${file} keeps the hook table under a "## Agent hooks" heading`, "no such heading");
+    if (start < 0) return;
+    let end = lines.findIndex((l, i) => i > start && /^## /.test(l));
+    if (end < 0) end = lines.length;
+    const rows = lines.slice(start + 1, end).map(l => (l.match(/^\| `([^`\s|/]+)` \|/) || [])[1]).filter(Boolean);
+    const undocumented = CLAUDE_HOOKS.map(h => h.script).filter(script => !rows.includes(script));
+    t.ok(!undocumented.length, `${file}'s hook table has a row for every hook the harness wires`, undocumented.join(", "));
+    const stale = rows.filter(script => !repo.isFile(`.agents/hooks/${script}`));
+    t.ok(!stale.length, `${file}'s hook table names only scripts that exist in .agents/hooks/`, stale.join(", "));
 }
 
 // .claude/skills is one symlink to .agents/skills, so a skill has one copy on disk. A harness that
@@ -409,6 +433,7 @@ const INVARIANTS = [
     gitHooksAreExecutable,
     noGitHookDecidesAnything,
     claudeHookLaunchersAreWired,
+    hookTableNamesEveryHook,
     claudeSkillLinksAreSymlinks,
     everyInstalledSkillIsLinked,
     skillsFolderHoldsSkillsNotLinks,

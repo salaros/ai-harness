@@ -1,7 +1,8 @@
 // .agents/hooks/tests/tables/harness.js
 // How an entry point finds a repo and what it then asserts about the harness in it: the root
-// resolver every script and hook shares, the hook launcher the settings file is held to, the skill
-// roster, and the frontmatter check that decides whether an agent can see a skill at all.
+// resolver every script and hook shares, the hook launcher the settings file is held to, the hook
+// table the README is held to, the skill roster, and the frontmatter check that decides whether an
+// agent can see a skill at all.
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -106,6 +107,41 @@ exports.hookLauncherDecisions = function hookLauncherDecisions(t) {
         const said = checkHarness.check(repoView.worktree(dir)).failed.map(f => f.title).join("\n");
         t.ok(said.includes("readable JSON"), "hook launcher: a settings file that is not JSON fails rather than passing quietly", said);
     });
+};
+
+// The README's hook table, held to the launcher table both ways: a wired hook with no row and a row
+// with no script behind it. Each row is a README beside the scripts on disk, run through the one
+// invariant, with the outcome it must reach and the name its failure must carry. The rows outside
+// the "## Agent hooks" section are there to be ignored: a table elsewhere in the file whose first
+// cell is a file name is not the hook table.
+exports.hookTableDecisions = function hookTableDecisions(t) {
+    const invariant = checkHarness.INVARIANTS.find(f => f.name === "hookTableNamesEveryHook");
+    const wired = checkHarness.CLAUDE_HOOKS.map(h => h.script);
+    const onDisk = names => Object.fromEntries(names.map(n => [`.agents/hooks/${n}`, "// a hook\n"]));
+    const readme = (rows, heading = "## Agent hooks") => text(
+        "# The harness", "", "## Layout", "", "| `scripts/update-harness.js`, `harness-lock.json` | The installer. |", "",
+        heading, "", "Node scripts in `.agents/hooks/`.", "", "| Script | Event | What it does |", "| --- | --- | --- |",
+        ...rows.map(r => `| \`${r}\` | an event | What it does. |`), "",
+        "## Harnesses", "", "| `elsewhere.js` | a table that is not the hook table |");
+    const rows = [
+        // files, outcome, what a failure must name (null: nothing), why
+        [{ ".agents/README.md": readme(wired), ...onDisk(wired) }, "pass", null, "a row per wired hook, each on disk"],
+        [{ ".agents/README.md": readme(wired.slice(1)), ...onDisk(wired) }, "fail", wired[0], "a wired hook with no row is undocumented"],
+        [{ ".agents/README.md": readme([...wired, "retired.js"]), ...onDisk(wired) }, "fail", "retired.js", "a row naming a script that is gone is stale"],
+        [{ ".agents/README.md": readme([...wired, "mine.js"]), ...onDisk([...wired, "mine.js"]) }, "pass", null,
+            "a row the project added for a hook of its own is not ours to judge"],
+        [{ ".agents/README.md": readme(wired, "## Hooks"), ...onDisk(wired) }, "fail", "Agent hooks", "a README that lost the heading fails rather than skips"],
+        [onDisk(wired), "skip", null, "a repo with no .agents/README.md has no table to hold"],
+    ];
+    for (const [files, want, names, why] of rows) {
+        const r = { passed: 0, failed: [], skipped: [] };
+        invariant({ ok: (c, title, detail) => c ? r.passed++ : r.failed.push(`${title}: ${detail}`), skip: why => r.skipped.push(why) },
+            repoView.fromMap(files));
+        const got = r.failed.length ? "fail" : r.passed ? "pass" : "skip";
+        const said = r.failed.join("\n");
+        t.ok(got === want && (names === null || said.includes(names)), `hook table: ${why}`,
+            `expected ${want}${names ? ` naming ${names}` : ""}, got ${got}${said ? `\n${said}` : ""}`);
+    }
 };
 
 // The skill roster of a repo built for it: what the lock records against what the disk holds, who
