@@ -20,7 +20,13 @@
 // check that stood down, then the tally, and exits 1 if anything failed. A check that throws is one
 // failure named after it, not the end of the run: tests/runner.js holds that, so the suite can hand
 // it a check that throws on purpose.
-// Usage: node .agents/hooks/test.js
+// Usage: node .agents/hooks/test.js [--only <text>]
+// --only runs the part of the suite whose name contains <text>, case-insensitively: a fixture case by
+// its script, fixture or note, a check by its function name or by the file of the table it is in, so
+// `--only tables/todo` is every check about that module. The full run takes minutes, and a change
+// to one module is proved in seconds by its table; the full run stays for CI and the pre-push hook. A
+// filter nothing matches fails rather than passing an empty run, since "0 passed, 0 failed" would
+// read as a typo's success.
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -35,6 +41,16 @@ process.chdir(root);
 const env = { ...process.env, HOOK_TEST: "1" };
 for (const v of lib.ROOT_ENV_VARS) delete env[v];
 const slashes = p => p.split(path.sep).join("/");
+
+const only = (() => {
+    const at = process.argv.indexOf("--only");
+    const joined = process.argv.find(a => a.startsWith("--only="));
+    if (at < 0 && !joined) return null;
+    const text = joined ? joined.slice("--only=".length) : process.argv[at + 1];
+    if (!text || text.startsWith("--")) { console.error("usage: node .agents/hooks/test.js [--only <text>]"); process.exit(2); }
+    return text.toLowerCase();
+})();
+const selected = name => !only || name.toLowerCase().includes(only);
 
 const SEED = ["AGENTS.md", "scripts/stacks.tsv"];
 let temp = null;
@@ -60,7 +76,19 @@ const t = {
     skip: why => skipped.push(why),
 };
 
-for (const [script, fixture, expect, setup, want, note] of lib.readTsv(".agents/hooks/tests/cases.tsv")) {
+const cases = lib.readTsv(".agents/hooks/tests/cases.tsv").filter(([script, fixture, , , , note]) => selected(`${script} ${fixture} ${note}`));
+const named = [
+    ...Object.values(selfChecks).map(check => ({ check, name: `self-checks.js ${check.name}` })),
+    ...tables.FILES.flatMap(file => tables.byFile[file].map(check => ({ check, name: `tables/${file} ${check.name}` }))),
+];
+const checks = named.filter(entry => selected(entry.name)).map(entry => entry.check);
+if (only && !cases.length && !checks.length) {
+    console.log(`harness tests: --only "${only}" matched nothing: no case by script, fixture or note, no check by name or table file`);
+    process.exit(1);
+}
+if (only) console.log(`harness tests: --only "${only}" selects ${cases.length} case(s) and ${checks.length} check(s)`);
+
+for (const [script, fixture, expect, setup, want, note] of cases) {
     const args = script.split(" ");
     let caseRoot = root;
     if (setup !== "-") {
@@ -86,7 +114,7 @@ for (const [script, fixture, expect, setup, want, note] of lib.readTsv(".agents/
     else failed(`${script} < ${fixture}: exit ${status}, expected ${expect}, output must contain "${want}" (${note})`, output);
 }
 
-runner.runChecks([...Object.values(selfChecks), ...tables], t, env);
+runner.runChecks(checks, t, env);
 
 for (const why of skipped) console.log(`SKIP ${why}`);
 console.log(`harness tests: ${pass} passed, ${fail} failed${skipped.length ? `, ${skipped.length} skipped` : ""}`);

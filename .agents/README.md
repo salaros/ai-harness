@@ -62,7 +62,7 @@ Node scripts in `.agents/hooks/`, one row each; `scripts/check-harness.js` holds
 
 `lib.js` turns whatever a tool sends (Claude Code, Cursor, Copilot, Gemini CLI) into one hook event: the repo root, the edited paths, the command text, and the raw input. A payload in no shape it knows is noted on stderr and never blocks an edit; for the command guard, every string in it counts as the command, so an unfamiliar tool is scanned rather than waved through.
 
-`node .agents/hooks/test.js` runs the fixtures in `.agents/hooks/tests/cases.tsv`, then a decision table per module under `tests/tables/`, then the checks in `tests/self-checks.js` that can only be made from outside a module: a real shell, a real install, this checkout itself. The harness invariants run there too, against this checkout, the same functions a target runs. The suite exists only in the upstream repository; an installed repo runs `node scripts/check-harness.js`.
+`node .agents/hooks/test.js` runs the fixtures in `.agents/hooks/tests/cases.tsv`, then a decision table per module under `tests/tables/`, then the checks in `tests/self-checks.js` that can only be made from outside a module: a real shell, a real install, this checkout itself. The harness invariants run there too, against this checkout, the same functions a target runs. The full run takes minutes; `--only <text>` runs just the cases and checks whose name contains it, a table's file name included, so `--only tables/todo` proves a change to that module by its table while CI and the pre-push hook run everything. The suite exists only in the upstream repository; an installed repo runs `node scripts/check-harness.js`.
 
 ## Git hooks
 
