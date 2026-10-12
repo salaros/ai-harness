@@ -11,7 +11,7 @@ What **every** agent needs is not here: it is in `AGENTS.md` ("Working here"), w
 - a **boundary**: where this skill stops and the one beside it starts.
 - a **hand-off**: the work belongs to another agent.
 
-There is a fifth, and it is not a matter of judgement: a skill whose frontmatter carries `disable-model-invocation: true` is unreachable except through a row. `node scripts/skills.js list` prints which those are; cull nothing without checking it.
+There is a fifth, and it is not a matter of judgement: a skill whose frontmatter carries `disable-model-invocation: true` runs only when the user types `/name`. The Skill tool refuses it, so a row naming one tells the agent when to ask for it, and a description alone never would. `node scripts/skills.js list` prints which those are; cull nothing without checking it.
 
 **Keep a row under 200 characters.** Length costs more in a table than in prose, because past a line or two the trigger and the skill stop lining up in the reader's eye. Detail that does not fit goes under the table as prose, read once by the agent that got that far.
 
@@ -59,10 +59,10 @@ Read by `devops` and `engineer`.
 | open pull requests to review, fix and merge, once the user has said yes to sweeping them | `pr-sweep`, which runs `code-review` on each |
 | "what did we agree to fix later" | `duck-debt` for the `TODO`, `FIXME`, `HACK` and `XXX` comments; `ponytail-debt` for the `ponytail:` ones |
 | "that did not land" | `wait-what` |
-| the end of a session | `duck-debt`, then `retro` to improve this harness, then `handoff` for a successor |
+| the end of a session | `duck-debt`; then ask the user to type `/retro`, which improves this harness, and `/handoff`, which briefs a successor: `retro` and `handoff` run only when typed |
 
 The feature files under `tests/features/` are generated from `docs/bdd/`: change the document and run the extractor again, never the file. Which runner a stack has is the `runner` column of `scripts/stacks.tsv`, `project-init` wires it with `scripts/wire-acceptance.js`, and `docs/agents/chain.md` has the shape a document keeps to be extracted.
 
 An ADR is cross-cutting: write it the moment a decision is forced, whatever stage you are at, and derive it from whatever forced it. So is an RFC, for a decision that needs arguing first; once the user accepts one, each hard-to-reverse choice it settled becomes an ADR citing it.
 
-`duck-debt` tiers what it finds by whether each comment carries an issue link. Run it first at the end of a session, so the retrospective opens on what was actually deferred rather than on what anyone remembers.
+`duck-debt` tiers what it finds by whether each comment carries an issue link. Run it first at the end of a session, so the retrospective opens on what was actually deferred rather than on what anyone remembers. Reading `retro`'s or `handoff`'s `SKILL.md` to do its work by hand is not running it: ask, through the question tool, and wait.

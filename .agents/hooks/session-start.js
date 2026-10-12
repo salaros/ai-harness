@@ -56,13 +56,13 @@ if (!process.env.HOOK_TEST && /github\.com[:/]/.test(git(["remote", "get-url", "
     if (open.length) say(`pull requests open: ${open.join(", ")}. Offer a pr-sweep of them, as the skill says.`);
 }
 // How a session ends, from the routing row of that name: the deferred-work ledger first, so the
-// retrospective opens on what was actually put off. retro only runs when the user types it, so the
-// agent offers it rather than starting it; handoff only matters when someone else carries on. Only the
-// skills this repo installed are named.
+// retrospective opens on what was actually put off. retro and handoff only run when the user types
+// them, so the agent offers each rather than starting it; handoff only matters when someone else
+// carries on. Only the skills this repo installed are named.
 const ending = [
     fs.existsSync(".agents/skills/duck-debt/SKILL.md") && "run duck-debt",
     fs.existsSync(".agents/skills/retro/SKILL.md") && "offer the user /retro, which only they can start",
-    fs.existsSync(".agents/skills/handoff/SKILL.md") && "run handoff when someone else carries the work on",
+    fs.existsSync(".agents/skills/handoff/SKILL.md") && "offer the user /handoff when someone else carries the work on, which only they can start",
 ].filter(Boolean);
 if (ending.length) say(`session end, after the last push (.agents/routing.md): ${ending.join(", then ")}`);
 if (!fs.existsSync("docs/agents/issue-tracker.md")) say('issue tracker: not configured. code-review, to-tickets and triage need docs/agents/issue-tracker.md (.agents/README.md, "What each skill expects")');
