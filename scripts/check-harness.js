@@ -6,11 +6,12 @@
 // in agreement, every Git hook executable and still a two-line wrapper, each hook launcher in
 // .claude/settings.json the text this file writes, the hook table in .agents/README.md naming every
 // hook that launcher table wires, every vendored skill attributed and on disk, the
-// chain table in AGENTS.md readable, one reader for the stacks table, and the docs portal reading
-// the chain model rather than walking docs/ itself, the harness scripts CommonJS whatever the
-// project's package.json declares, CLAUDE.md importing AGENTS.md, and no steering file sending its
-// reader to CONTEXT.md for terms that live in GLOSSARY.md. Each one fails silently otherwise: nothing else
-// in the harness exits non-zero when a skill quietly vanishes from an agent's view.
+// chain table in AGENTS.md readable, one reader for the stacks table, the acceptance workflow
+// proving every runner that table names, and the docs portal reading the chain model rather than
+// walking docs/ itself, the harness scripts CommonJS whatever the project's package.json declares,
+// CLAUDE.md importing AGENTS.md, and no steering file sending its reader to CONTEXT.md for terms
+// that live in GLOSSARY.md. Each one fails silently otherwise: nothing else in the harness exits
+// non-zero when a skill quietly vanishes from an agent's view.
 // It travels with the harness, so a project can run it after changing any of those files, and
 // check-edit.js does whenever one of PATHS is edited. The installer runs the upstream's copy against
 // the target it has just written, and the upstream's suite runs the same functions against itself.
@@ -25,6 +26,7 @@ const lib = require("./lib");
 const docsCheck = require("./docs-check");
 const { HOOKS } = require("./githook");
 const skills = require("./skills");
+const stacks = require("./stacks");
 const repoView = require("./repo-view");
 
 // What the invariants below read, as the path a harness reports for an edit: an exact file, or a
@@ -36,7 +38,7 @@ const PATHS = [
     ".agents/skills/", ".claude/skills", ".claude/skills/", ".agents/agents/", ".agents/routing.md", ".githooks/",
     "skills-lock.json", "scripts/", "THIRD-PARTY-NOTICES.md", "AGENTS.md",
     ".claude/settings.json", "tools/docs-site/", ".agents/hooks/", "CLAUDE.md",
-    ".agents/README.md", "CODING_STANDARDS.md", "docs/README.md", "docs/agents/",
+    ".agents/README.md", "CODING_STANDARDS.md", "docs/README.md", "docs/agents/", ".github/workflows/",
 ];
 const reads = file => PATHS.some(p => p.endsWith("/") ? file.startsWith(p) : file === p);
 
@@ -361,6 +363,34 @@ function onlyTheStacksReaderNamesTheTable(t, repo) {
     t.ok(!others.length, "only scripts/stacks.js reads scripts/stacks.tsv itself", others.join(", "));
 }
 
+// The acceptance workflow runs one job per row of the stacks table that names a runner, and its
+// matrix is written out rather than read from the table, so that the file says which stacks run.
+// Written out, it can fall behind: a row that gains a runner nobody added a job for is a runner
+// project-init hands out unproved, which is how the .NET wiring stayed unrun for a week. The
+// matrix line is read as text, since nothing here parses YAML and the list is one line by
+// convention. The upstream's only: the workflow is template and never installed.
+const ACCEPTANCE = ".github/workflows/acceptance.yml";
+const MATRIX_RE = /^\s*stack:\s*\[([^\]]*)\]/m;
+function acceptanceWorkflowProvesEveryRunner(t, repo) {
+    if (!repo.isFile("scripts/update-harness.js")) { t.skip("acceptance workflow: the project's own CI"); return; }
+    if (!repo.isFile(stacks.FILE)) { t.skip("acceptance workflow: no stacks table"); return; }
+    const runners = stacks.parse(repo.read(stacks.FILE)).filter(r => r.runner).map(r => r.stack);
+    if (!repo.isFile(ACCEPTANCE)) {
+        t.ok(!runners.length, `${ACCEPTANCE} exists, since the stacks table names a runner to prove`, runners.join(", "));
+        return;
+    }
+    const m = repo.read(ACCEPTANCE).match(MATRIX_RE);
+    const listed = m ? m[1].split(",").map(s => s.trim()).filter(Boolean) : [];
+    const missing = runners.filter(s => !listed.includes(s));
+    const extra = listed.filter(s => !runners.includes(s));
+    const found = [
+        !m && `no "stack: [...]" matrix line`,
+        missing.length && `rows naming a runner with no job: ${missing.join(", ")}`,
+        extra.length && `jobs for rows naming no runner: ${extra.join(", ")}`,
+    ].filter(Boolean).join("\n");
+    t.ok(!found, `${ACCEPTANCE} runs one job per stacks row naming a runner, no more and no fewer`, found);
+}
+
 // The portal presents the chain model; it does not go looking for documents of its own. A directory
 // read in chain.mjs is a second walk of docs/, and a second walk grew a second file-name rule last
 // time. tools/docs-site is optional, so a repo that publishes straight to Jira owes nothing here, and
@@ -444,6 +474,7 @@ const INVARIANTS = [
     everyRoutedSkillIsInstalled,
     chainTableIsReadable,
     onlyTheStacksReaderNamesTheTable,
+    acceptanceWorkflowProvesEveryRunner,
     theDocsPortalReadsTheChainModel,
     noSteeringFileNamesTheContextAlone,
 ];

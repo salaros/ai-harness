@@ -22,7 +22,9 @@ All automated tests are stored in this folder.
   and cucumber-tsflow on Node or with pytest-bdd on Python). Run the extractor
   before the runner, locally and in CI. A scenario whose step has no
   definition fails rather than passing as pending, and a feature file is never
-  edited by hand: the document is.
+  edited by hand: the document is. `node scripts/wire-acceptance.js` points
+  the runner at the folder once the scaffold has run, and its `--prove` shows
+  that a step nobody defined fails the run.
 
 ## Coverage
 

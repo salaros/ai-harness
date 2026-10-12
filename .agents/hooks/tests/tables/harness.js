@@ -144,6 +144,46 @@ exports.hookTableDecisions = function hookTableDecisions(t) {
     }
 };
 
+// The acceptance workflow's matrix, held to the stacks table both ways: a row naming a runner with
+// no job, and a job for a row naming none. Each row is a table and a workflow run through the one
+// invariant, with the outcome it must reach and the name its failure must carry.
+exports.acceptanceMatrixDecisions = function acceptanceMatrixDecisions(t) {
+    const invariant = checkHarness.INVARIANTS.find(f => f.name === "acceptanceWorkflowProvesEveryRunner");
+    const stacks = require("../../../../scripts/stacks");
+    const table = rows => text("# the table", ...rows.map(([stack, runner]) =>
+        [stack, "x", "-", "-", `echo ${stack}`, "-", "-", runner].slice(0, stacks.COLUMNS.length).join("\t")));
+    const workflow = listed => text("name: acceptance", "jobs:", "  prove:", "    strategy:", "      matrix:",
+        `        stack: [${listed.join(", ")}]`, "    runs-on: ubuntu-latest");
+    const upstream = { "scripts/update-harness.js": "// the installer\n" };
+    const rows = [
+        // files, outcome, what a failure must name (null: nothing), why
+        [{ ...upstream, [stacks.FILE]: table([["npm", "cucumber-js"], ["dotnet", "reqnroll"], ["tools", "-"]]), [".github/workflows/acceptance.yml"]: workflow(["npm", "dotnet"]) },
+            "pass", null, "a job per row naming a runner, and none for a row naming none"],
+        [{ ...upstream, [stacks.FILE]: table([["npm", "cucumber-js"], ["dotnet", "reqnroll"]]), [".github/workflows/acceptance.yml"]: workflow(["npm"]) },
+            "fail", "dotnet", "a row naming a runner with no job goes unproved"],
+        [{ ...upstream, [stacks.FILE]: table([["npm", "cucumber-js"], ["tools", "-"]]), [".github/workflows/acceptance.yml"]: workflow(["npm", "tools"]) },
+            "fail", "tools", "a job for a row naming no runner has nothing to prove"],
+        [{ ...upstream, [stacks.FILE]: table([["npm", "cucumber-js"]]), [".github/workflows/acceptance.yml"]: workflow([]).replace(/stack: \[\]/, "os: [ubuntu-latest]") },
+            "fail", "matrix line", "a workflow with no stack matrix fails rather than passing on an empty list"],
+        [{ ...upstream, [stacks.FILE]: table([["npm", "cucumber-js"]]) },
+            "fail", "npm", "no workflow while the table names a runner"],
+        [{ ...upstream, [stacks.FILE]: table([["tools", "-"]]) },
+            "pass", null, "no workflow and no runner to prove"],
+        [{ [stacks.FILE]: table([["npm", "cucumber-js"]]) },
+            "skip", null, "a project's own CI is not held to the upstream's workflow"],
+        [upstream, "skip", null, "no stacks table, nothing to hold the matrix to"],
+    ];
+    for (const [files, want, names, why] of rows) {
+        const r = { passed: 0, failed: [], skipped: [] };
+        invariant({ ok: (c, title, detail) => c ? r.passed++ : r.failed.push(`${title}: ${detail}`), skip: why => r.skipped.push(why) },
+            repoView.fromMap(files));
+        const got = r.failed.length ? "fail" : r.passed ? "pass" : "skip";
+        const said = r.failed.join("\n");
+        t.ok(got === want && (names === null || said.includes(names)), `acceptance matrix: ${why}`,
+            `expected ${want}${names ? ` naming ${names}` : ""}, got ${got}${said ? `\n${said}` : ""}`);
+    }
+};
+
 // The skill roster of a repo built for it: what the lock records against what the disk holds, who
 // routes each skill and through which file, and whether the licence notice is current. The
 // upstream's own roster only ever shows the healthy case, so every odd shape lives here.

@@ -31,6 +31,19 @@ exports.stacksTableDecisions = function stacksTableDecisions(t) {
         .filter(l => l.split("\t").length !== stacks.COLUMNS.length);
     t.ok(!wide.length, `every row has ${stacks.COLUMNS.length} cells`, wide.map(l => l.split("\t")[0]).join(", "));
 
+    // Every scaffold installs a Gherkin runner (ADR-0008) and names it in the runner column, which is
+    // what scripts/wire-acceptance.js wires and the acceptance workflow proves. A scaffold naming no
+    // runner is a project whose BDD documents run nowhere; a runner named by a row with no scaffold
+    // is a name nothing installed; and a runner the script does not know is wired by nobody.
+    const wireAcceptance = require("../../../../scripts/wire-acceptance.js");
+    const known = Object.keys(wireAcceptance.RUNNERS);
+    const unrun = rows.filter(r => r.scaffold && !r.runner).map(r => r.stack);
+    t.ok(!unrun.length, "every row with a scaffold names the runner it installs", unrun.join(", "));
+    const uninstalled = rows.filter(r => r.runner && !r.scaffold).map(r => r.stack);
+    t.ok(!uninstalled.length, "a runner is named only by a row whose scaffold installs it", uninstalled.join(", "));
+    const unknown = rows.filter(r => r.runner && !known.includes(r.runner)).map(r => `${r.stack}: ${r.runner}`);
+    t.ok(!unknown.length, `every runner named is one scripts/wire-acceptance.js wires (${known.join(", ")})`, unknown.join(", "));
+
     // A pattern matches by path or basename and never across a directory separator, which is what
     // both callers rely on: *.cs must not claim a folder called "a.cs/b".
     t.ok(stacks.matches("*.cs", ["src/App/Program.cs"]), "a pattern matches by basename");

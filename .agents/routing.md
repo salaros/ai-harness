@@ -61,7 +61,7 @@ Read by `devops` and `engineer`.
 | "that did not land" | `wait-what` |
 | the end of a session | `duck-debt`, then `retro` to improve this harness, then `handoff` for a successor |
 
-The feature files under `tests/features/` are generated from `docs/bdd/`: change the document and run the extractor again, never the file. Which runner a stack has is in `scripts/stacks.tsv`, `project-init` wires it, and `docs/agents/chain.md` has the shape a document keeps to be extracted.
+The feature files under `tests/features/` are generated from `docs/bdd/`: change the document and run the extractor again, never the file. Which runner a stack has is the `runner` column of `scripts/stacks.tsv`, `project-init` wires it with `scripts/wire-acceptance.js`, and `docs/agents/chain.md` has the shape a document keeps to be extracted.
 
 An ADR is cross-cutting: write it the moment a decision is forced, whatever stage you are at, and derive it from whatever forced it. So is an RFC, for a decision that needs arguing first; once the user accepts one, each hard-to-reverse choice it settled becomes an ADR citing it.
 

@@ -117,7 +117,7 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
 7. **Remember, in your harness too.** If your harness keeps persistent memory (Claude Code auto-memory), save one `project` memory saying that the project facts live in `MEMORY.md` at the repo root and repeating the name, stack and, if there is one, the Jira key, so they are in context before the repo is read. Skip this in a harness without memory. Done when the memory exists or the harness has none.
 
-8. **Hand over the scaffold.** Read `scripts/stacks.tsv` and take the scaffold column of the row for the stack (for `microservices` on .NET, the `dotnet-aspire` row instead of `dotnet`); replace `{Name}` with the PascalCase project name, `{name}` with the kebab-case one, and `{template}` with the unit type's template (`classlib`, `console`, `webapi` or `blazor` for .NET by library, cli, service or monolith and frontend; `--lib` for a Python library, `--app --package` otherwise). Give the developer the commands as a code block, one per line. Do not run them: scaffolding is the developer's call and a separate step. For a stack with no row, add one to `scripts/stacks.tsv` (triggers, needs, restore, scaffold, formats, format) so the post-merge hook restores it and the pre-push hook format-checks it too, and point at `src/README.md` and `tests/README.md`. Done when the developer has the commands and the table has a row for the stack.
+8. **Hand over the scaffold.** Run `node scripts/stacks.js scaffold <stack> --name=<Name> --template=<template>` for the row of the stack (for `microservices` on .NET, `dotnet-aspire` instead of `dotnet`), with `<Name>` the PascalCase project name and `<template>` the unit type's template (`classlib`, `console`, `webapi` or `blazor` for .NET by library, cli, service or monolith and frontend; `--lib` for a Python library, `--app --package` otherwise). It prints the row's scaffold with `{Name}`, `{name}` and `{template}` filled in. Give the developer the commands as a code block, one per line. Do not run them: scaffolding is the developer's call and a separate step. For a stack with no row, add one to `scripts/stacks.tsv` (triggers, needs, restore, scaffold, formats, format, runner) so the post-merge hook restores it and the pre-push hook format-checks it too, and point at `src/README.md` and `tests/README.md`. Done when the developer has the commands and the table has a row for the stack.
 
    For `microservices` on a stack with no scaffold for it, hand over the stack's own row and say that the services are laid out by hand as `docs/agents/domain.md` ("Microservices") describes. With .NET, the `dotnet-aspire` row creates the AppHost, ServiceDefaults and an Aspire test project but no service: give the developer the "Adding a service" steps from `docs/agents/domain.md` for the first one.
 
@@ -141,42 +141,11 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
    Done when `dotnet husky run --group pre-push` reports the task, not an empty run. Skip this step entirely for any other stack.
 
-10. **Wire the acceptance runner.** Every scaffold installs the stack's Gherkin runner, and `node scripts/bdd-features.js` writes the BDD documents out as `tests/features/NNNN-<slug>.feature`, ignored by Git (`docs/agents/chain.md` has the shape a document keeps). After the developer says the scaffold has run, point the runner at that folder and make a step without a definition fail the run rather than pass as pending. Write the files below by hand: `scripts/stacks.tsv` cannot carry them, since a `&&` inside a file would split the scaffold cell.
+10. **Wire the acceptance runner.** Every scaffold installs the stack's Gherkin runner, named in the `runner` column of `scripts/stacks.tsv`, and `node scripts/bdd-features.js` writes the BDD documents out as `tests/features/NNNN-<slug>.feature`, ignored by Git (`docs/agents/chain.md` has the shape a document keeps). After the developer says the scaffold has run, run `node scripts/wire-acceptance.js --name=<Name>`, with the same `<Name>` the scaffold was given; add `--stack=<row>` when it says more than one row applies. It points the runner at that folder and makes a step without a definition fail the run rather than pass as pending, writing each file only where it is absent: for .NET, the feature-file groups in `tests/<Name>.Acceptance/*.csproj`, its `reqnroll.json`, and the SDK's sample test removed; for Node, `cucumber.cjs`, the `test:acceptance` script in `package.json` and `experimentalDecorators` in `tsconfig.json`; for Python, `bdd_features_base_dir` in `pyproject.toml` and `tests/acceptance/test_features.py`. Step definitions go in `tests/<Name>.Acceptance/`, `tests/acceptance/*.ts` or beside `test_features.py`. The script holds the wiring so that the skill and the acceptance workflow, which runs every row of the table against a scaffold, run the same code.
 
-   For .NET, the `reqnroll-project` template made `tests/{Name}.Acceptance/` with a sample under `Features/` and `StepDefinitions/`: delete the sample feature and its steps, add the groups below to the `.csproj` so the project compiles the shared folder in place, and write `tests/{Name}.Acceptance/reqnroll.json`.
+   Then run `node scripts/wire-acceptance.js --prove --name=<Name>`: it writes one step nobody defined into `tests/features/`, runs the runner's own command (`dotnet test`, the `test:acceptance` script, `uv run pytest`) and exits 0 only when the run failed naming that step, removing the file afterwards. Show the developer a failure's output: a run that passed means the runner never read the folder, and one that failed otherwise is a build error of the scaffold's.
 
-   ```xml
-   <PropertyGroup>
-     <ReqnrollUseIntermediateOutputPathForCodeBehind>true</ReqnrollUseIntermediateOutputPathForCodeBehind>
-   </PropertyGroup>
-   <ItemGroup>
-     <ReqnrollFeatureFile Include="..\features\**\*.feature" Link="Features\%(RecursiveDir)%(Filename)%(Extension)" />
-   </ItemGroup>
-   ```
-
-   ```json
-   {
-     "$schema": "https://schemas.reqnroll.net/reqnroll-config-latest.json",
-     "runtime": { "missingOrPendingStepsOutcome": "Error" }
-   }
-   ```
-
-   For Node (npm, pnpm or yarn), write `cucumber.cjs` at the root, set `"experimentalDecorators": true` in `tsconfig.json` for cucumber-tsflow's `@binding()` classes, and add the script `"test:acceptance": "node scripts/bdd-features.js && cucumber-js"` to `package.json`. Step definitions go in `tests/acceptance/*.ts`.
-
-   ```js
-   module.exports = {
-     default: {
-       paths: ["tests/features/**/*.feature"],
-       requireModule: ["tsx/cjs"],
-       require: ["tests/acceptance/**/*.ts"],
-       strict: true,
-     },
-   };
-   ```
-
-   For Python, add `bdd_features_base_dir = "tests/features"` under `[tool.pytest.ini_options]` in `pyproject.toml`, and write `tests/acceptance/test_features.py` holding `from pytest_bdd import scenarios` and `scenarios(".")`, which binds every feature under that folder; a step without a definition raises. Step definitions go beside it.
-
-   Done when the runner's own command (`dotnet test`, the `test:acceptance` script, `uv run pytest`) reads `tests/features/` and a step without a definition fails the run. Every stack with a scaffold has a runner, so this step is skipped only for a stack with no row.
+   Done when `--prove` exits 0. Every stack with a scaffold has a runner, so this step is skipped only for a stack with no row.
 
 11. **Set up the context map, for `microservices` only.** Each service owns its vocabulary, so the repo is multi-context, and the `domain-modeling` skill, both agents and the session-start hook recognise that by a root `CONTEXT-MAP.md`. Write it if it is absent, from the template below, with the one `Shared` entry and no services yet: `domain-modeling` adds a service's entry, its `src/<Service>/CONTEXT.md` and the `GLOSSARY.md` beside it when the first term of that service is resolved. Keep the root `CONTEXT.md` and `GLOSSARY.md` for the terms every service uses. On an update that changes the unit type away from `microservices`, leave an existing map alone and say so in the report.
 
@@ -196,7 +165,7 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
 ## Report
 
-The facts recorded, whether `INTENT.md` was read, written or declined, whether the Git hooks were installed, where the merge permission was written or that it was declined, which files changed, the scaffold commands handed over, whether the acceptance runner was wired to `tests/features/`, whether `CONTEXT-MAP.md` was written, and the next skill to run.
+The facts recorded, whether `INTENT.md` was read, written or declined, whether the Git hooks were installed, where the merge permission was written or that it was declined, which files changed, the scaffold commands handed over, whether `wire-acceptance.js --prove` passed, whether `CONTEXT-MAP.md` was written, and the next skill to run.
 
 ## Gotchas
 

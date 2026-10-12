@@ -52,7 +52,7 @@ The shape a feature file needs, one Feature, every scenario with an id, no id tw
 ## Consequences
 
 - The vendored `bdd-scenarios` skill writes no `# SC-n` line. The rule lives in `docs/agents/chain.md`, and the edit hook names the scenario that lacks one the moment the document is written.
-- `project-init` gains a step that wires the runner, and `scripts/stacks.tsv` says every scaffold installs one. The .NET and Python wiring was written from the runners' documentation and not run; `TODO.md` carries that.
+- `project-init` gains a step that wires the runner, and `scripts/stacks.tsv` says every scaffold installs one. The wiring is `scripts/wire-acceptance.js`, so that the skill and CI run the same code, and the acceptance workflow proves it on every row: the .NET and Python wiring had been written from the runners' documentation, and the first run found Reqnroll's project template targeting net8.0 whatever SDK runs it.
 - A prototype repo, which has only a PRD and BDD documents, is held to the same shape.
 - CI runs the extractor before the runner on every stack. `--check` stays for a developer who wants to know whether the local folder is current.
 - The terms feature file, scenario id and acceptance test are in `GLOSSARY.md`.
