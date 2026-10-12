@@ -21,6 +21,11 @@
 // Usage:
 //   node scripts/check-harness.js                 check this repo
 //   node scripts/check-harness.js --root=../other check another one
+//   node scripts/check-harness.js --list          one line per invariant: its name, its line here, the paths it reads
+// --list is for a reader with one failure or one file in hand: it says which invariant to read and
+// where, rather than having the whole file read in slices to find it. The paths come from running
+// each invariant alone through a view that records what it asks for, so the list is never stale.
+const fs = require("fs");
 const path = require("path");
 const lib = require("./lib");
 const docsCheck = require("./docs-check");
@@ -509,9 +514,41 @@ const format = r => [
     r.summary,
 ].join("\n");
 
-module.exports = { check, format, reads, PATHS, INVARIANTS, CLAUDE_HOOKS, launcher };
+// Which invariant reads what: each is run alone against the repo through a view that records every
+// path asked of it, with its own roster so the roster's reads land on the invariants that use it,
+// and its line in this file is found by its name. The verdicts are dropped; this answers "where do
+// I look", not "is it right". The suite probes the same way to hold PATHS to what is read
+// (theEditTriggerCoversEveryPathTheInvariantsRead); this is that probe, printed for a person.
+function trace(repo) {
+    repo = viewOf(repo);
+    const source = fs.readFileSync(__filename, "utf8").split(/\r?\n/);
+    const quiet = { ok: () => {}, skip: () => {} };
+    return INVARIANTS.map(invariant => {
+        const asked = new Set();
+        const recording = new Proxy(repo, {
+            get: (target, how) => typeof target[how] !== "function" ? target[how] : (...args) => {
+                const paths = [].concat(args[0] ?? []).filter(p => typeof p === "string");
+                for (const p of paths.length ? paths : ["."]) asked.add(path.posix.normalize(p.split("\\").join("/")).replace(/\/+$/, "") || ".");
+                return target[how](...args);
+            },
+        });
+        try { invariant(quiet, recording, rosterOf(recording)); } catch { /* a failure is check()'s to report */ }
+        // A folder the invariant listed stands for everything it then read under it: the roster walks
+        // every skill, and sixty SKILL.md paths say less than `.agents/skills`.
+        const reads = [...asked].filter(p => ![...asked].some(q => q !== p && p.startsWith(`${q}/`))).sort();
+        return { name: invariant.name, line: source.findIndex(l => l.startsWith(`function ${invariant.name}(`)) + 1, reads };
+    });
+}
+
+module.exports = { check, format, trace, reads, PATHS, INVARIANTS, CLAUDE_HOOKS, launcher };
 
 if (require.main === module) {
+    if (lib.args().includes("--list")) {
+        const rows = trace(repoView.worktree(lib.root()));
+        const width = Math.max(...rows.map(r => r.name.length));
+        for (const r of rows) console.log(`${r.name.padEnd(width)}  scripts/check-harness.js:${r.line}  reads ${r.reads.join(", ") || "nothing"}`);
+        process.exit(0);
+    }
     const r = check(repoView.worktree(lib.root()));
     console.log(format(r));
     process.exit(r.failed.length ? 1 : 0);

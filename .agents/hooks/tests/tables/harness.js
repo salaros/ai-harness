@@ -515,3 +515,22 @@ exports.theEditTriggerCoversEveryPathTheInvariantsRead = function theEditTrigger
             missed.join("\n") || "nothing was read");
     }
 };
+
+// `--list` answers "which invariant, and where" for a reader holding one failure or one file. It is
+// trusted only while every row points at a real declaration and names what that invariant reads:
+// a line that drifts or a read that goes missing would send the reader to the wrong place, which
+// is worse than the slice-by-slice reading it replaces.
+exports.traceNamesEveryInvariantWhereItIs = function traceNamesEveryInvariantWhereItIs(t) {
+    const rows = checkHarness.trace(repoView.worktree(lib.checkout));
+    const source = fs.readFileSync(path.join(lib.checkout, "scripts", "check-harness.js"), "utf8").split(/\r?\n/);
+    t.ok(rows.map(r => r.name).join() === checkHarness.INVARIANTS.map(i => i.name).join(),
+        "trace: one row per invariant, in the order they run", rows.map(r => r.name).join(", "));
+    const astray = rows.filter(r => !(source[r.line - 1] || "").startsWith(`function ${r.name}(`));
+    t.ok(!astray.length, "trace: every row's line is that invariant's declaration", astray.map(r => `${r.name}:${r.line}`).join(", "));
+    const blind = rows.filter(r => !r.reads.length);
+    t.ok(!blind.length, "trace: every invariant is seen reading something", blind.map(r => r.name).join(", "));
+    const hooks = rows.find(r => r.name === "gitHooksAreExecutable");
+    t.ok(hooks && hooks.reads.some(p => p.startsWith(".githooks")), "trace: the hooks invariant is seen reading .githooks", hooks && hooks.reads.join(", "));
+    const roster = rows.find(r => r.name === "noSkillIsMissingFromDisk");
+    t.ok(roster && roster.reads.some(p => p.startsWith(".agents/skills")), "trace: a roster invariant is seen reading the skills folder", roster && roster.reads.join(", "));
+};

@@ -80,6 +80,7 @@ Everyday commands:
 ```bash
 node scripts/docs-check.js                         # check the documentation chain
 node scripts/check-harness.js                      # check the harness itself
+node scripts/check-harness.js --list               # which invariant reads which files, and where it is
 npx skills add <owner/repo> -s <skill> -a claude-code codex -y
 node scripts/skills.js relink                      # run after adding or updating skills
 ```
