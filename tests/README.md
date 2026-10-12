@@ -14,6 +14,15 @@ All automated tests are stored in this folder.
   a release).
 - **Smoke tests** — a minimal subset that verifies the application starts and
   its core paths work. Run after every deploy.
+- **Acceptance tests** — the scenarios of the BDD documents, run as written.
+  `node scripts/bdd-features.js` writes each `docs/bdd/NNNN-<slug>.md` out as
+  `tests/features/NNNN-<slug>.feature`, generated and ignored by Git, and the
+  stack's Gherkin runner executes them against the step definitions kept here
+  (`<Name>.Acceptance/` with Reqnroll on .NET, `acceptance/` with cucumber-js
+  and cucumber-tsflow on Node or with pytest-bdd on Python). Run the extractor
+  before the runner, locally and in CI. A scenario whose step has no
+  definition fails rather than passing as pending, and a feature file is never
+  edited by hand: the document is.
 
 ## Coverage
 

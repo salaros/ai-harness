@@ -42,6 +42,8 @@ scripts/on-manifest-change.js --dry-run	paths-none.txt	0	-	nothing to restore	un
 scripts/on-manifest-change.js --dry-run	paths-empty.txt	0	-	nothing to restore	an empty change list restores nothing
 scripts/check-commit-msg.js	msg-conventional.txt	0	-	conventional	the command line reaches the decision; tables.js holds the rest
 scripts/check-todo.js -	todo-valid.txt	0	-	all well formed	the command line reaches the decision; tables.js holds the rest
+scripts/bdd-features.js -h	empty.json	0	-	Usage: node scripts/bdd-features.js	the extractor prints its usage
+scripts/bdd-features.js --check	empty.json	1	plant docs/bdd/0001-pay.md # BDD-0001: Pay	docs/bdd/0001-pay.md: has no ```gherkin block	the command line reaches the decision and --check writes nothing; tables/bdd-features.js holds the rest
 scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	-	nothing staged from the documentation chain	pre-commit says what it would check without touching the index
 scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	plant TODO.md # TODO	would check the unstaged TODO.md	a TODO.md nobody staged is still read, where the old shell pipe saw nothing
 scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	plant GLOSSARY.md # Glossary	no glossary staged	a glossary the commit does not touch is not the commit's to check

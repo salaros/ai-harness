@@ -1,6 +1,6 @@
 ---
 name: project-init
-description: Turn a repo cloned from this template into a named project. Asks the developer, through the harness's own question tool, for the project name and purpose, the language its prose is written in, where the requirements live, the unit type, the stack, the issue tracker if there is one, and whether agents may merge the pull requests they sweep, and records the answers in MEMORY.md, README.md and docs/agents/issue-tracker.md, plus a CONTEXT-MAP.md for a microservices repo and a `gh pr merge` permission rule for each harness it wires. Reads an existing INTENT.md for the name and purpose, and offers to write one when absent. Use when a project starts, when MEMORY.md is missing, or when the stack or issue tracker changes.
+description: Turn a repo cloned from this template into a named project. Asks the developer, through the harness's own question tool, for the project name and purpose, the language its prose is written in, where the requirements live, the unit type, the stack, the issue tracker if there is one, and whether agents may merge the pull requests they sweep, and records the answers in MEMORY.md, README.md and docs/agents/issue-tracker.md, plus a CONTEXT-MAP.md for a microservices repo and a `gh pr merge` permission rule for each harness it wires, and once the stack is scaffolded points its Gherkin runner at the feature files written from docs/bdd/. Reads an existing INTENT.md for the name and purpose, and offers to write one when absent. Use when a project starts, when MEMORY.md is missing, or when the stack or issue tracker changes.
 disable-model-invocation: true
 ---
 
@@ -141,7 +141,44 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
    Done when `dotnet husky run --group pre-push` reports the task, not an empty run. Skip this step entirely for any other stack.
 
-10. **Set up the context map, for `microservices` only.** Each service owns its vocabulary, so the repo is multi-context, and the `domain-modeling` skill, both agents and the session-start hook recognise that by a root `CONTEXT-MAP.md`. Write it if it is absent, from the template below, with the one `Shared` entry and no services yet: `domain-modeling` adds a service's entry, its `src/<Service>/CONTEXT.md` and the `GLOSSARY.md` beside it when the first term of that service is resolved. Keep the root `CONTEXT.md` and `GLOSSARY.md` for the terms every service uses. On an update that changes the unit type away from `microservices`, leave an existing map alone and say so in the report.
+10. **Wire the acceptance runner.** Every scaffold installs the stack's Gherkin runner, and `node scripts/bdd-features.js` writes the BDD documents out as `tests/features/NNNN-<slug>.feature`, ignored by Git (`docs/agents/chain.md` has the shape a document keeps). After the developer says the scaffold has run, point the runner at that folder and make a step without a definition fail the run rather than pass as pending. Write the files below by hand: `scripts/stacks.tsv` cannot carry them, since a `&&` inside a file would split the scaffold cell.
+
+   For .NET, the `reqnroll-project` template made `tests/{Name}.Acceptance/` with a sample under `Features/` and `StepDefinitions/`: delete the sample feature and its steps, add the groups below to the `.csproj` so the project compiles the shared folder in place, and write `tests/{Name}.Acceptance/reqnroll.json`.
+
+   ```xml
+   <PropertyGroup>
+     <ReqnrollUseIntermediateOutputPathForCodeBehind>true</ReqnrollUseIntermediateOutputPathForCodeBehind>
+   </PropertyGroup>
+   <ItemGroup>
+     <ReqnrollFeatureFile Include="..\features\**\*.feature" Link="Features\%(RecursiveDir)%(Filename)%(Extension)" />
+   </ItemGroup>
+   ```
+
+   ```json
+   {
+     "$schema": "https://schemas.reqnroll.net/reqnroll-config-latest.json",
+     "runtime": { "missingOrPendingStepsOutcome": "Error" }
+   }
+   ```
+
+   For Node (npm, pnpm or yarn), write `cucumber.cjs` at the root, set `"experimentalDecorators": true` in `tsconfig.json` for cucumber-tsflow's `@binding()` classes, and add the script `"test:acceptance": "node scripts/bdd-features.js && cucumber-js"` to `package.json`. Step definitions go in `tests/acceptance/*.ts`.
+
+   ```js
+   module.exports = {
+     default: {
+       paths: ["tests/features/**/*.feature"],
+       requireModule: ["tsx/cjs"],
+       require: ["tests/acceptance/**/*.ts"],
+       strict: true,
+     },
+   };
+   ```
+
+   For Python, add `bdd_features_base_dir = "tests/features"` under `[tool.pytest.ini_options]` in `pyproject.toml`, and write `tests/acceptance/test_features.py` holding `from pytest_bdd import scenarios` and `scenarios(".")`, which binds every feature under that folder; a step without a definition raises. Step definitions go beside it.
+
+   Done when the runner's own command (`dotnet test`, the `test:acceptance` script, `uv run pytest`) reads `tests/features/` and a step without a definition fails the run. Every stack with a scaffold has a runner, so this step is skipped only for a stack with no row.
+
+11. **Set up the context map, for `microservices` only.** Each service owns its vocabulary, so the repo is multi-context, and the `domain-modeling` skill, both agents and the session-start hook recognise that by a root `CONTEXT-MAP.md`. Write it if it is absent, from the template below, with the one `Shared` entry and no services yet: `domain-modeling` adds a service's entry, its `src/<Service>/CONTEXT.md` and the `GLOSSARY.md` beside it when the first term of that service is resolved. Keep the root `CONTEXT.md` and `GLOSSARY.md` for the terms every service uses. On an update that changes the unit type away from `microservices`, leave an existing map alone and say so in the report.
 
    ```md
    # Context Map
@@ -155,11 +192,11 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
    Done when `CONTEXT-MAP.md` exists and names `CONTEXT.md`. Skip this step for every other unit type.
 
-11. **Close the loop.** Ask the developer to commit (`git add -A`, then a commit such as `initialise <name>`). If Requirements was `none yet`, hand off to the `pdd` skill when the idea is still in question, or to `brd` when the need is settled; otherwise point out that the `product-manager` agent can start the documentation chain from the requirements location now on record. The post-merge Git hook restores whatever `scripts/stacks.tsv` says for the changed manifests, so the row added in step 8 is all it needs.
+12. **Close the loop.** Ask the developer to commit (`git add -A`, then a commit such as `initialise <name>`). If Requirements was `none yet`, hand off to the `pdd` skill when the idea is still in question, or to `brd` when the need is settled; otherwise point out that the `product-manager` agent can start the documentation chain from the requirements location now on record. The post-merge Git hook restores whatever `scripts/stacks.tsv` says for the changed manifests, so the row added in step 8 is all it needs.
 
 ## Report
 
-The facts recorded, whether `INTENT.md` was read, written or declined, whether the Git hooks were installed, where the merge permission was written or that it was declined, which files changed, the scaffold commands handed over, whether `CONTEXT-MAP.md` was written, and the next skill to run.
+The facts recorded, whether `INTENT.md` was read, written or declined, whether the Git hooks were installed, where the merge permission was written or that it was declined, which files changed, the scaffold commands handed over, whether the acceptance runner was wired to `tests/features/`, whether `CONTEXT-MAP.md` was written, and the next skill to run.
 
 ## Gotchas
 

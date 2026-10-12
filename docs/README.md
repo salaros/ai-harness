@@ -42,7 +42,9 @@ Contains: context, requirements (`TR-n`) by ISO/IEC 25010 category, each with a 
 
 ## BDD, behaviour scenarios
 
-**Behaviour as Given / When / Then.** One feature file per document, scenarios grouped by rule, each scenario citing the `EARS-NNNN/REQ-n` it exercises; edge cases and failure paths are scenarios too. These become the acceptance tests. The `bdd-scenarios` skill writes it.
+**Behaviour as Given / When / Then.** One feature per document, scenarios grouped by rule, each scenario citing the `EARS-NNNN/REQ-n` it exercises; edge cases and failure paths are scenarios too. The `bdd-scenarios` skill writes it.
+
+The document is also the acceptance test. Its scenarios are in ```gherkin blocks, one `Feature:` in all, and each scenario has `# SC-n` on the line above it (above its tags, at the start of the line): the item a SPEC cites as `BDD-NNNN/SC-n`. `node scripts/bdd-features.js` writes the blocks out as `tests/features/NNNN-<slug>.feature`, never committed, and the stack's Gherkin runner (Reqnroll on .NET, cucumber-js with cucumber-tsflow on Node, pytest-bdd on Python) runs them against the step definitions under `tests/`. A scenario whose step has no definition fails, which is where `tdd` starts.
 
 ## RFC, Request for Comments
 
@@ -84,7 +86,7 @@ Neither folder is checked, but the strategy and the positioning each carry a `**
 
 ## After the documents
 
-Tests (`tests/`), the implementation plan (`.scratch/`, published to Jira by `to-tickets`) and code (`src/`) are the remaining stages; they are not documents and the validator does not read them.
+Tests (`tests/`), the implementation plan (`.scratch/`, published to Jira by `to-tickets`) and code (`src/`) are the remaining stages; they are not documents and the validator does not read them. The BDD stage reaches `tests/` on its own: `scripts/bdd-features.js` writes its documents out as the feature files under `tests/features/` that the runner executes.
 
 ## Browsing them
 

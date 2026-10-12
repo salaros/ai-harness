@@ -49,6 +49,7 @@ Read by `devops` and `engineer`.
 | The request is… | Skill(s) |
 | --- | --- |
 | behaviour to build or fix | `tdd`; `implement` when working from a spec or tickets; `ponytail` throughout |
+| acceptance scenarios to run or bind, once a BDD document exists | `node scripts/bdd-features.js`, then the stack's Gherkin runner; an unbound step is `tdd`'s red, its definition the green |
 | a technical requirement to pin down: performance, availability, security, compatibility, compliance, a constraint; or engineering-driven work with no business or product document behind it | `trd`, then `docs-check` |
 | a technical problem with two or more viable solutions and no obvious winner | `rfc` before the ADR and the SPEC; `docs-check` after it |
 | a decision hard to reverse, or a design to write down before it is built | `grill-with-docs` writes the ADR, `spec` the SPEC, `create-implementation-plan` the IPLAN; `docs-check` after each |
@@ -59,6 +60,8 @@ Read by `devops` and `engineer`.
 | "what did we agree to fix later" | `duck-debt` for the `TODO`, `FIXME`, `HACK` and `XXX` comments; `ponytail-debt` for the `ponytail:` ones |
 | "that did not land" | `wait-what` |
 | the end of a session | `duck-debt`, then `retro` to improve this harness, then `handoff` for a successor |
+
+The feature files under `tests/features/` are generated from `docs/bdd/`: change the document and run the extractor again, never the file. Which runner a stack has is in `scripts/stacks.tsv`, `project-init` wires it, and `docs/agents/chain.md` has the shape a document keeps to be extracted.
 
 An ADR is cross-cutting: write it the moment a decision is forced, whatever stage you are at, and derive it from whatever forced it. So is an RFC, for a decision that needs arguing first; once the user accepts one, each hard-to-reverse choice it settled becomes an ADR citing it.
 
