@@ -42,6 +42,15 @@ try {
     }
 } catch { /* nothing to say */ }
 if (fs.existsSync("docs/adr")) say(`decisions: docs/adr (${fs.readdirSync("docs/adr").length} ADRs)`);
+// An iteration that outlives one context window keeps what it decided and verified in
+// .scratch/<slug>/notes.md (.scratch/README.md). A session picking the work up reads that first:
+// it is a screen, where the transcript it would otherwise read back is a hundred of them.
+try {
+    const notes = fs.readdirSync(".scratch", { withFileTypes: true })
+        .filter(d => d.isDirectory() && fs.existsSync(`.scratch/${d.name}/notes.md`))
+        .map(d => `.scratch/${d.name}/notes.md`);
+    if (notes.length) say(`notes in progress: ${notes.join(", ")}. Read them before the transcript or the commit log`);
+} catch { /* no .scratch folder */ }
 // The pull requests open on GitHub, by number, so the agent can offer a pr-sweep; the skill says how
 // to ask. Listed every session rather than once: an offer nobody has to remember cannot be used up by
 // a worktree, a harness or a session that never asked, and a pull request that gained comments since

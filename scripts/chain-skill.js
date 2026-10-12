@@ -25,12 +25,18 @@ const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // real stage behind it.
 const defaultShapeOf = stage => stage.stage === featureFile.STAGE ? featureFile.SHAPE : null;
 
+// The notes an iteration keeps while it runs, `.scratch/<slug>/notes.md` (.scratch/README.md). They
+// share the IPLAN's folder and no skill writes them, so a hook that called them the plan would send
+// the author to load `create-implementation-plan` for a file that is nothing of the kind.
+const NOTES = /^\.scratch\/[^/]+\/notes\.md$/;
+
 // The stage a repo-relative path belongs to: the row whose "Lives in" folder it sits under, the
 // most specific where several match, so a `docs/prd/` row wins over a hypothetical `docs/` one.
 // The folder itself is not a file in it, and a folder that merely starts with the same letters is
-// a different folder.
+// a different folder. An iteration's notes belong to no stage, whatever folder they sit in.
 function stageFor(rel, stages) {
     const file = String(rel).split("\\").join("/").replace(/^\.\//, "");
+    if (NOTES.test(file)) return null;
     let best = null;
     for (const s of stages) {
         const dir = String(s.lives || "").replace(/\/*$/, "/");
@@ -121,4 +127,4 @@ function readTranscript(file) {
     } catch { return null; }
 }
 
-module.exports = { stageFor, used, decide, readTranscript };
+module.exports = { stageFor, used, decide, readTranscript, NOTES };
