@@ -8,7 +8,7 @@ const lib = require("../../lib");
 const docsCheck = require("../../../../scripts/docs-check");
 const stagedDocs = require("../../../../scripts/check-staged-docs");
 const repoView = require("../../../../scripts/repo-view");
-const { withRoot } = require("../fixtures");
+const { withRoot, smallest, smallestChain } = require("../fixtures");
 
 // Which files are the chain. The edit hook and the pre-commit hook both ask inChain, so one table
 // pins what an edit and a commit check.
@@ -207,6 +207,38 @@ exports.docsCheckDiscovery = function docsCheckDiscovery(t) {
     t.ok(r.for("brd/9703-settled.md").length === 0, "docs-check: a BRD is an entry stage, starting from a source while PDDs exist", r.all);
 };
 
+// The fixtures' smallest documents (fixtures.js: smallest, smallestChain) are held to docs-check
+// here, both ways. The chain of them covers every document stage of this checkout's table and
+// passes, so a stage that gains a rule the fixture does not know fails here before a check built on
+// the fixture does. And every line the fixture writes for a rule is load-bearing: drop it, and
+// docs-check names what is missing. The scenario line in the BDD document and the closing fence are
+// not in this list, since docs-check demands neither; the fixture's comment says why they are there.
+exports.smallestDocumentsAreWhatDocsCheckDemands = function smallestDocumentsAreWhatDocsCheckDemands(t) {
+    const chain = smallestChain();
+    const problemsOf = docs => docsCheck.check(lib.checkout, chainView(Object.fromEntries(docs.map(d => [d.file, d.lines])))).problems;
+    const stages = docsCheck.readChain(repoView.worktree(lib.checkout)).stages.filter(s => s.folder).map(s => s.stage);
+    t.ok(chain.map(d => d.stage).join() === stages.join(), "smallest chain: one document per document stage, in table order", chain.map(d => d.stage).join());
+    const clean = problemsOf(chain);
+    t.ok(!clean.length, "smallest chain: docs-check accepts the chain of smallest documents", clean.join("\n"));
+    const pieces = [
+        // the line, what docs-check says without it, what the line is
+        [/^# [A-Z]+-\d{4}:/, /no level-1 heading|first heading must start with/, "the heading"],
+        [/^\*\*Derived from:\*\*/, /missing a "\*\*Derived from:\*\*" line/, "the Derived from line"],
+        [/^\*\*Status:\*\*/, /"\*\*Status:\*\*" line/, "the Status line"],
+        [/^```gherkin/, /has no ```gherkin block/, "the gherkin block"],
+        [/^# SC-1$/, /has no `# SC-n` line/, "the # SC-n line"],
+    ];
+    for (const d of chain) {
+        for (const [line, says, what] of pieces) {
+            const at = d.lines.findIndex(l => line.test(l));
+            if (at < 0) continue;
+            const without = chain.map(o => o === d ? { ...d, lines: d.lines.filter((_, i) => i !== at) } : o);
+            const said = problemsOf(without).filter(p => p.startsWith(`${d.file}:`));
+            t.ok(said.some(p => says.test(p)), `smallest ${d.stage}: ${what} is there because docs-check demands it`, said.join("\n") || "(none)");
+        }
+    }
+};
+
 // The two columns are optional in the table's shape: a table written before them keeps ADR's old
 // rule, and a value the parser does not know is reported rather than guessed at.
 exports.readChainCitesAndStatus = function readChainCitesAndStatus(t) {
@@ -226,11 +258,10 @@ exports.readChainCitesAndStatus = function readChainCitesAndStatus(t) {
 
 // MEMORY.md's Requirements takes part in traceability, so it follows the same reference rule.
 exports.docsCheckMemoryRequirements = function docsCheckMemoryRequirements(t) {
+    // A BRD that exists, so a Requirements line has a document to name.
+    const brd = smallest("BRD", 9300, "https://example.com/brief");
     const memory = lines => {
-        const { problems } = docsCheck.check(lib.checkout, chainView({
-            "docs/brd/9300-real.md": ["# BRD-9300: Real", "", "**Derived from:** https://example.com/brief"],
-            "MEMORY.md": lines,
-        }));
+        const { problems } = docsCheck.check(lib.checkout, chainView({ [brd.file]: brd.lines, "MEMORY.md": lines }));
         return problems.filter(p => p.startsWith("MEMORY.md:"));
     };
     const cases = [
