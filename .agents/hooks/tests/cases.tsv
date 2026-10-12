@@ -22,6 +22,9 @@
 .agents/hooks/guard-command.js	guard-quoted-branch.json	2	-	blocked this command	a force push after a quoted argument is still blocked
 .agents/hooks/guard-command.js	guard-flag-in-next-command.json	0	-	-	a flag in the command after && does not belong to the push
 .agents/hooks/guard-command.js	guard-unknown-shape.json	2	-	blocked this command	a payload in no known shape is scanned, not waved through
+.agents/hooks/chain-skill.js	claude-bdd-doc.json	2	plant transcript.jsonl {"name":"Skill","input":{"skill":"prd"}}	Load it first (/bdd-scenarios)	a BDD document created in a session that never loaded its skill is blocked
+.agents/hooks/chain-skill.js	claude-bdd-doc.json	0	plant transcript.jsonl {"name":"Skill","input":{"skill":"bdd-scenarios"}}	"additionalContext":"chain skill: docs/bdd/9999-hook-test.md is the BDD stage.	with the skill loaded the creation passes and the shape reaches the agent as Claude Code's hook context
+.agents/hooks/chain-skill.js	claude-bdd-doc.json	0	-	# SC-n	a BDD creation the hook cannot check is warned, and the warning carries the shape
 .agents/hooks/session-start.js	empty.json	0	-	branch:	session brief always exits 0
 .agents/hooks/session-start.js	empty.json	0	plant INTENT.md # INTENT.md	intent: product and MVP stories in INTENT.md	the session brief points at INTENT.md when a project keeps one
 .agents/hooks/session-start.js	empty.json	0	plant GLOSSARY.md # Glossary	domain: glossary in GLOSSARY.md	the session brief points at GLOSSARY.md when a project keeps its terms there

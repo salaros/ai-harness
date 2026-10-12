@@ -21,11 +21,10 @@ const fs = require("fs");
 const path = require("path");
 const lib = require("./lib");
 const docsCheck = require("./docs-check");
-const { extract, MARK, WRITER } = require("./feature-file");
+// STAGE is the stage's name in the chain table; its folder is the table's to decide.
+const { extract, MARK, WRITER, STAGE } = require("./feature-file");
 
 const DEFAULT_OUT = "tests/features";
-// The stage, by the name the chain table gives it; its folder is the table's to decide.
-const STAGE = "BDD";
 
 // Every BDD document of the chain as the file to write for it, under `out`, with the problems of the
 // documents refused. The chain is read the way docs-check reads it, so a file name the chain rejects

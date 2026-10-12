@@ -11,13 +11,29 @@
 // Every problem names the file, so a caller prints or collects it as it is. A `# language: en` line
 // is kept first, because Gherkin reads it only there. Two callers share the rule so that what the
 // pre-commit hook refuses is exactly what would not run: scripts/docs-check.js reports the problems
-// for every BDD document of the chain, and scripts/bdd-features.js writes the files.
+// for every BDD document of the chain, and scripts/bdd-features.js writes the files. A third,
+// scripts/chain-skill.js, hands SHAPE to the author at the moment such a document is created.
 // Not a command: nothing here reads the disk, prints or exits.
 
 // The script that writes the files, named in each one's header so that a stale file can be told
 // from a hand-written one in the same folder.
 const WRITER = "scripts/bdd-features.js";
 const MARK = `by ${WRITER}`;
+
+// The stage this rule holds, by the name the chain table in AGENTS.md gives it. Every caller finds
+// the stage by this name and takes its folder from the table, so the folder is written nowhere here.
+const STAGE = "BDD";
+
+// The rule in one paragraph, for the author about to write a document of the stage. The skill that
+// writes the stage knows Gherkin and not this chain's `# SC-n` line, so a document written from the
+// skill alone is refused by the edit hook a moment later and repaired by hand; the chain hook says
+// this first instead. It names what extract() refuses and nothing more, so the author and docs-check
+// agree on what a document must look like.
+const SHAPE = "A BDD document is written to run (ADR-0008): put the scenarios in ```gherkin blocks under one `Feature:`, "
+    + "with English keywords and the prose language in the titles and step text, and `# SC-n` on the line directly above "
+    + "each scenario (above its tags, at the start of the line), the id a SPEC cites as BDD-NNNN/SC-n. "
+    + "docs/agents/chain.md holds the rule and docs-check refuses a document that breaks it; whatever skill writes the "
+    + "scenarios, the `# SC-n` line is yours to add.";
 
 // A fenced block opens on three or more backticks or tildes, optionally indented up to three spaces,
 // with the language right after; it closes on the same character, at least as many of them, and
@@ -96,4 +112,4 @@ function extract(text, file) {
     return { feature: lines.join("\n") + "\n", ids: [...seen.keys()], problems };
 }
 
-module.exports = { extract, MARK, WRITER };
+module.exports = { extract, MARK, WRITER, STAGE, SHAPE };

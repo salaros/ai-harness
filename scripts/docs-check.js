@@ -39,9 +39,6 @@ const path = require("path");
 const lib = require("./lib");
 const repoView = require("./repo-view");
 const featureFile = require("./feature-file");
-
-// The stage whose documents run, by the name the chain table gives it.
-const BDD_STAGE = "BDD";
 const { readFacts, readIntent } = require("./project-facts");
 
 const DOCS = "docs", AGENTS = "AGENTS.md", MEMORY = "MEMORY.md", INTENT = "INTENT.md";
@@ -249,7 +246,7 @@ function check(root, view = repoView.worktree(root)) {
         // A BDD document is the acceptance test (ADR-0008): what scripts/bdd-features.js could not
         // write out as a feature file is a broken document, reported here so the commit is refused
         // before the runner sees it. The rule is feature-file.js's, so the two never disagree.
-        if (stageOf[d.folder].stage === BDD_STAGE) problems.push(...featureFile.extract(d.text, d.file).problems);
+        if (stageOf[d.folder].stage === featureFile.STAGE) problems.push(...featureFile.extract(d.text, d.file).problems);
 
         for (const [ref, stage, num, item] of d.text.matchAll(refRe)) {
             const docId = `${stage}-${num}`;

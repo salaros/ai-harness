@@ -9,6 +9,7 @@ const chainSkill = require("../../../../scripts/chain-skill");
 const STAGES = [
     { stage: "PRD", lives: "docs/prd/", folder: "prd", skills: ["prd"] },
     { stage: "ADR", lives: "docs/adr/", folder: "adr", skills: ["domain-modeling"] },
+    { stage: "BDD", lives: "docs/bdd/", folder: "bdd", skills: ["bdd-scenarios"] },
     { stage: "TDD", lives: "tests/", folder: null, skills: ["tdd"] },
     { stage: "IPLAN", lives: ".scratch/", folder: null, skills: ["create-implementation-plan", "to-tickets"] },
     { stage: "Code", lives: "src/", folder: null, skills: ["implement", "codebase-design"] },
@@ -102,4 +103,37 @@ exports.chainSkillDecisions = function chainSkillDecisions(t) {
     t.ok(unseenCode.verdict === "warn" && unseenCode.message.includes("load `codebase-design` before")
         && unseenCode.message.includes("`implement` is the user's to start"),
         "chain skill: a warning names the loadable skill and sets the user's aside", unseenCode.message);
+};
+
+// A stage can have a shape rule its skill does not know: a BDD document is held to the shape its
+// feature file needs, and the vendored skill writes Gherkin without this chain's `# SC-n` line. Every
+// message about such a stage carries the rule, and when the skill is loaded and there is nothing to
+// block the decision still says it once, as a note rather than a verdict, so the document is written
+// right the first time instead of refused by the edit hook and repaired.
+exports.chainSkillPointsAtAShape = function chainSkillPointsAtAShape(t) {
+    const shapeOf = stage => stage.stage === "BDD" ? "SHAPE: one Feature, # SC-n above each scenario." : null;
+    const bdd = `{"name":"Skill","input":{"skill":"bdd-scenarios"}}`;
+    const decide = (files, transcript) => chainSkill.decide(files, STAGES, transcript, () => false, shapeOf);
+    const blocked = decide(["docs/bdd/0001-checkout.md"], "");
+    t.ok(blocked.verdict === "block" && blocked.message.includes("/bdd-scenarios") && blocked.message.endsWith(shapeOf(STAGES[2])),
+        "chain skill: a blocked BDD creation names the skill and ends with the shape", blocked.message);
+    const warned = decide(["docs/bdd/0001-checkout.md"], null);
+    t.ok(warned.verdict === "warn" && warned.message.includes("# SC-n"), "chain skill: so does the warning when no transcript came", warned.message);
+    const noted = decide(["docs/bdd/0001-checkout.md"], bdd);
+    t.ok(noted && noted.verdict === "note" && noted.files[0] === "docs/bdd/0001-checkout.md"
+        && noted.message.includes("docs/bdd/0001-checkout.md is the BDD stage") && noted.message.includes("# SC-n"),
+        "chain skill: with the skill loaded the shape is still said, as a note", JSON.stringify(noted));
+    t.ok(decide(["docs/prd/0001-billing.md"], `{"name":"Skill","input":{"skill":"prd"}}`) === null,
+        "chain skill: a stage with no shape and its skill loaded gets nothing");
+    t.ok(decide(["docs/prd/0001-billing.md"], "").message.includes("# SC-n") === false,
+        "chain skill: a block on a stage with no shape carries none");
+    const both = decide(["docs/bdd/0001-checkout.md", "docs/prd/0001-billing.md"], bdd);
+    t.ok(both.verdict === "block" && both.files[0] === "docs/prd/0001-billing.md",
+        "chain skill: a block on another file outranks the note", JSON.stringify(both));
+    const noSkill = chainSkill.decide(["docs/bdd/0001-checkout.md"], [{ stage: "BDD", lives: "docs/bdd/", folder: "bdd", skills: [] }], "", () => false, shapeOf);
+    t.ok(noSkill && noSkill.verdict === "note", "chain skill: a stage with no skill to check still gets its shape", JSON.stringify(noSkill));
+    // The default rule is scripts/feature-file.js's, so the author hears what docs-check refuses.
+    const real = chainSkill.decide(["docs/bdd/0001-checkout.md"], STAGES, bdd);
+    for (const want of ["```gherkin", "`Feature:`", "`# SC-n`", "ADR-0008", "docs/agents/chain.md", "docs-check"])
+        t.ok(real && real.verdict === "note" && real.message.includes(want), `chain skill: the BDD shape names ${want}`, real && real.message);
 };
