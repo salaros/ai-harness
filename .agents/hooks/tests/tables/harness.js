@@ -63,7 +63,7 @@ exports.rootDecisions = function rootDecisions(t) {
     });
 };
 
-// .claude/settings.json wires the three hooks, and nothing read it back after an update merged it.
+// .claude/settings.json wires the four hooks, and nothing read it back after an update merged it.
 // Each row is a settings file and the failure claudeHookLaunchersAreWired must report about it, run
 // through check() against a root holding nothing else, so every other invariant stands down.
 exports.hookLauncherDecisions = function hookLauncherDecisions(t) {

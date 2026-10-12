@@ -115,7 +115,7 @@ const CLAUDE_HOOKS = [
     { event: "PostToolUse", matcher: "Edit|Write|MultiEdit", script: "check-edit.js" },
 ];
 
-// The one command text that launches a hook, written once here rather than three times in a settings
+// The one command text that launches a hook, written once here rather than four times in a settings
 // file nobody re-reads. node asks git for the root instead of reading $CLAUDE_PROJECT_DIR, because
 // Copilot reads the same file without setting that variable and denies a tool whose pre-tool hook
 // errors. The trailing `; exit $LASTEXITCODE` is for PowerShell, which reports a native exit 2 as 1:
@@ -128,8 +128,8 @@ const launcher = script =>
 
 // Nothing reads .claude/settings.json back after an update merges it, and a hook that stopped being
 // wired fails the way every harness failure does: in silence, with the session simply not checking
-// anything any more. So the file is held to the table above -- each of our three scripts launched
-// once, on its event, behind its matcher, by the launcher text every shell runs. Only those three
+// anything any more. So the file is held to the table above -- each of our four scripts launched
+// once, on its event, behind its matcher, by the launcher text every shell runs. Only those four
 // entries are ours; a hook or a permission the project added is its own business and is not read.
 function claudeHookLaunchersAreWired(t, repo) {
     const file = ".claude/settings.json";
