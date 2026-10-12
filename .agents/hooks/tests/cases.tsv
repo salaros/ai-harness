@@ -50,6 +50,7 @@ scripts/bdd-features.js --check	empty.json	1	plant docs/bdd/0001-pay.md # BDD-00
 scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	-	nothing staged from the documentation chain	pre-commit says what it would check without touching the index
 scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	plant TODO.md # TODO	would check the unstaged TODO.md	a TODO.md nobody staged is still read, where the old shell pipe saw nothing
 scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	plant GLOSSARY.md # Glossary	no glossary staged	a glossary the commit does not touch is not the commit's to check
+scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	plant .github/workflows/ci.yml name: ci	no workflow staged	a workflow on disk but not staged is not the commit's to lint
 scripts/githook.js pre-push --dry-run	paths-empty.txt	0	-	would format-check	pre-push says what it would check
 scripts/githook.js post-merge --dry-run	paths-empty.txt	0	-	-	post-merge works out the merge diff itself
 scripts/githook.js commit-msg .agents/hooks/tests/msg-conventional.txt	paths-empty.txt	0	-	conventional	commit-msg reads the file Git names

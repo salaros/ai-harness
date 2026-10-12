@@ -1,12 +1,14 @@
 name: harness
 
 # Proves the agent harness itself: the hook suite (.agents/hooks/test.js, which also checks that
-# every skill in skills-lock.json is on disk), and the documentation chain validator. The pre-push
-# formatter is not run here because no stack has landed yet; when one does, add the format command
-# from its scripts/stacks.tsv row, since a local hook can always be skipped with --no-verify.
-# Runs on the two platforms the
-# harness claims to support without a shell adapter. Nothing here depends on the project's own
-# stack, so this workflow needs no changes when a stack lands in src/.
+# every skill in skills-lock.json is on disk), the documentation chain validator, and actionlint
+# over the workflows themselves, because a workflow GitHub cannot parse produces a run with no jobs
+# and nothing gh can read, and the pre-commit hook lints only where actionlint is installed. The
+# pre-push formatter is not run here because no stack has landed yet; when one does, add the format
+# command from its scripts/stacks.tsv row, since a local hook can always be skipped with --no-verify.
+# Runs on the two platforms the harness claims to support without a shell adapter; the lint runs on
+# the Linux one, from actionlint's own image. Nothing here depends on the project's own stack, so this
+# workflow needs no changes when a stack lands in src/.
 
 on:
   # The three names a default branch goes by, rather than the one this repo happens to use: a rename
@@ -38,3 +40,7 @@ jobs:
 
       - name: Documentation chain
         run: node scripts/docs-check.js
+
+      - name: Workflows (actionlint)
+        if: runner.os == 'Linux'
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color

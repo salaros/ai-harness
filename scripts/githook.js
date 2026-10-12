@@ -25,6 +25,7 @@ const todo = require("./check-todo");
 const glossary = require("./check-glossary");
 const stagedDocs = require("./check-staged-docs");
 const markers = require("./check-conflict-markers");
+const workflows = require("./check-workflows");
 const repoView = require("./repo-view");
 
 const TODO = "TODO.md";
@@ -48,8 +49,8 @@ function staged(root, file) {
 const lines = text => text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
 // Before a commit lands: refuse an unconfigured clone, refuse a merge conflict left in what is
-// staged, check the loose-ends ledger, every glossary the commit touches, and the documentation
-// chain as the commit will record it.
+// staged, lint every workflow the commit touches, check the loose-ends ledger, every glossary the
+// commit touches, and the documentation chain as the commit will record it.
 function preCommit(root, { dry }) {
     const gate = initialised.check(root);
     const stagedTodo = staged(root, TODO);
@@ -57,10 +58,13 @@ function preCommit(root, { dry }) {
     const changed = lib.run("git", ["diff", "--cached", "--name-only", "--diff-filter=ACMRD"], { cwd: root });
     const touched = stagedDocs.chainFiles(lines(changed.output));
     const glossaries = lines(changed.output).filter(glossary.isGlossary);
+    const actions = lines(changed.output).filter(workflows.isWorkflow);
 
     if (dry) {
         console.log(`project: ${gate.reason}`);
         console.log("would check what is staged for conflict markers");
+        console.log(actions.length ? `would lint the staged workflow (${actions.length} file(s)) with actionlint, if installed: ${actions.join(" ")}`
+            : "no workflow staged");
         console.log(stagedTodo !== null ? `would check the staged ${TODO}`
             : onDisk ? `would check the unstaged ${TODO} and warn about what it finds`
             : `no ${TODO} to check`);
@@ -75,6 +79,10 @@ function preCommit(root, { dry }) {
     console.log(`project: ${gate.reason}`);
 
     if (report(root, markers.check(root), "Resolve the merge, or keep a marker on purpose with conflict-marker-size in .gitattributes.\nTo commit anyway: git commit --no-verify")) return 1;
+
+    // A workflow GitHub cannot parse runs nothing and reports nothing, so it is linted before it
+    // leaves. The check stands down with a notice where actionlint is not installed.
+    if (actions.length && report(root, workflows.check(root, actions), "Fix the workflow and stage it again. To commit anyway: git commit --no-verify")) return 1;
 
     // The ledger the commit records blocks it. A TODO.md nobody has staged records nothing, so a
     // problem in it is a warning: it is still this repo's ledger and still worth saying, but it is
