@@ -58,4 +58,5 @@ scripts/githook.js commit-msg .agents/hooks/tests/msg-conventional.txt	paths-emp
 scripts/githook.js commit-msg .agents/hooks/tests/msg-no-body.txt	paths-empty.txt	1	-	there is no description	commit-msg blocks a message with no body
 scripts/githook.js commit-msg	paths-empty.txt	1	-	Git passes the message file	commit-msg with no argument says so instead of throwing
 scripts/githook.js not-a-hook	paths-empty.txt	1	-	no hook named	an unknown hook name is refused
+scripts/update-harness.js --help	paths-empty.txt	0	-	it installs that checkout's HEAD, not its working tree	the usage says what --from reads, which the first local install got wrong
 scripts/check-harness.js --list	paths-empty.txt	0	-	gitHooksAreExecutable                     scripts/check-harness.js:	--list names each invariant with where it lives and what it reads, and passes without a tally

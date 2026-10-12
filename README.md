@@ -57,6 +57,7 @@ Run the same command again to update. Files you haven't edited take the new vers
 | `--dry-run` | Show what would change, write nothing |
 | `--quiet` | Print only the summary |
 | `--ref <tag>` | Install a fixed version instead of the latest `master` |
+| `--from <dir>` | Install from a checkout of the harness you already have, with no clone. It installs that checkout's HEAD, not its working tree, so commit an edit before trying it. |
 | `--adopt` | Replace every harness file with the upstream's, for repos installed before `harness-lock.json` existed. Discards your edits to those files. |
 | `--astro-docs` | Also install `tools/docs-site/`, a website that renders your documentation |
 | `--no-check` | Skip the check the installer runs after writing |

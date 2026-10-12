@@ -19,7 +19,7 @@
 //   node scripts/update-harness.js --dry-run           say what would change, write nothing
 //   node scripts/update-harness.js --ref v2            update from a tag or branch instead
 //   node scripts/update-harness.js --target ../other   install into or update another checkout
-//   node scripts/update-harness.js --from ../ai-harness use a checkout you already have, no clone
+//   node scripts/update-harness.js --from ../ai-harness use a checkout you already have, no clone; it installs that checkout's HEAD, not its working tree, so commit first
 //   node scripts/update-harness.js --astro-docs        add tools/docs-site, the Astro renderer for the chain
 //   node scripts/update-harness.js --no-check          install without proving it afterwards
 //   node scripts/update-harness.js --quiet             the summary alone, no line per path
