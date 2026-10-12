@@ -45,7 +45,6 @@ jobs:
             template: --lib
     runs-on: ubuntu-latest
     env:
-      TARGET: ${{ runner.temp }}/target
       NAME: Smallest
     steps:
       - uses: actions/checkout@v4
@@ -68,9 +67,12 @@ jobs:
 
       # The checkout's own root is the installer's npm package, so the scaffold runs in a target
       # the installer has written, as a project's does. --no-check: the invariants run in
-      # harness.yml, over the checkout; here only what the scaffold meets matters.
+      # harness.yml, over the checkout; here only what the scaffold meets matters. TARGET is set
+      # here rather than in the job's env, where the runner context is not yet available.
       - name: Install the harness into an empty repository
         run: |
+          TARGET="$RUNNER_TEMP/target"
+          echo "TARGET=$TARGET" >> "$GITHUB_ENV"
           mkdir -p "$TARGET"
           git -C "$TARGET" init --quiet
           git -C "$TARGET" config user.name ci
