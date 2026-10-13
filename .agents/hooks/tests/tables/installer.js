@@ -172,6 +172,11 @@ exports.installPlanCoversEveryCase = function installPlanCoversEveryCase(t) {
     // GLOSSARY.md arrived after CONTEXT.md, so a repo installed before the split gains it on an update,
     // and what it gains is a glossary the check accepts.
     is(pick(older, "GLOSSARY.md"), { outcome: "created", bucket: "seeded" }, "a repo installed before the glossary had a file of its own gains one");
+    // A receipt from before the list (0.1.0 to 0.3.4) knew the three skeletons of its day, not today's
+    // table: GLOSSARY.md arrives, and the TODO.md the project deleted stays deleted.
+    const unlisted = run(target, { commit: "c1", ref: "master" });
+    is(pick(unlisted, "GLOSSARY.md"), { outcome: "created", bucket: "seeded" }, "a receipt with no skeleton list still gains the glossary added since");
+    is(pick(unlisted, "TODO.md"), { outcome: "deleted here", write: undefined }, "a receipt with no skeleton list keeps a deleted TODO.md deleted");
     const laid = glossary.check(pick(older, "GLOSSARY.md").write || "", lib.checkout);
     t.ok(!laid.problems.length && laid.terms === 0, "install plan: the GLOSSARY.md skeleton is a glossary with no terms yet", laid.problems.join("\n") || laid.summary);
     t.ok(JSON.parse(pick(update, "harness-lock.json").write).skeletons.includes("TODO.md"), "install plan: the receipt lists the skeletons it knew", pick(update, "harness-lock.json").write);
