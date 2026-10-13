@@ -36,7 +36,7 @@ Starlight needs a frontmatter `title` on every page and the chain's documents ha
 
 - an item ID starting a line (`BR-2`, `FR-3`, `AC-1`, `D-1`) becomes a link target on that page, including inside tables;
 - a citation, `DOC-ID` or `DOC-ID/ITEM`, becomes a link to that document, or to that item in it;
-- fenced code is left exactly as written, so an ID inside an example stays plain text;
+- fenced code is left exactly as written, so an ID inside an example stays plain text. A scenario ID inside a `gherkin` fence (`# SC-1`, the form `scripts/feature-file.js` writes) stays as written too, but its link target is written on the line before the fence, so a citation of `BDD-0001/SC-1` lands at the top of the feature file rather than at the top of the page;
 - the overview page is built from the chain table, so it shows the whole pipeline including `TDD`, `IPLAN` and `Code`, which are not documents;
 - the SRS page, `/srs/`, is the Software Requirements Specification a client asks for: the PRD, TRD and EARS documents rendered under the IEEE 29148-2018 outline, in that outline's order, with the BDD documents linked under Verification. It is a view and not a stage, so nothing is written to `docs/` and `docs-check` has nothing to validate; `srs.mjs` builds it, and SPEC-0002 is its design;
 - the glossary page, `/glossary/`, lists every term in the root `GLOSSARY.md` in alphabetical order, in whichever of the two formats the file is written (`docs/agents/domain.md` has both), with its aliases and the words it avoids. A repo with no glossary gets no page and no sidebar entry;

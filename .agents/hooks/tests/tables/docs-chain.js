@@ -481,6 +481,29 @@ exports.markdownForWithoutOptionsIsUnchanged = function markdownForWithoutOption
     t.ok(cited === "#### Refines [BRD-9403/BR-1](/brd/9403-billing/#BR-1)", "markdownFor links a citation inside a demoted heading", cited);
 };
 
+// A scenario ID lives inside the feature file's gherkin fence, where code renders as written and no
+// anchor can go, so its link target is written just before the fence and a citation of the scenario
+// lands at the top of the feature file. Any other fence stays an example, IDs and all.
+exports.scenarioIdsGetTheirAnchorBeforeTheFence = function scenarioIdsGetTheirAnchorBeforeTheFence(t) {
+    const portal = portalModule("chain.mjs");
+    if (!portal) { t.skip("markdownFor: the optional portal is not installed, or the runtime cannot load an ES module"); return; }
+    const chain = portal.collect(chainView({
+        "docs/ears/9405-billing.md": ["# EARS-9405: Billing", "", "**Derived from:** https://example.com/billing", "", "- REQ-1: When the month ends, the system shall invoice."],
+        "docs/bdd/9405-billing.md": ["# BDD-9405: Billing", "", "**Derived from:** EARS-9405", "", "Scenarios of EARS-9405/REQ-1.", "", "```gherkin", "Feature: Billing", "", "# SC-1", "Scenario: Month end", "  Given a month ends", "", "# SC-2", "Scenario: Refund", "  Given a refund", "```", "", "```", "# SC-9 is an example, not a scenario", "```"],
+        "docs/spec/9405-billing.md": ["# SPEC-9405: Billing", "", "**Derived from:** BDD-9405", "", "- D-1: Satisfies BDD-9405/SC-2."],
+    }));
+    t.ok(!chain.notes.length, "the scenario fixture is a chain docs-check accepts", chain.notes.join("\n"));
+    const bdd = portal.markdownFor(chain.byId.get("BDD-9405"), chain);
+    t.ok(bdd.includes('<span id="SC-1"></span><span id="SC-2"></span>\n\n```gherkin\n'),
+        "every scenario ID in a gherkin fence gets a link target on the line before the fence, with a blank line so the fence stays a fence", bdd);
+    t.ok(bdd.includes("\n# SC-1\nScenario: Month end\n"), "the fence itself is left as written", bdd);
+    t.ok(!bdd.includes('id="SC-9"'), "an ID in a fence that is not gherkin stays an example", bdd);
+    const spec = portal.markdownFor(chain.byId.get("SPEC-9405"), chain);
+    t.ok(spec.includes("[BDD-9405/SC-2](/bdd/9405-billing/#SC-2)"), "a citation of a scenario links to that target", spec);
+    const plain = portal.markdownFor(chain.byId.get("BDD-9405"), chain, { anchors: false });
+    t.ok(!plain.includes("<span id="), "a view that asks for no anchors gets none before the fence either", plain);
+};
+
 // The glossary in the portal (SPEC-0003): the repo's terms on a page of their own, and a link to an
 // entry from where a chain document first mentions the term. The fixture is the heading format with
 // an alias; scripts/check-glossary.js's own table pins that both formats give one model.
