@@ -53,13 +53,13 @@ jobs:
       # authentication problem.
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # The tag object and origin/master, which the guards below read. A shallow checkout has
           # the history of neither, and the ancestor check would fail on every tag.
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"

@@ -47,9 +47,9 @@ jobs:
     env:
       NAME: Smallest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
 
@@ -57,7 +57,7 @@ jobs:
         if: matrix.stack == 'pnpm'
         run: npm install -g pnpm
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         if: startsWith(matrix.stack, 'dotnet')
         with:
           dotnet-version: "10.0.x"
