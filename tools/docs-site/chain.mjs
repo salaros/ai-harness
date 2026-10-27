@@ -69,8 +69,8 @@ export function markdownFor(doc, { byId, refRe, itemRe, glossary: terms }, { anc
         }
         if (fenced) { out.push(line); continue; }
         if (!seenH1 && line.startsWith("# ")) { seenH1 = true; continue; }
-        const heading = demote && line.match(/^(#{1,6}) /);
-        const demoted = heading ? "#".repeat(Math.min(6, heading[1].length + demote)) + line.slice(heading[1].length) : line;
+        const heading = line.match(/^(#{1,6}) /);
+        const demoted = heading && demote ? "#".repeat(Math.min(6, heading[1].length + demote)) + line.slice(heading[1].length) : line;
 
         let text = demoted.replace(refRe, (whole, stage, num, item, offset, full) => {
             const target = byId.get(`${stage}-${num}`);
@@ -79,7 +79,7 @@ export function markdownFor(doc, { byId, refRe, itemRe, glossary: terms }, { anc
             if (full[offset - 1] === "[") return whole;          // already inside a link
             return `[${whole}](${target.link}${item ? `#${item}` : ""})`;
         });
-        if (terms && !/^#{1,6} /.test(demoted) && !DERIVED_RE.test(line)) text = linkTerms(text, terms, mentioned);
+        if (terms && !heading && !DERIVED_RE.test(line)) text = linkTerms(text, terms, mentioned);
         const item = anchors && text.match(itemRe);
         if (item) text = text.replace(item[1], `<span id="${item[1]}"></span>${item[1]}`);
         out.push(text);
