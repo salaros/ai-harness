@@ -254,6 +254,23 @@ exports.everyUpstreamHookIsHandled = function everyUpstreamHookIsHandled(t) {
     t.ok(!unhandled.length, "githook.js handles every hook in .githooks/", unhandled.join(", "));
 };
 
+// The suite takes minutes, and an agent proving one module's table wrote its own stub for `t` three
+// times in one session rather than wait for it. `--only` is that stub as a flag, held here to the two
+// things that make it trustworthy: it runs what it names and nothing else, and a filter that names
+// nothing fails instead of passing an empty run.
+exports.onlyRunsWhatItNames = function onlyRunsWhatItNames(t, env) {
+    const suite = text => lib.node([".agents/hooks/test.js", "--only", text], { env });
+    const one = suite("everyUpstreamHookIsHandled");
+    t.ok(one.status === 0 && one.output.includes("harness tests: 1 passed, 0 failed"),
+        "--only runs the one check it names", `exit ${one.status}\n${one.output}`);
+    const table = suite("tables/todo.js");
+    t.ok(table.status === 0 && /selects 0 case\(s\) and [1-9]\d* check\(s\)/.test(table.output) && table.output.includes(", 0 failed"),
+        "--only runs a table named by its file", `exit ${table.status}\n${table.output}`);
+    const none = suite("no-such-check-or-case");
+    t.ok(none.status === 1 && none.output.includes("matched nothing"),
+        "--only naming nothing fails rather than passing an empty run", `exit ${none.status}\n${none.output}`);
+};
+
 // A check runs because something exported it, and an unregistered one raises the pass count by zero
 // and the failure count by zero, so the tally reads exactly as it did before it was written. There
 // used to be two places to say a check exists -- the declaration and an array at the foot of the file

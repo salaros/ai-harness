@@ -76,6 +76,14 @@ _Avoid_: project config, settings, metadata
 What a target's product is for and what its MVP must deliver: the product, its MVP stories and their done-when criteria. Optional, and kept in `INTENT.md` when a target has one, where it owns the name and purpose the project memory would otherwise hold. It never names the stack, tooling or issue tracker.
 _Avoid_: vision doc, product brief, roadmap
 
+**Product strategy**:
+How a target's product will reach the vision its product intent states: the segments it serves, the trade-offs it makes and what it will not do. Kept in `docs/product/strategy.md`, beside the chain, and cited by a PDD or a BRD as a source.
+_Avoid_: strategy canvas, product plan
+
+**Positioning**:
+Who a target's product is for, the problem it solves for them, and why it beats what they do today: the ground every marketing asset stands on. Kept in `docs/marketing/product-marketing.md`, and drawn from the PDD and the PRD.
+_Avoid_: marketing context, product-marketing context, messaging
+
 **Project fact**:
 One labelled entry of the project memory, such as Requirements or Issue tracker. A fact is unanswered while its value is empty or nothing but `<placeholders>`. A required fact that is unanswered leaves the target uninitialised. When a target has product intent, Name and Purpose are read from it alone, never from the project memory.
 _Avoid_: field, setting, key
@@ -91,3 +99,15 @@ _Avoid_: synonym
 **Context**:
 One bounded vocabulary: a folder holding a `CONTEXT.md`, which says what the context is and where it ends, and the glossary beside it. The repo root is the only context unless `CONTEXT-MAP.md` lists more.
 _Avoid_: domain area, namespace
+
+**Feature file**:
+The generated copy of a BDD document's scenarios, `tests/features/NNNN-<slug>.feature`, which the extractor writes for the runner before a test run and nobody edits. Ignored by Git: the document is the record.
+_Avoid_: gherkin file, spec file
+
+**Scenario id**:
+The `SC-n` a BDD document gives each scenario on the comment line directly above it, which Gherkin ignores and the chain counts as an item, so a SPEC cites the scenario as `BDD-NNNN/SC-n`.
+_Avoid_: scenario tag, scenario number
+
+**Acceptance test**:
+A BDD document's scenario run as written by the stack's own Gherkin runner against the step definitions under `tests/`. A step without a definition fails it.
+_Avoid_: BDD test, feature test, spec test

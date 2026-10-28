@@ -1,7 +1,8 @@
 // .agents/hooks/tests/tables/harness.js
 // How an entry point finds a repo and what it then asserts about the harness in it: the root
-// resolver every script and hook shares, the hook launcher the settings file is held to, the skill
-// roster, and the frontmatter check that decides whether an agent can see a skill at all.
+// resolver every script and hook shares, the hook launcher the settings file is held to, the hook
+// table the README is held to, the skill roster, and the frontmatter check that decides whether an
+// agent can see a skill at all.
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -63,7 +64,7 @@ exports.rootDecisions = function rootDecisions(t) {
     });
 };
 
-// .claude/settings.json wires the three hooks, and nothing read it back after an update merged it.
+// .claude/settings.json wires the four hooks, and nothing read it back after an update merged it.
 // Each row is a settings file and the failure claudeHookLaunchersAreWired must report about it, run
 // through check() against a root holding nothing else, so every other invariant stands down.
 exports.hookLauncherDecisions = function hookLauncherDecisions(t) {
@@ -106,6 +107,81 @@ exports.hookLauncherDecisions = function hookLauncherDecisions(t) {
         const said = checkHarness.check(repoView.worktree(dir)).failed.map(f => f.title).join("\n");
         t.ok(said.includes("readable JSON"), "hook launcher: a settings file that is not JSON fails rather than passing quietly", said);
     });
+};
+
+// The README's hook table, held to the launcher table both ways: a wired hook with no row and a row
+// with no script behind it. Each row is a README beside the scripts on disk, run through the one
+// invariant, with the outcome it must reach and the name its failure must carry. The rows outside
+// the "## Agent hooks" section are there to be ignored: a table elsewhere in the file whose first
+// cell is a file name is not the hook table.
+exports.hookTableDecisions = function hookTableDecisions(t) {
+    const invariant = checkHarness.INVARIANTS.find(f => f.name === "hookTableNamesEveryHook");
+    const wired = checkHarness.CLAUDE_HOOKS.map(h => h.script);
+    const onDisk = names => Object.fromEntries(names.map(n => [`.agents/hooks/${n}`, "// a hook\n"]));
+    const readme = (rows, heading = "## Agent hooks") => text(
+        "# The harness", "", "## Layout", "", "| `scripts/update-harness.js`, `harness-lock.json` | The installer. |", "",
+        heading, "", "Node scripts in `.agents/hooks/`.", "", "| Script | Event | What it does |", "| --- | --- | --- |",
+        ...rows.map(r => `| \`${r}\` | an event | What it does. |`), "",
+        "## Harnesses", "", "| `elsewhere.js` | a table that is not the hook table |");
+    const rows = [
+        // files, outcome, what a failure must name (null: nothing), why
+        [{ ".agents/README.md": readme(wired), ...onDisk(wired) }, "pass", null, "a row per wired hook, each on disk"],
+        [{ ".agents/README.md": readme(wired.slice(1)), ...onDisk(wired) }, "fail", wired[0], "a wired hook with no row is undocumented"],
+        [{ ".agents/README.md": readme([...wired, "retired.js"]), ...onDisk(wired) }, "fail", "retired.js", "a row naming a script that is gone is stale"],
+        [{ ".agents/README.md": readme([...wired, "mine.js"]), ...onDisk([...wired, "mine.js"]) }, "pass", null,
+            "a row the project added for a hook of its own is not ours to judge"],
+        [{ ".agents/README.md": readme(wired, "## Hooks"), ...onDisk(wired) }, "fail", "Agent hooks", "a README that lost the heading fails rather than skips"],
+        [onDisk(wired), "skip", null, "a repo with no .agents/README.md has no table to hold"],
+    ];
+    for (const [files, want, names, why] of rows) {
+        const r = { passed: 0, failed: [], skipped: [] };
+        invariant({ ok: (c, title, detail) => c ? r.passed++ : r.failed.push(`${title}: ${detail}`), skip: why => r.skipped.push(why) },
+            repoView.fromMap(files));
+        const got = r.failed.length ? "fail" : r.passed ? "pass" : "skip";
+        const said = r.failed.join("\n");
+        t.ok(got === want && (names === null || said.includes(names)), `hook table: ${why}`,
+            `expected ${want}${names ? ` naming ${names}` : ""}, got ${got}${said ? `\n${said}` : ""}`);
+    }
+};
+
+// The acceptance workflow's matrix, held to the stacks table both ways: a row naming a runner with
+// no job, and a job for a row naming none. Each row is a table and a workflow run through the one
+// invariant, with the outcome it must reach and the name its failure must carry.
+exports.acceptanceMatrixDecisions = function acceptanceMatrixDecisions(t) {
+    const invariant = checkHarness.INVARIANTS.find(f => f.name === "acceptanceWorkflowProvesEveryRunner");
+    const stacks = require("../../../../scripts/stacks");
+    const table = rows => text("# the table", ...rows.map(([stack, runner]) =>
+        [stack, "x", "-", "-", `echo ${stack}`, "-", "-", runner].slice(0, stacks.COLUMNS.length).join("\t")));
+    const workflow = listed => text("name: acceptance", "jobs:", "  prove:", "    strategy:", "      matrix:",
+        `        stack: [${listed.join(", ")}]`, "    runs-on: ubuntu-latest");
+    const upstream = { "scripts/update-harness.js": "// the installer\n" };
+    const rows = [
+        // files, outcome, what a failure must name (null: nothing), why
+        [{ ...upstream, [stacks.FILE]: table([["npm", "cucumber-js"], ["dotnet", "reqnroll"], ["tools", "-"]]), [".github/workflows/acceptance.yml"]: workflow(["npm", "dotnet"]) },
+            "pass", null, "a job per row naming a runner, and none for a row naming none"],
+        [{ ...upstream, [stacks.FILE]: table([["npm", "cucumber-js"], ["dotnet", "reqnroll"]]), [".github/workflows/acceptance.yml"]: workflow(["npm"]) },
+            "fail", "dotnet", "a row naming a runner with no job goes unproved"],
+        [{ ...upstream, [stacks.FILE]: table([["npm", "cucumber-js"], ["tools", "-"]]), [".github/workflows/acceptance.yml"]: workflow(["npm", "tools"]) },
+            "fail", "tools", "a job for a row naming no runner has nothing to prove"],
+        [{ ...upstream, [stacks.FILE]: table([["npm", "cucumber-js"]]), [".github/workflows/acceptance.yml"]: workflow([]).replace(/stack: \[\]/, "os: [ubuntu-latest]") },
+            "fail", "matrix line", "a workflow with no stack matrix fails rather than passing on an empty list"],
+        [{ ...upstream, [stacks.FILE]: table([["npm", "cucumber-js"]]) },
+            "fail", "npm", "no workflow while the table names a runner"],
+        [{ ...upstream, [stacks.FILE]: table([["tools", "-"]]) },
+            "pass", null, "no workflow and no runner to prove"],
+        [{ [stacks.FILE]: table([["npm", "cucumber-js"]]) },
+            "skip", null, "a project's own CI is not held to the upstream's workflow"],
+        [upstream, "skip", null, "no stacks table, nothing to hold the matrix to"],
+    ];
+    for (const [files, want, names, why] of rows) {
+        const r = { passed: 0, failed: [], skipped: [] };
+        invariant({ ok: (c, title, detail) => c ? r.passed++ : r.failed.push(`${title}: ${detail}`), skip: why => r.skipped.push(why) },
+            repoView.fromMap(files));
+        const got = r.failed.length ? "fail" : r.passed ? "pass" : "skip";
+        const said = r.failed.join("\n");
+        t.ok(got === want && (names === null || said.includes(names)), `acceptance matrix: ${why}`,
+            `expected ${want}${names ? ` naming ${names}` : ""}, got ${got}${said ? `\n${said}` : ""}`);
+    }
 };
 
 // The skill roster of a repo built for it: what the lock records against what the disk holds, who
@@ -438,4 +514,23 @@ exports.theEditTriggerCoversEveryPathTheInvariantsRead = function theEditTrigger
             `edit trigger: check-harness PATHS covers every path an invariant reads in ${shape}, so check-edit.js runs them on an edit to it`,
             missed.join("\n") || "nothing was read");
     }
+};
+
+// `--list` answers "which invariant, and where" for a reader holding one failure or one file. It is
+// trusted only while every row points at a real declaration and names what that invariant reads:
+// a line that drifts or a read that goes missing would send the reader to the wrong place, which
+// is worse than the slice-by-slice reading it replaces.
+exports.traceNamesEveryInvariantWhereItIs = function traceNamesEveryInvariantWhereItIs(t) {
+    const rows = checkHarness.trace(repoView.worktree(lib.checkout));
+    const source = fs.readFileSync(path.join(lib.checkout, "scripts", "check-harness.js"), "utf8").split(/\r?\n/);
+    t.ok(rows.map(r => r.name).join() === checkHarness.INVARIANTS.map(i => i.name).join(),
+        "trace: one row per invariant, in the order they run", rows.map(r => r.name).join(", "));
+    const astray = rows.filter(r => !(source[r.line - 1] || "").startsWith(`function ${r.name}(`));
+    t.ok(!astray.length, "trace: every row's line is that invariant's declaration", astray.map(r => `${r.name}:${r.line}`).join(", "));
+    const blind = rows.filter(r => !r.reads.length);
+    t.ok(!blind.length, "trace: every invariant is seen reading something", blind.map(r => r.name).join(", "));
+    const hooks = rows.find(r => r.name === "gitHooksAreExecutable");
+    t.ok(hooks && hooks.reads.some(p => p.startsWith(".githooks")), "trace: the hooks invariant is seen reading .githooks", hooks && hooks.reads.join(", "));
+    const roster = rows.find(r => r.name === "noSkillIsMissingFromDisk");
+    t.ok(roster && roster.reads.some(p => p.startsWith(".agents/skills")), "trace: a roster invariant is seen reading the skills folder", roster && roster.reads.join(", "));
 };

@@ -10,19 +10,33 @@
 // exits nothing, so a case about a chain nobody has is a row rather than a clone.
 //   stageFor(rel, stages)              the stage whose folder the path is under, or null
 //   used(transcript, skill)            whether the session loaded it
-//   decide(files, stages, transcript, userOnly)  the verdict, or null when no file is in the chain
+//   decide(files, stages, transcript, userOnly, shapeOf)  the verdict, or null when there is nothing to say
 // `transcript` is null when the harness named none, which is not the same as an empty one: a hook
 // that cannot read its input fails open, the way every other hook here does.
 const fs = require("fs");
+const featureFile = require("./feature-file");
 
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// What the author of a new file in a stage has to know beyond what the stage's skill says, or null
+// when the chain adds nothing. One stage has such a thing: a BDD document is held to the shape its
+// feature file needs (scripts/feature-file.js), and the skill that writes the stage knows Gherkin and
+// not this chain's `# SC-n` line. A test hands decide() a predicate of its own, so a row needs no
+// real stage behind it.
+const defaultShapeOf = stage => stage.stage === featureFile.STAGE ? featureFile.SHAPE : null;
+
+// The notes an iteration keeps while it runs, `.scratch/<slug>/notes.md` (.scratch/README.md). They
+// share the IPLAN's folder and no skill writes them, so a hook that called them the plan would send
+// the author to load `create-implementation-plan` for a file that is nothing of the kind.
+const NOTES = /^\.scratch\/[^/]+\/notes\.md$/;
 
 // The stage a repo-relative path belongs to: the row whose "Lives in" folder it sits under, the
 // most specific where several match, so a `docs/prd/` row wins over a hypothetical `docs/` one.
 // The folder itself is not a file in it, and a folder that merely starts with the same letters is
-// a different folder.
+// a different folder. An iteration's notes belong to no stage, whatever folder they sit in.
 function stageFor(rel, stages) {
     const file = String(rel).split("\\").join("/").replace(/^\.\//, "");
+    if (NOTES.test(file)) return null;
     let best = null;
     for (const s of stages) {
         const dir = String(s.lives || "").replace(/\/*$/, "/");
@@ -48,22 +62,30 @@ function used(transcript, skill) {
     return marker.test(transcript);
 }
 
-// The whole decision for one write. Returns null when no path is in the chain, and otherwise
-// { verdict, stage, skills, files, message } with verdict one of:
-//   allow  a stage's skill is already loaded, or none of the files is in the chain
+// The whole decision for one write. Returns null when no path is in the chain or nothing is to be
+// said, and otherwise { verdict, stage, skills, files, message } with verdict one of:
 //   block  a chain file is being created and no skill of its stage was loaded
 //   warn   the harness named no transcript, so the hook cannot tell and says so instead
+//   note   nothing to block, but a stage being written has a shape rule its skill does not know,
+//          so the author hears it now rather than from the edit hook after the file is written
+// A stage with a shape rule carries it in every message about it; a block on any file outranks a
+// note on another, since the note is for an author who is about to write and the block says not to.
 // `userOnly(skill)` says whether a skill is one only the user can start. An agent told to load such
 // a skill cannot, and the message that tells it to anyway leaves it to improvise: so a stage whose
 // every skill is the user's says what to ask for and what to do meanwhile, and a stage with one the
 // agent can load names that one. With no predicate every skill is taken as loadable.
-function decide(files, stages, transcript, userOnly = () => false) {
+// `shapeOf(stage)` is the shape rule for a stage, or null; the default is the one above.
+function decide(files, stages, transcript, userOnly = () => false, shapeOf = defaultShapeOf) {
+    let note = null;
     for (const file of files) {
         const stage = stageFor(file, stages);
         if (!stage) continue;
+        const shape = shapeOf(stage);
         const skills = stage.skills || [];
-        if (!skills.length) continue;
-        if (transcript !== null && skills.some(s => used(transcript, s))) continue;
+        if (!skills.length || (transcript !== null && skills.some(s => used(transcript, s)))) {
+            if (shape && !note) note = { verdict: "note", stage, skills, files: [file], message: `chain skill: ${file} is the ${stage.stage} stage. ${shape}` };
+            continue;
+        }
         const quoted = names => names.map(s => `\`${s}\``).join(" and ");
         const list = quoted(skills);
         const many = skills.length > 1;
@@ -89,9 +111,9 @@ function decide(files, stages, transcript, userOnly = () => false) {
             : !loadable.length
                 ? `${intro}${askUser} AGENTS.md's chain table is where that mapping lives.\n${why}`
                 : `${intro}${load} AGENTS.md's chain table is where that mapping lives.${aside}\n${why}`;
-        return { verdict, stage, skills, files: [file], message };
+        return { verdict, stage, skills, files: [file], message: shape ? `${message}\n${shape}` : message };
     }
-    return null;
+    return note;
 }
 
 // The session's transcript as text, or null when the harness named none or it cannot be read. A
@@ -105,4 +127,4 @@ function readTranscript(file) {
     } catch { return null; }
 }
 
-module.exports = { stageFor, used, decide, readTranscript };
+module.exports = { stageFor, used, decide, readTranscript, NOTES };

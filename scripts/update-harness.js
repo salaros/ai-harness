@@ -19,7 +19,7 @@
 //   node scripts/update-harness.js --dry-run           say what would change, write nothing
 //   node scripts/update-harness.js --ref v2            update from a tag or branch instead
 //   node scripts/update-harness.js --target ../other   install into or update another checkout
-//   node scripts/update-harness.js --from ../ai-harness use a checkout you already have, no clone
+//   node scripts/update-harness.js --from ../ai-harness use a checkout you already have, no clone; it installs that checkout's HEAD, not its working tree, so commit first
 //   node scripts/update-harness.js --astro-docs        add tools/docs-site, the Astro renderer for the chain
 //   node scripts/update-harness.js --no-check          install without proving it afterwards
 //   node scripts/update-harness.js --quiet             the summary alone, no line per path
@@ -330,6 +330,10 @@ const SKELETONS = {
     ],
 };
 
+// The skeletons every install laid down before the receipt started listing them (01f5b80, 2026-09-21).
+// Frozen on purpose: a receipt with no list is read against this, never against the table above.
+const BEFORE_THE_LIST = ["MEMORY.md", "CONTEXT.md", "TODO.md"];
+
 // MEMORY.md's fact lines come from scripts/project-facts.js, the table the gate checks them against,
 // so a skeleton never asks for a fact the gate does not know or leaves out one it requires. A repo
 // that already has an INTENT.md names the product and its purpose there, so the MEMORY.md laid down
@@ -489,8 +493,9 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
     const hasIntent = target.exists(projectFacts.INTENT);
     // The receipt lists the skeletons its run knew, so one missing on an update is one the project
     // deleted, and it stays deleted; a skeleton added since still arrives. A receipt from before the
-    // list is taken to know them all, which every install since the skeletons began has laid down.
-    const known = new Set(previous && base !== null ? previous.skeletons || Object.keys(SKELETONS) : []);
+    // list (releases 0.1.0 to 0.3.4) was written while the table held exactly the three in
+    // BEFORE_THE_LIST, so that is what such a receipt knew: GLOSSARY.md, which came later, still arrives.
+    const known = new Set(previous && base !== null ? previous.skeletons || BEFORE_THE_LIST : []);
     for (const [file, lines] of Object.entries(SKELETONS)) {
         const theirs = skeletonLines(file, lines, hasIntent).join("\n");
         const { outcome, bucket, write } = installPolicy.decide("skeleton",

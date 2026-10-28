@@ -66,7 +66,7 @@ Nothing is stored beyond the files themselves. The model is rebuilt on each read
 ## Risks
 
 - R-1: a term that is also an everyday word, such as "target" in this repository's own glossary, is linked at its first mention whether or not the sentence means the term. One link per document keeps the cost low, and the fix where it matters is a more specific term.
-- R-2: a repo whose install receipt predates the skeleton list is taken to have every skeleton, so it gains no `GLOSSARY.md` from an update. Its terms are still read from `CONTEXT.md` (D-4), and the first `domain-modeling` session creates the file.
+- R-2: a repo whose install receipt predates the skeleton list (releases 0.1.0 to 0.3.4) is read as knowing the three skeletons of that time, `MEMORY.md`, `CONTEXT.md` and `TODO.md`, so it gains `GLOSSARY.md` from an update like any other. A `TODO.md` it deleted stays deleted. The list of three is frozen in `update-harness.js` and never follows the table.
 - R-3: `teach` writes a `GLOSSARY.md` of the topic being learned into its working directory. Run from the repo root it would write into the domain glossary, so ADR-0007/D-8 and `docs/agents/domain.md` say to run it from a folder of its own; a glossary it left there is checked like any other (D-3) and is not what the portal renders.
 - R-4: the file's format is decided by one `**Term**:` line, so a heading-format glossary that quotes such a line outside a code fence is read as bold. The check then reports its terms as missing, which is loud rather than silent.
 

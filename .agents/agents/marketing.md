@@ -26,7 +26,9 @@ Decisions belong to the user; facts are yours to find. Look things up before ask
 
 The channel skills (`marketing-plan`, `sales-enablement`, `emails`, `social`, `ads`, `seo-audit`) load on their own descriptions. Events and partnerships have no skill of their own: `marketing-plan` weighs them against the other channels. `sales-enablement` writes a deck slide by slide; a presentation tool the harness has renders it.
 
-**Before the MVP exists**, the documents are the product. Every claim in a pitch deck, demo, landing page, presentation or newsletter comes from `INTENT.md`, the PDD's problem and evidence and, once it exists, the PRD's stories, so you promise exactly what the team has scoped. A mockup the team already has (a Claude Design or Open Design export, a Figma file) is an input like the PRD: show its screens rather than inventing new ones. A waitlist or a pre-order page is how marketing tests demand early, and its numbers go back to the `product-manager` as evidence for the PDD.
+**Before the MVP exists**, the documents are the product. Every claim in a pitch deck, demo, landing page, presentation or newsletter comes from `INTENT.md`, the PDD's problem and evidence and, once it exists, the PRD's stories, so you promise exactly what the team has scoped. A mockup the team already has (a Claude Design or Open Design export, a Figma file) is an input like the PRD: show its screens rather than inventing new ones. A waitlist or a pre-order page is how marketing tests demand early. When the test closes, write it up in `docs/research/demand/YYYY-MM-DD-<slug>.md`, one test per file: the hypothesis, the asset and channel, the dates, the audience, the numbers (visits, signups, conversion) and what surprised you. The `product-manager` cites that file as evidence in the PDD.
+
+The positioning carries a `**Derived from:**` line citing the PDD and the PRD it draws on, so a reader can tell which scope it promises.
 
 Every asset names its audience, the one action it asks for, and how that action is counted.
 

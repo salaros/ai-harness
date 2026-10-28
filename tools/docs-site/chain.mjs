@@ -51,15 +51,26 @@ export function collect(view = repoView.worktree(REPO)) {
 // and for the headings pushed down under its own, by `demote` levels and never past H6.
 // A term the glossary defines is linked to its entry where the document first mentions it. A heading
 // stays plain, and so does the provenance line, whose sources are paths rather than prose.
+// A scenario ID sits inside the feature file's gherkin fence (`# SC-1`, as scripts/feature-file.js
+// writes it), where no anchor can be written: code renders as written. Its link target goes on a
+// line of its own before the fence instead, so a citation lands at the top of the feature file.
 export function markdownFor(doc, { byId, refRe, itemRe, glossary: terms }, { anchors = true, demote = 0 } = {}) {
     const out = [], mentioned = new Set();
     let fenced = false, seenH1 = false;
-    for (const line of doc.lines) {
-        if (/^\s*(```|~~~)/.test(line)) { fenced = !fenced; out.push(line); continue; }
+    for (let i = 0; i < doc.lines.length; i++) {
+        const line = doc.lines[i];
+        if (FENCE_RE.test(line)) {
+            if (!fenced && anchors && GHERKIN_RE.test(line)) {
+                const ids = fencedItems(doc.lines, i, itemRe);
+                // The blank line keeps the fence a fence: an HTML line runs on until one.
+                if (ids.length) out.push(ids.map(id => `<span id="${id}"></span>`).join(""), "");
+            }
+            fenced = !fenced; out.push(line); continue;
+        }
         if (fenced) { out.push(line); continue; }
         if (!seenH1 && line.startsWith("# ")) { seenH1 = true; continue; }
-        const heading = demote && line.match(/^(#{1,6}) /);
-        const demoted = heading ? "#".repeat(Math.min(6, heading[1].length + demote)) + line.slice(heading[1].length) : line;
+        const heading = line.match(/^(#{1,6}) /);
+        const demoted = heading && demote ? "#".repeat(Math.min(6, heading[1].length + demote)) + line.slice(heading[1].length) : line;
 
         let text = demoted.replace(refRe, (whole, stage, num, item, offset, full) => {
             const target = byId.get(`${stage}-${num}`);
@@ -68,12 +79,24 @@ export function markdownFor(doc, { byId, refRe, itemRe, glossary: terms }, { anc
             if (full[offset - 1] === "[") return whole;          // already inside a link
             return `[${whole}](${target.link}${item ? `#${item}` : ""})`;
         });
-        if (terms && !/^#{1,6} /.test(demoted) && !DERIVED_RE.test(line)) text = linkTerms(text, terms, mentioned);
+        if (terms && !heading && !DERIVED_RE.test(line)) text = linkTerms(text, terms, mentioned);
         const item = anchors && text.match(itemRe);
         if (item) text = text.replace(item[1], `<span id="${item[1]}"></span>${item[1]}`);
         out.push(text);
     }
     return out.join("\n").replace(/^\n+/, "").replace(/\s+$/, "");
+}
+
+const FENCE_RE = /^\s*(```|~~~)/, GHERKIN_RE = /^\s*(```|~~~)\s*gherkin\b/i;
+
+// The item IDs inside the fence that opens at `open`, up to its closing fence or the end of the file.
+function fencedItems(lines, open, itemRe) {
+    const ids = [];
+    for (let i = open + 1; i < lines.length && !FENCE_RE.test(lines[i]); i++) {
+        const item = lines[i].match(itemRe);
+        if (item) ids.push(item[1]);
+    }
+    return ids;
 }
 
 export const siteTitle = () => memoryFact("Name") || path.basename(REPO);

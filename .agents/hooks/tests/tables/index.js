@@ -10,7 +10,11 @@ const fs = require("fs");
 const path = require("path");
 
 const FILES = fs.readdirSync(__dirname).filter(n => n.endsWith(".js") && n !== "index.js").sort();
-const checks = FILES.flatMap(name => Object.values(require(path.join(__dirname, name))));
+const byFile = Object.fromEntries(FILES.map(name => [name, Object.values(require(path.join(__dirname, name)))]));
+const checks = FILES.flatMap(name => byFile[name]);
 
 module.exports = checks;
 module.exports.FILES = FILES;
+// The same checks keyed by file, for test.js's --only, which lets a table be named by the module it
+// is about as well as by a check's name.
+module.exports.byFile = byFile;

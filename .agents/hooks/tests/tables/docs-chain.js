@@ -8,7 +8,7 @@ const lib = require("../../lib");
 const docsCheck = require("../../../../scripts/docs-check");
 const stagedDocs = require("../../../../scripts/check-staged-docs");
 const repoView = require("../../../../scripts/repo-view");
-const { withRoot } = require("../fixtures");
+const { withRoot, smallest, smallestChain } = require("../fixtures");
 
 // Which files are the chain. The edit hook and the pre-commit hook both ask inChain, so one table
 // pins what an edit and a commit check.
@@ -142,7 +142,7 @@ exports.docsCheckCitesColumn = function docsCheckCitesColumn(t) {
         "trd/9501-refines.md": ["# TRD-9501: Refines", "", "**Derived from:** PRD-9500", "", "| TR-1 | Performance | p95 < 200 ms | PRD-9500/NFR-1 |"],
         "ears/9500-shall.md": ["# EARS-9500: Shall", "", "**Derived from:** TRD-9501", "", "- REQ-1: The search shall answer in 200 ms (TRD-9501/TR-1)."],
         "rfc/9500-late.md": rfc(9500, "Accepted", ["", "Constrained by SPEC-9500.", "", "### OPT-1: Cache"]),
-        "bdd/9500-early.md": ["# BDD-9500: Early", "", "**Derived from:** EARS-9500", "", "Follows RFC-9500/OPT-1."],
+        "bdd/9500-early.md": ["# BDD-9500: Early", "", "**Derived from:** EARS-9500", "", "Follows RFC-9500/OPT-1.", "", "```gherkin", "Feature: Early", "", "# SC-1", "Scenario: Cached", "  Given a warm cache", "```"],
         "spec/9500-design.md": ["# SPEC-9500: Design", "", "**Derived from:** RFC-9500"],
     });
     t.ok(r.for("trd/9500-migration.md").length === 0, "docs-check: a TRD may derive from a source alone once a PRD exists", r.all);
@@ -207,6 +207,38 @@ exports.docsCheckDiscovery = function docsCheckDiscovery(t) {
     t.ok(r.for("brd/9703-settled.md").length === 0, "docs-check: a BRD is an entry stage, starting from a source while PDDs exist", r.all);
 };
 
+// The fixtures' smallest documents (fixtures.js: smallest, smallestChain) are held to docs-check
+// here, both ways. The chain of them covers every document stage of this checkout's table and
+// passes, so a stage that gains a rule the fixture does not know fails here before a check built on
+// the fixture does. And every line the fixture writes for a rule is load-bearing: drop it, and
+// docs-check names what is missing. The scenario line in the BDD document and the closing fence are
+// not in this list, since docs-check demands neither; the fixture's comment says why they are there.
+exports.smallestDocumentsAreWhatDocsCheckDemands = function smallestDocumentsAreWhatDocsCheckDemands(t) {
+    const chain = smallestChain();
+    const problemsOf = docs => docsCheck.check(lib.checkout, chainView(Object.fromEntries(docs.map(d => [d.file, d.lines])))).problems;
+    const stages = docsCheck.readChain(repoView.worktree(lib.checkout)).stages.filter(s => s.folder).map(s => s.stage);
+    t.ok(chain.map(d => d.stage).join() === stages.join(), "smallest chain: one document per document stage, in table order", chain.map(d => d.stage).join());
+    const clean = problemsOf(chain);
+    t.ok(!clean.length, "smallest chain: docs-check accepts the chain of smallest documents", clean.join("\n"));
+    const pieces = [
+        // the line, what docs-check says without it, what the line is
+        [/^# [A-Z]+-\d{4}:/, /no level-1 heading|first heading must start with/, "the heading"],
+        [/^\*\*Derived from:\*\*/, /missing a "\*\*Derived from:\*\*" line/, "the Derived from line"],
+        [/^\*\*Status:\*\*/, /"\*\*Status:\*\*" line/, "the Status line"],
+        [/^```gherkin/, /has no ```gherkin block/, "the gherkin block"],
+        [/^# SC-1$/, /has no `# SC-n` line/, "the # SC-n line"],
+    ];
+    for (const d of chain) {
+        for (const [line, says, what] of pieces) {
+            const at = d.lines.findIndex(l => line.test(l));
+            if (at < 0) continue;
+            const without = chain.map(o => o === d ? { ...d, lines: d.lines.filter((_, i) => i !== at) } : o);
+            const said = problemsOf(without).filter(p => p.startsWith(`${d.file}:`));
+            t.ok(said.some(p => says.test(p)), `smallest ${d.stage}: ${what} is there because docs-check demands it`, said.join("\n") || "(none)");
+        }
+    }
+};
+
 // The two columns are optional in the table's shape: a table written before them keeps ADR's old
 // rule, and a value the parser does not know is reported rather than guessed at.
 exports.readChainCitesAndStatus = function readChainCitesAndStatus(t) {
@@ -226,11 +258,10 @@ exports.readChainCitesAndStatus = function readChainCitesAndStatus(t) {
 
 // MEMORY.md's Requirements takes part in traceability, so it follows the same reference rule.
 exports.docsCheckMemoryRequirements = function docsCheckMemoryRequirements(t) {
+    // A BRD that exists, so a Requirements line has a document to name.
+    const brd = smallest("BRD", 9300, "https://example.com/brief");
     const memory = lines => {
-        const { problems } = docsCheck.check(lib.checkout, chainView({
-            "docs/brd/9300-real.md": ["# BRD-9300: Real", "", "**Derived from:** https://example.com/brief"],
-            "MEMORY.md": lines,
-        }));
+        const { problems } = docsCheck.check(lib.checkout, chainView({ [brd.file]: brd.lines, "MEMORY.md": lines }));
         return problems.filter(p => p.startsWith("MEMORY.md:"));
     };
     const cases = [
@@ -391,7 +422,7 @@ exports.srsViewRendersTheOutline = function srsViewRendersTheOutline(t) {
         "docs/prd/9402-billing.md": ["# PRD-9402: Billing product", "", "**Derived from:** BRD-9402", "", "## Users", "", "- FR-1: A monthly invoice, refining BRD-9402/BR-1."],
         "docs/trd/9402-billing.md": ["# TRD-9402: Billing limits", "", "**Derived from:** PRD-9402", "", "## Requirements", "", "- TR-1: p95 under 200 ms."],
         "docs/ears/9402-billing.md": ["# EARS-9402: Billing", "", "**Derived from:** PRD-9402, TRD-9402", "", "- REQ-1: When the month ends, the system shall invoice PRD-9402/FR-1."],
-        "docs/bdd/9402-billing.md": ["# BDD-9402: Billing", "", "**Derived from:** EARS-9402"],
+        "docs/bdd/9402-billing.md": ["# BDD-9402: Billing", "", "**Derived from:** EARS-9402", "", "```gherkin", "Feature: Billing", "", "# SC-1", "Scenario: Month end", "  Given a month ends (EARS-9402/REQ-1)", "```"],
     }));
     t.ok(!chain.notes.length, "the SRS fixture is a chain docs-check accepts", chain.notes.join("\n"));
     const page = srs.srs(chain);
@@ -448,6 +479,29 @@ exports.markdownForWithoutOptionsIsUnchanged = function markdownForWithoutOption
     // A citation inside a heading links as it does on the document's page, demoted or not.
     const cited = portal.markdownFor({ ...chain.byId.get("PRD-9403"), lines: ["# PRD-9403: X", "", "## Refines BRD-9403/BR-1"] }, chain, { demote: 2 });
     t.ok(cited === "#### Refines [BRD-9403/BR-1](/brd/9403-billing/#BR-1)", "markdownFor links a citation inside a demoted heading", cited);
+};
+
+// A scenario ID lives inside the feature file's gherkin fence, where code renders as written and no
+// anchor can go, so its link target is written just before the fence and a citation of the scenario
+// lands at the top of the feature file. Any other fence stays an example, IDs and all.
+exports.scenarioIdsGetTheirAnchorBeforeTheFence = function scenarioIdsGetTheirAnchorBeforeTheFence(t) {
+    const portal = portalModule("chain.mjs");
+    if (!portal) { t.skip("markdownFor: the optional portal is not installed, or the runtime cannot load an ES module"); return; }
+    const chain = portal.collect(chainView({
+        "docs/ears/9405-billing.md": ["# EARS-9405: Billing", "", "**Derived from:** https://example.com/billing", "", "- REQ-1: When the month ends, the system shall invoice."],
+        "docs/bdd/9405-billing.md": ["# BDD-9405: Billing", "", "**Derived from:** EARS-9405", "", "Scenarios of EARS-9405/REQ-1.", "", "```gherkin", "Feature: Billing", "", "# SC-1", "Scenario: Month end", "  Given a month ends", "", "# SC-2", "Scenario: Refund", "  Given a refund", "```", "", "```", "# SC-9 is an example, not a scenario", "```"],
+        "docs/spec/9405-billing.md": ["# SPEC-9405: Billing", "", "**Derived from:** BDD-9405", "", "- D-1: Satisfies BDD-9405/SC-2."],
+    }));
+    t.ok(!chain.notes.length, "the scenario fixture is a chain docs-check accepts", chain.notes.join("\n"));
+    const bdd = portal.markdownFor(chain.byId.get("BDD-9405"), chain);
+    t.ok(bdd.includes('<span id="SC-1"></span><span id="SC-2"></span>\n\n```gherkin\n'),
+        "every scenario ID in a gherkin fence gets a link target on the line before the fence, with a blank line so the fence stays a fence", bdd);
+    t.ok(bdd.includes("\n# SC-1\nScenario: Month end\n"), "the fence itself is left as written", bdd);
+    t.ok(!bdd.includes('id="SC-9"'), "an ID in a fence that is not gherkin stays an example", bdd);
+    const spec = portal.markdownFor(chain.byId.get("SPEC-9405"), chain);
+    t.ok(spec.includes("[BDD-9405/SC-2](/bdd/9405-billing/#SC-2)"), "a citation of a scenario links to that target", spec);
+    const plain = portal.markdownFor(chain.byId.get("BDD-9405"), chain, { anchors: false });
+    t.ok(!plain.includes("<span id="), "a view that asks for no anchors gets none before the fence either", plain);
 };
 
 // The glossary in the portal (SPEC-0003): the repo's terms on a page of their own, and a link to an

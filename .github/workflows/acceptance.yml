@@ -1,0 +1,115 @@
+name: acceptance
+
+# Proves that the BDD stage runs on every stack the stacks table scaffolds (ADR-0008): one job per
+# row of scripts/stacks.tsv that names a runner. Each job installs the harness into an empty
+# repository the way a project receives it, runs the row's scaffold there, points the runner at
+# tests/features/ with scripts/wire-acceptance.js, writes one BDD document and extracts it with
+# scripts/bdd-features.js, and then runs the runner against a step nobody defined. The job passes
+# when that run fails naming the step. A run that passed would mean the runner never read the
+# folder or let an undefined step through; a run that failed for another reason is a build the
+# wiring broke, and --prove prints it.
+#
+# The matrix is written out rather than read from the table, so that this file says which stacks
+# run here; scripts/check-harness.js holds it to the rows naming a runner, so a row that gains a
+# runner without a job here fails the suite rather than going unproved. The .NET and Python
+# wiring had been written from the runners' documentation and never run against a scaffold until
+# this did, and the first run found Reqnroll's project template targeting net8.0 under SDK 10.
+#
+# Weekly as well as on a change, because every scaffold installs whatever the registries hold
+# today: a template or a runner release can break a row nobody touched.
+
+on:
+  push:
+    branches: [main, master, development]
+    paths:
+      - scripts/**
+      - .github/workflows/acceptance.yml
+  pull_request:
+    paths:
+      - scripts/**
+      - .github/workflows/acceptance.yml
+  schedule:
+    - cron: "0 7 * * 1"      # Mondays, 07:00 UTC, after skills-update
+  workflow_dispatch:
+
+jobs:
+  prove:
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [npm, pnpm, yarn, dotnet, dotnet-aspire, python]
+        include:
+          - stack: dotnet
+            template: classlib
+          - stack: python
+            template: --lib
+    runs-on: ubuntu-latest
+    env:
+      NAME: Smallest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: pnpm
+        if: matrix.stack == 'pnpm'
+        run: npm install -g pnpm
+
+      - uses: actions/setup-dotnet@v5
+        if: startsWith(matrix.stack, 'dotnet')
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: astral-sh/setup-uv@v7
+        if: matrix.stack == 'python'
+
+      # The checkout's own root is the installer's npm package, so the scaffold runs in a target
+      # the installer has written, as a project's does. --no-check: the invariants run in
+      # harness.yml, over the checkout; here only what the scaffold meets matters. TARGET is set
+      # here rather than in the job's env, where the runner context is not yet available.
+      - name: Install the harness into an empty repository
+        run: |
+          TARGET="$RUNNER_TEMP/target"
+          echo "TARGET=$TARGET" >> "$GITHUB_ENV"
+          mkdir -p "$TARGET"
+          git -C "$TARGET" init --quiet
+          git -C "$TARGET" config user.name ci
+          git -C "$TARGET" config user.email ci@example.com
+          node scripts/update-harness.js --from "$GITHUB_WORKSPACE" --target "$TARGET" --no-check --quiet
+
+      - name: Scaffold, as project-init hands it over
+        working-directory: ${{ env.TARGET }}
+        run: |
+          line="$(node scripts/stacks.js scaffold "${{ matrix.stack }}" --name="$NAME" --template="${{ matrix.template }}")"
+          echo "$line"
+          eval "$line"
+
+      - name: Wire the runner at tests/features/
+        working-directory: ${{ env.TARGET }}
+        run: node scripts/wire-acceptance.js --name="$NAME" --stack="${{ matrix.stack }}"
+
+      - name: One BDD document, extracted
+        working-directory: ${{ env.TARGET }}
+        run: |
+          mkdir -p docs/bdd
+          cat > docs/bdd/0001-smallest.md <<'DOC'
+          # BDD-0001: Smallest
+
+          **Derived from:** https://example.com/source
+
+          ```gherkin
+          Feature: Smallest
+
+          # SC-1
+          Scenario: Smallest
+            Given a step nobody defined
+          ```
+          DOC
+          node scripts/bdd-features.js
+          node scripts/bdd-features.js --check
+
+      - name: The runner reads the folder and fails on a step nobody defined
+        working-directory: ${{ env.TARGET }}
+        run: node scripts/wire-acceptance.js --prove --name="$NAME" --stack="${{ matrix.stack }}"

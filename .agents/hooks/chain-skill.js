@@ -9,7 +9,12 @@
 // reminder into a wall, and a hook that fires on everything gets turned off.
 // The decision is scripts/chain-skill.js, which reads nothing; this file finds the paths, the
 // chain and the transcript, and reports.
-// Exit 2 = block, reason on stderr. Exit 0 = allow, with a note when the check could not be made.
+// Exit 2 = block, reason on stderr. Exit 0 = allow, with a note when the check could not be made or
+// when the stage has a shape rule its skill does not know (a BDD document's `# SC-n` line). On exit
+// 0 the note goes to stderr for the user and to stdout as Claude Code's hook JSON for the agent,
+// since there nothing but that JSON's additionalContext reaches it from a hook that allows; the JSON
+// gives no permission decision, so the harness's own permission flow is untouched. A harness that
+// knows no such JSON shows or drops it as it does the stderr line.
 // Wire it to the pre-tool-use event of the edit/write tools (.agents/README.md, "Files per AI tool").
 const fs = require("fs");
 const path = require("path");
@@ -44,4 +49,6 @@ const decision = chainSkill.decide(creating, stages, chainSkill.readTranscript(t
 if (!decision) process.exit(0);
 
 process.stderr.write(decision.message + "\n");
-process.exit(decision.verdict === "block" ? 2 : 0);
+if (decision.verdict === "block") process.exit(2);
+process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: decision.message } }) + "\n");
+process.exit(0);

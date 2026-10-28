@@ -638,6 +638,10 @@ tools/.store
 # that has no project to configure, such as the template repo itself. Local, never committed.
 .skip-project-init
 
+## BDD feature files, written by scripts/bdd-features.js from docs/bdd/ for the Gherkin runner.
+## Generated, so never committed: the documents are the record.
+tests/features/
+
 ## Astro site: generated types
 .astro/
 

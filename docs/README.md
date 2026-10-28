@@ -10,7 +10,7 @@ A reference is an upstream document ID, or a **source**: a URL, a repo-relative 
 
 **Whether** the opportunity is worth pursuing at all: an opportunity assessment written while the idea is still a hunch, before anyone writes a business case. It is optional; a need already settled by a contract, a regulation or a decision taken elsewhere goes straight to a BRD.
 
-Contains: the problem in the customer's words, who has it, evidence (`EV-n`) each with its reference, the size of the opportunity, today's alternatives, why us, why now, how it would reach them, the outcomes that would prove it worked (`OUT-n`), risks and assumptions (`RISK-n`), and the verdict. It derives from its evidence: interview records under `docs/research/interviews/` and their syntheses under `docs/research/syntheses/`, tickets, analytics, a roadmap entry. The `pdd` skill writes it.
+Contains: the problem in the customer's words, who has it, evidence (`EV-n`) each with its reference, the size of the opportunity, today's alternatives, why us, why now, how it would reach them, the outcomes that would prove it worked (`OUT-n`), risks and assumptions (`RISK-n`), and the verdict. It derives from its evidence: interview records under `docs/research/interviews/` and their syntheses under `docs/research/syntheses/`, demand tests under `docs/research/demand/`, tickets, analytics, a roadmap entry. The `pdd` skill writes it.
 
 Its status is `Draft`, `Go`, `No-go` or `Parked`. The user gives the verdict, and a BRD may build only on a PDD that is `Go`; a `No-go` is kept as the record of why, and a `Parked` one has a `#deferred` line in `TODO.md` saying what would reopen it.
 
@@ -42,7 +42,9 @@ Contains: context, requirements (`TR-n`) by ISO/IEC 25010 category, each with a 
 
 ## BDD, behaviour scenarios
 
-**Behaviour as Given / When / Then.** One feature file per document, scenarios grouped by rule, each scenario citing the `EARS-NNNN/REQ-n` it exercises; edge cases and failure paths are scenarios too. These become the acceptance tests. The `bdd-scenarios` skill writes it.
+**Behaviour as Given / When / Then.** One feature per document, scenarios grouped by rule, each scenario citing the `EARS-NNNN/REQ-n` it exercises; edge cases and failure paths are scenarios too. The `bdd-scenarios` skill writes it.
+
+The document is also the acceptance test (ADR-0008). Its scenarios are in ```gherkin blocks, one `Feature:` in all, with English keywords and the prose language in the titles and step text, and each scenario has `# SC-n` on the line above it (above its tags, at the start of the line): the item a SPEC cites as `BDD-NNNN/SC-n`. The validator holds that shape, so a document that would not run is refused at commit. `node scripts/bdd-features.js` writes the blocks out as `tests/features/NNNN-<slug>.feature`, never committed, and the stack's Gherkin runner (Reqnroll on .NET, cucumber-js with cucumber-tsflow on Node, pytest-bdd on Python) runs them against the step definitions under `tests/`. A scenario whose step has no definition fails, which is where `tdd` starts.
 
 ## RFC, Request for Comments
 
@@ -74,13 +76,17 @@ Its second kind is syntheses: `docs/research/syntheses/YYYY-MM-DD-<slug>.md`, wr
 
 Its third kind is competitor profiles: `docs/research/competitors/<slug>.md`, written with `competitor-profiling`, which a PDD cites for today's alternatives and a battle card draws on.
 
+Its fourth kind is demand tests: `docs/research/demand/YYYY-MM-DD-<slug>.md`, one waitlist, pre-order page or similar test per file, written by `marketing` when the test closes: the hypothesis, the asset and channel, the dates, the audience, the numbers (visits, signups, conversion) and what surprised. A PDD cites it as evidence that people want the product before it exists.
+
 ## Product and marketing, beside the chain
 
 Two more folders sit beside the chain, unchecked by `docs-check` like `docs/research/`. `docs/product/` holds the product strategy, written by the `product-manager` with `product-strategy`, which a PDD or a BRD cites as its source; the vision it starts from is the purpose in `INTENT.md`. `docs/marketing/` holds what `marketing` makes from the chain: the positioning in `docs/marketing/product-marketing.md`, which every marketing skill reads first, and one folder per campaign, launch or asset beside it. Its claims come from the PDD and the PRD, so the folder can fill up before the MVP exists.
 
+Neither folder is checked, but the strategy and the positioning each carry a `**Derived from:**` line by convention: the strategy cites `INTENT.md` and the research behind it, the positioning the PDD and the PRD it promises. When those documents change, the line says which file to revisit.
+
 ## After the documents
 
-Tests (`tests/`), the implementation plan (`.scratch/`, published to Jira by `to-tickets`) and code (`src/`) are the remaining stages; they are not documents and the validator does not read them.
+Tests (`tests/`), the implementation plan (`.scratch/`, published to Jira by `to-tickets`) and code (`src/`) are the remaining stages; they are not documents and the validator does not read them. The BDD stage reaches `tests/` on its own: `scripts/bdd-features.js` writes its documents out as the feature files under `tests/features/` that the runner executes.
 
 ## Browsing them
 

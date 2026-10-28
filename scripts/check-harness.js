@@ -4,12 +4,14 @@
 // that must hold whatever the project around them does. Every skill visible to the agent, the skill
 // links committed as links, every SKILL.md readable, the routing sections and the agents naming them
 // in agreement, every Git hook executable and still a two-line wrapper, each hook launcher in
-// .claude/settings.json the text this file writes, every vendored skill attributed and on disk, the
-// chain table in AGENTS.md readable, one reader for the stacks table, and the docs portal reading
-// the chain model rather than walking docs/ itself, the harness scripts CommonJS whatever the
-// project's package.json declares, CLAUDE.md importing AGENTS.md, and no steering file sending its
-// reader to CONTEXT.md for terms that live in GLOSSARY.md. Each one fails silently otherwise: nothing else
-// in the harness exits non-zero when a skill quietly vanishes from an agent's view.
+// .claude/settings.json the text this file writes, the hook table in .agents/README.md naming every
+// hook that launcher table wires, every vendored skill attributed and on disk, the
+// chain table in AGENTS.md readable, one reader for the stacks table, the acceptance workflow
+// proving every runner that table names, and the docs portal reading the chain model rather than
+// walking docs/ itself, the harness scripts CommonJS whatever the project's package.json declares,
+// CLAUDE.md importing AGENTS.md, and no steering file sending its reader to CONTEXT.md for terms
+// that live in GLOSSARY.md. Each one fails silently otherwise: nothing else in the harness exits
+// non-zero when a skill quietly vanishes from an agent's view.
 // It travels with the harness, so a project can run it after changing any of those files, and
 // check-edit.js does whenever one of PATHS is edited. The installer runs the upstream's copy against
 // the target it has just written, and the upstream's suite runs the same functions against itself.
@@ -19,11 +21,17 @@
 // Usage:
 //   node scripts/check-harness.js                 check this repo
 //   node scripts/check-harness.js --root=../other check another one
+//   node scripts/check-harness.js --list          one line per invariant: its name, its line here, the paths it reads
+// --list is for a reader with one failure or one file in hand: it says which invariant to read and
+// where, rather than having the whole file read in slices to find it. The paths come from running
+// each invariant alone through a view that records what it asks for, so the list is never stale.
+const fs = require("fs");
 const path = require("path");
 const lib = require("./lib");
 const docsCheck = require("./docs-check");
 const { HOOKS } = require("./githook");
 const skills = require("./skills");
+const stacks = require("./stacks");
 const repoView = require("./repo-view");
 
 // What the invariants below read, as the path a harness reports for an edit: an exact file, or a
@@ -34,8 +42,8 @@ const repoView = require("./repo-view");
 const PATHS = [
     ".agents/skills/", ".claude/skills", ".claude/skills/", ".agents/agents/", ".agents/routing.md", ".githooks/",
     "skills-lock.json", "scripts/", "THIRD-PARTY-NOTICES.md", "AGENTS.md",
-    ".claude/settings.json", "tools/docs-site/", ".agents/hooks/package.json", "CLAUDE.md",
-    ".agents/README.md", "CODING_STANDARDS.md", "docs/README.md", "docs/agents/",
+    ".claude/settings.json", "tools/docs-site/", ".agents/hooks/", "CLAUDE.md",
+    ".agents/README.md", "CODING_STANDARDS.md", "docs/README.md", "docs/agents/", ".github/workflows/",
 ];
 const reads = file => PATHS.some(p => p.endsWith("/") ? file.startsWith(p) : file === p);
 
@@ -115,7 +123,7 @@ const CLAUDE_HOOKS = [
     { event: "PostToolUse", matcher: "Edit|Write|MultiEdit", script: "check-edit.js" },
 ];
 
-// The one command text that launches a hook, written once here rather than three times in a settings
+// The one command text that launches a hook, written once here rather than four times in a settings
 // file nobody re-reads. node asks git for the root instead of reading $CLAUDE_PROJECT_DIR, because
 // Copilot reads the same file without setting that variable and denies a tool whose pre-tool hook
 // errors. The trailing `; exit $LASTEXITCODE` is for PowerShell, which reports a native exit 2 as 1:
@@ -128,8 +136,8 @@ const launcher = script =>
 
 // Nothing reads .claude/settings.json back after an update merges it, and a hook that stopped being
 // wired fails the way every harness failure does: in silence, with the session simply not checking
-// anything any more. So the file is held to the table above -- each of our three scripts launched
-// once, on its event, behind its matcher, by the launcher text every shell runs. Only those three
+// anything any more. So the file is held to the table above -- each of our four scripts launched
+// once, on its event, behind its matcher, by the launcher text every shell runs. Only those four
 // entries are ours; a hook or a permission the project added is its own business and is not read.
 function claudeHookLaunchersAreWired(t, repo) {
     const file = ".claude/settings.json";
@@ -149,6 +157,29 @@ function claudeHookLaunchersAreWired(t, repo) {
         t.ok(ours[0].command === launcher(script),
             `the ${event} command for ${script} is the launcher every shell runs`, ours[0].command);
     }
+}
+
+// The hook table in .agents/README.md is where a person learns what runs on which event, and it was
+// held to nothing: the launcher table above gained a fourth script and the prose beside the table
+// kept counting three until somebody read it. So the table is held to the wiring both ways: every
+// script CLAUDE_HOOKS launches has a row, and every row names a script that is on disk. A row a
+// project added for a hook of its own passes on the second rule alone, since .agents/ merges rather
+// than overwrites. The table is the rows under "## Agent hooks" whose first cell is one file name in
+// backticks; the heading is part of the shape, so a README that lost it fails rather than skips.
+function hookTableNamesEveryHook(t, repo) {
+    const file = ".agents/README.md";
+    if (!repo.isFile(file)) { t.skip("hook table: no .agents/README.md"); return; }
+    const lines = repo.read(file).split(/\r?\n/);
+    const start = lines.findIndex(l => /^## Agent hooks\s*$/.test(l));
+    t.ok(start >= 0, `${file} keeps the hook table under a "## Agent hooks" heading`, "no such heading");
+    if (start < 0) return;
+    let end = lines.findIndex((l, i) => i > start && /^## /.test(l));
+    if (end < 0) end = lines.length;
+    const rows = lines.slice(start + 1, end).map(l => (l.match(/^\| `([^`\s|/]+)` \|/) || [])[1]).filter(Boolean);
+    const undocumented = CLAUDE_HOOKS.map(h => h.script).filter(script => !rows.includes(script));
+    t.ok(!undocumented.length, `${file}'s hook table has a row for every hook the harness wires`, undocumented.join(", "));
+    const stale = rows.filter(script => !repo.isFile(`.agents/hooks/${script}`));
+    t.ok(!stale.length, `${file}'s hook table names only scripts that exist in .agents/hooks/`, stale.join(", "));
 }
 
 // .claude/skills is one symlink to .agents/skills, so a skill has one copy on disk. A harness that
@@ -337,6 +368,34 @@ function onlyTheStacksReaderNamesTheTable(t, repo) {
     t.ok(!others.length, "only scripts/stacks.js reads scripts/stacks.tsv itself", others.join(", "));
 }
 
+// The acceptance workflow runs one job per row of the stacks table that names a runner, and its
+// matrix is written out rather than read from the table, so that the file says which stacks run.
+// Written out, it can fall behind: a row that gains a runner nobody added a job for is a runner
+// project-init hands out unproved, which is how the .NET wiring stayed unrun for a week. The
+// matrix line is read as text, since nothing here parses YAML and the list is one line by
+// convention. The upstream's only: the workflow is template and never installed.
+const ACCEPTANCE = ".github/workflows/acceptance.yml";
+const MATRIX_RE = /^\s*stack:\s*\[([^\]]*)\]/m;
+function acceptanceWorkflowProvesEveryRunner(t, repo) {
+    if (!repo.isFile("scripts/update-harness.js")) { t.skip("acceptance workflow: the project's own CI"); return; }
+    if (!repo.isFile(stacks.FILE)) { t.skip("acceptance workflow: no stacks table"); return; }
+    const runners = stacks.parse(repo.read(stacks.FILE)).filter(r => r.runner).map(r => r.stack);
+    if (!repo.isFile(ACCEPTANCE)) {
+        t.ok(!runners.length, `${ACCEPTANCE} exists, since the stacks table names a runner to prove`, runners.join(", "));
+        return;
+    }
+    const m = repo.read(ACCEPTANCE).match(MATRIX_RE);
+    const listed = m ? m[1].split(",").map(s => s.trim()).filter(Boolean) : [];
+    const missing = runners.filter(s => !listed.includes(s));
+    const extra = listed.filter(s => !runners.includes(s));
+    const found = [
+        !m && `no "stack: [...]" matrix line`,
+        missing.length && `rows naming a runner with no job: ${missing.join(", ")}`,
+        extra.length && `jobs for rows naming no runner: ${extra.join(", ")}`,
+    ].filter(Boolean).join("\n");
+    t.ok(!found, `${ACCEPTANCE} runs one job per stacks row naming a runner, no more and no fewer`, found);
+}
+
 // The portal presents the chain model; it does not go looking for documents of its own. A directory
 // read in chain.mjs is a second walk of docs/, and a second walk grew a second file-name rule last
 // time. tools/docs-site is optional, so a repo that publishes straight to Jira owes nothing here, and
@@ -409,6 +468,7 @@ const INVARIANTS = [
     gitHooksAreExecutable,
     noGitHookDecidesAnything,
     claudeHookLaunchersAreWired,
+    hookTableNamesEveryHook,
     claudeSkillLinksAreSymlinks,
     everyInstalledSkillIsLinked,
     skillsFolderHoldsSkillsNotLinks,
@@ -419,6 +479,7 @@ const INVARIANTS = [
     everyRoutedSkillIsInstalled,
     chainTableIsReadable,
     onlyTheStacksReaderNamesTheTable,
+    acceptanceWorkflowProvesEveryRunner,
     theDocsPortalReadsTheChainModel,
     noSteeringFileNamesTheContextAlone,
 ];
@@ -453,9 +514,41 @@ const format = r => [
     r.summary,
 ].join("\n");
 
-module.exports = { check, format, reads, PATHS, INVARIANTS, CLAUDE_HOOKS, launcher };
+// Which invariant reads what: each is run alone against the repo through a view that records every
+// path asked of it, with its own roster so the roster's reads land on the invariants that use it,
+// and its line in this file is found by its name. The verdicts are dropped; this answers "where do
+// I look", not "is it right". The suite probes the same way to hold PATHS to what is read
+// (theEditTriggerCoversEveryPathTheInvariantsRead); this is that probe, printed for a person.
+function trace(repo) {
+    repo = viewOf(repo);
+    const source = fs.readFileSync(__filename, "utf8").split(/\r?\n/);
+    const quiet = { ok: () => {}, skip: () => {} };
+    return INVARIANTS.map(invariant => {
+        const asked = new Set();
+        const recording = new Proxy(repo, {
+            get: (target, how) => typeof target[how] !== "function" ? target[how] : (...args) => {
+                const paths = [].concat(args[0] ?? []).filter(p => typeof p === "string");
+                for (const p of paths.length ? paths : ["."]) asked.add(path.posix.normalize(p.split("\\").join("/")).replace(/\/+$/, "") || ".");
+                return target[how](...args);
+            },
+        });
+        try { invariant(quiet, recording, rosterOf(recording)); } catch { /* a failure is check()'s to report */ }
+        // A folder the invariant listed stands for everything it then read under it: the roster walks
+        // every skill, and sixty SKILL.md paths say less than `.agents/skills`.
+        const reads = [...asked].filter(p => ![...asked].some(q => q !== p && p.startsWith(`${q}/`))).sort();
+        return { name: invariant.name, line: source.findIndex(l => l.startsWith(`function ${invariant.name}(`)) + 1, reads };
+    });
+}
+
+module.exports = { check, format, trace, reads, PATHS, INVARIANTS, CLAUDE_HOOKS, launcher };
 
 if (require.main === module) {
+    if (lib.args().includes("--list")) {
+        const rows = trace(repoView.worktree(lib.root()));
+        const width = Math.max(...rows.map(r => r.name.length));
+        for (const r of rows) console.log(`${r.name.padEnd(width)}  scripts/check-harness.js:${r.line}  reads ${r.reads.join(", ") || "nothing"}`);
+        process.exit(0);
+    }
     const r = check(repoView.worktree(lib.root()));
     console.log(format(r));
     process.exit(r.failed.length ? 1 : 0);
