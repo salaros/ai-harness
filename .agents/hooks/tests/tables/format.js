@@ -59,6 +59,48 @@ exports.aRunThatCouldNotStartIsNotAVerdict = function aRunThatCouldNotStartIsNot
         t.ok(fmt.cannotRun(output) === why, `cannot run: ${why || "a list of files is a verdict, not a failure"}`, `${output.split("\n")[0]} -> ${fmt.cannotRun(output)}`);
 };
 
+// A run that exits 0 having checked nothing is not a pass. `dotnet husky run --group pre-push` in a
+// repo that never seeded a task in that group prints "Skipped, no task found" and exits 0, and the
+// push was then reported as "N file(s) formatted correctly" without a file having been read. That
+// output is a skip whatever the exit code, so the next alternative gets the files.
+exports.aRunThatCheckedNothingIsNotAPass = function aRunThatCheckedNothingIsNotAPass(t) {
+    const fmt = formatChanged();
+    if (!fmt || !fmt.notARun) { t.skip(`checked nothing: ${SKIP}`); return; }
+    t.ok(fmt.checkedNothing("[Husky] Skipped, no task found") === "the Husky group has no task",
+        "checked nothing: Husky.NET's empty group is a skip, not a verdict", String(fmt.checkedNothing("Skipped, no task found")));
+    t.ok(fmt.notARun({ status: 0, output: "Skipped, no task found" }) === "the Husky group has no task",
+        "checked nothing: and so even though it exited 0", "");
+    t.ok(fmt.notARun({ status: 0, output: "Checking formatting...\nAll matched files use Prettier code style!" }) === null,
+        "checked nothing: a formatter that passed is a pass", "");
+    t.ok(fmt.notARun({ status: 1, output: "[warn] src/a.ts\n[warn] Code style issues found in the above file." }) === null,
+        "checked nothing: a formatter that found something is a verdict", "");
+    t.ok(fmt.notARun({ status: 1, output: "'prettier' is not recognized as an internal or external command" }) === "the tool is not installed",
+        "checked nothing: a tool that could not start is still the skip it was", "");
+};
+
+// Which alternatives of a format cell a run may try. The dotnet row prefers `dotnet husky run --group
+// pre-push`, which takes no {files} and verifies the whole solution: the push's net, at 35 s on a
+// real solution, and not what a commit should pay for its staged files. So a staged check drops every
+// alternative that names no {files} and goes straight to the one that does; a push keeps them all.
+exports.aStagedCheckTriesOnlyWhatTakesTheStagedFiles = function aStagedCheckTriesOnlyWhatTakesTheStagedFiles(t) {
+    const fmt = formatChanged();
+    if (!fmt || !fmt.alternativesFor) { t.skip(`alternatives: ${SKIP}`); return; }
+    const cell = "dotnet husky run --group pre-push ?? dotnet format --no-restore --verify-no-changes --include {files}";
+    const staged = fmt.alternativesFor(cell, { staged: true });
+    t.ok(staged.tried.join(" | ") === "dotnet format --no-restore --verify-no-changes --include {files}",
+        "alternatives: a staged check tries only the alternative that takes {files}", staged.tried.join(" | "));
+    t.ok(staged.dropped.join(" | ") === "dotnet husky run --group pre-push",
+        "alternatives: and says which whole-project one it left to the push", staged.dropped.join(" | "));
+    const pushed = fmt.alternativesFor(cell);
+    t.ok(pushed.tried.length === 2 && pushed.tried[0] === "dotnet husky run --group pre-push" && !pushed.dropped.length,
+        "alternatives: a push tries them all, the whole-project one first", pushed.tried.join(" | "));
+    const only = fmt.alternativesFor("dotnet husky run --group pre-push", { staged: true });
+    t.ok(!only.tried.length && only.dropped.length === 1,
+        "alternatives: a cell with nothing that takes {files} leaves a staged check nothing to run, and says so rather than running the whole project", "");
+    t.ok(fmt.alternativesFor(TEMPLATE, { staged: true }).tried.join("") === TEMPLATE,
+        "alternatives: a one-command cell naming {files} is tried as it is", "");
+};
+
 // One verdict from the batches of one alternative: misformatted if any batch said so, and the output
 // is what those batches said. A batch that passed has nothing to add.
 exports.batchVerdictsCombineIntoOne = function batchVerdictsCombineIntoOne(t) {

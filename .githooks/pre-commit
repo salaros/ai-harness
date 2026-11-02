@@ -1,8 +1,11 @@
 #!/bin/sh
 # .githooks/pre-commit
 # Before a commit lands, refuse an unconfigured clone, check the shape of the loose-ends ledger,
-# then check the documentation chain as the commit will record it. What it checks is the index, not
-# the working tree, so what passes is what the commit records.
+# check the documentation chain as the commit will record it, then check the formatting of the
+# staged files with the stack's own formatter from scripts/stacks.tsv. The ledger and the chain are
+# read from the index, so what passes is what the commit records; the formatter reads the staged
+# paths from the working tree, as the push does. A misformatted staged file blocks the commit and is
+# named; a file nobody staged is not the commit's and does not block it. Nothing is rewritten.
 # The decision is scripts/githook.js; this file only finds the repo. Git runs it through
 # core.hooksPath, set once per clone by `node scripts/githooks-init.js`.
 # To see what it would check: node scripts/githook.js pre-commit --dry-run

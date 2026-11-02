@@ -1,23 +1,29 @@
 #!/usr/bin/env node
 // scripts/format-changed.js
-// Checks the formatting of the files a push would publish, using the stack's own formatter rather
-// than one this template picks: scripts/stacks.tsv gives each stack the patterns it formats and a
-// check-only command. A row runs only when its "needs" file exists at the repo root, so a .NET repo
-// never invokes prettier and a Node repo never invokes dotnet format.
-// It never writes. A misformatted file fails the push, naming the files and the command that fixes
-// them; `git push --no-verify` skips the hook. Writing during a hook is how lint-staged has to stash
-// and restore, and how partially-staged work gets swept into a commit; reporting cannot lose work.
-// The files are read from the working tree, not from the pushed commits, so a formatter still sees
-// its project context (node_modules, tsconfig, the .csproj). They agree unless you push with
-// uncommitted edits, and then the report is about the files in front of you.
-// Called by .githooks/pre-push. To try it by hand:
+// Checks the formatting of the files a commit stages or a push would publish, using the stack's own
+// formatter rather than one this template picks: scripts/stacks.tsv gives each stack the patterns
+// it formats and a check-only command. A row runs only when its "needs" file exists at the repo
+// root, so a .NET repo never invokes prettier and a Node repo never invokes dotnet format.
+// It never writes. A misformatted file fails the commit or the push, naming the files and the
+// command that fixes them; `--no-verify` skips either hook. Writing during a hook is how lint-staged
+// has to stash and restore, and how partially-staged work gets swept into a commit; reporting
+// cannot lose work.
+// The files are read from the working tree, not from the index or the pushed commits, so a
+// formatter still sees its project context (node_modules, tsconfig, the .csproj). They agree unless
+// you commit a partial stage or push with uncommitted edits, and then the report is about the files
+// in front of you.
+// Called by .githooks/pre-commit with the staged paths and by .githooks/pre-push with the ref
+// updates. To try it by hand:
 //   printf 'src/a.ts\n' | node scripts/format-changed.js --dry-run
 // Usage:
 //   node scripts/format-changed.js --push        ref updates on stdin, as Git gives a pre-push hook
+//   node scripts/format-changed.js --staged      the staged paths on stdin, worded for a commit
 //   node scripts/format-changed.js [--dry-run]   file paths on stdin, one per line
 // A format cell may list fallbacks separated by " ?? ", tried in order until one's tool is
 // installed; that is this script's syntax, not the shell's. The dotnet row uses it to prefer a
-// project's Husky.NET task runner and fall back to dotnet format.
+// project's Husky.NET task runner and fall back to dotnet format. With --staged an alternative that
+// names no {files} is not tried: it checks the whole project, which is the push's job, not the
+// commit's, so the staged files go to the next alternative, which does take them.
 const lib = require("./lib");
 const repoView = require("./repo-view");
 const stacks = require("./stacks");
@@ -38,6 +44,26 @@ const CANNOT_RUN = [
         "one file fills a whole command line"],
 ];
 const cannotRun = output => (CANNOT_RUN.find(([re]) => re.test(output)) || [])[1] || null;
+
+// A run that exits 0 having checked nothing is not a pass either. `dotnet husky run --group <x>` with
+// no task in that group prints "Skipped, no task found" and exits 0, and a .NET repo that never
+// seeded the task had every push reported as "N file(s) formatted correctly" on the strength of it.
+// Matched on output whatever the exit code, and turned into a skip so the next alternative runs.
+const CHECKED_NOTHING = [
+    [/skipped,?\s*no task found/i, "the Husky group has no task"],
+];
+const checkedNothing = output => (CHECKED_NOTHING.find(([re]) => re.test(output)) || [])[1] || null;
+// Why a batch is no verdict on its files, or null when it is one.
+const notARun = r => (r.status !== 0 ? cannotRun(r.output) : null) || checkedNothing(r.output);
+
+// The alternatives of a format cell that this run may try. A pre-commit check is about the staged
+// files, so one that takes no {files} is dropped there: it checks the whole project, which costs
+// the whole project (35 s on a .NET solution) and is what the push already does.
+function alternativesFor(format, { staged = false } = {}) {
+    const all = format.split(" ?? ").map(s => s.trim()).filter(Boolean);
+    const tried = staged ? all.filter(a => a.includes("{files}")) : all;
+    return { tried, dropped: all.filter(a => !tried.includes(a)) };
+}
 
 // cmd.exe refuses a command line over 8191 characters, and says "The command line is too long"
 // before the formatter starts. A push touching a few hundred files passes that length easily: 338
@@ -97,15 +123,19 @@ function pathsFromRefUpdates(lines) {
 const formattable = (view, paths) => paths.filter(p => view.isFile(p) && !(view.lstat(p) || {}).link);
 
 // Reads the paths from stdin, runs each active stack's formatter over them and prints what it found.
-// Returns the exit code: 1 while a file a push would publish is misformatted.
+// Returns the exit code: 1 while a file the commit stages or a push would publish is misformatted.
 function main(argv) {
     const root = lib.chdirRoot();
     const dry = argv.includes("--dry-run");
     const fromPush = argv.includes("--push");
+    const staged = argv.includes("--staged");
     const input = lib.stdin().split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const what = staged ? "staged" : "changed";
+    const anyway = staged ? "stage the result and commit again. To commit anyway: git commit --no-verify"
+        : "then commit the result. To push anyway: git push --no-verify";
 
     const changed = formattable(repoView.worktree(root), fromPush ? pathsFromRefUpdates(input) : input);
-    if (!changed.length) { console.log("nothing to format-check"); return 0; }
+    if (!changed.length) { console.log(`nothing ${staged ? "staged " : ""}to format-check`); return 0; }
 
     let status = 0, ran = false;
     // active() drops the rows whose "needs" file is absent -- not this repo's stack -- and select()
@@ -114,28 +144,30 @@ function main(argv) {
         if (!format || !formats) continue;
         const files = stacks.select(formats, changed);
         if (!files.length) continue;
-        // " ?? " separates fallbacks, tried in order: the first whose tool is actually installed runs,
-        // and its verdict stands. The dotnet row uses it to prefer a project's Husky.NET task runner and
-        // fall back to dotnet format. This is the script's own syntax, not the shell's.
-        const alternatives = format.split(" ?? ").map(s => s.trim()).filter(Boolean);
+        // " ?? " separates fallbacks, tried in order: the first whose tool is actually installed and
+        // actually checked something runs, and its verdict stands. The dotnet row uses it to prefer a
+        // project's Husky.NET task runner and fall back to dotnet format. This is the script's own
+        // syntax, not the shell's.
+        const { tried, dropped } = alternativesFor(format, { staged });
         ran = true;
         if (dry) {
-            for (const alt of alternatives) {
+            for (const alt of dropped) console.log(`would not run: ${alt} (${stack}: checks the whole project, not the staged files)`);
+            for (const alt of tried) {
                 const groups = batches(alt, files);
                 const rest = groups.length > 1 ? ` (and ${groups.length - 1} more batch(es))` : "";
                 console.log(`would check: ${fill(alt, groups[0])}${rest} (${stack})`);
             }
             continue;
         }
-        let outcome = null, skipped = null;
-        for (const alt of alternatives) {
+        let outcome = null, skipped = tried.length ? null : "every alternative checks the whole project";
+        for (const alt of tried) {
             // A batch that cannot run at all ends the alternative rather than the run: a missing tool
             // is the same answer for every batch, and the next fallback gets the whole list.
             const runs = [];
             let why = null;
             for (const group of batches(alt, files)) {
                 const r = lib.shell(fill(alt, group));
-                if (r.status !== 0) why = cannotRun(r.output);
+                why = notARun(r);
                 if (why) break;
                 runs.push(r);
             }
@@ -144,18 +176,19 @@ function main(argv) {
             break;
         }
         if (!outcome) { console.log(`${stack}: skipped, ${skipped}`); continue; }
-        if (outcome.status === 0) { console.log(`${stack}: ${files.length} file(s) formatted correctly`); continue; }
-        console.error(`\n${stack}: ${files.length} changed file(s) are not formatted.\n`);
+        if (outcome.status === 0) { console.log(`${stack}: ${files.length} ${what} file(s) formatted correctly`); continue; }
+        console.error(`\n${stack}: ${files.length} ${what} file(s) are not formatted.\n`);
         console.error(outcome.output);
-        console.error(`\nFormat them, then commit the result. To push anyway: git push --no-verify`);
+        console.error(`\nFormat them, ${anyway}`);
         status = 1;
     }
-    if (!ran) console.log(`nothing to format-check (${changed.length} changed file(s), no stack claims them)`);
+    if (!ran) console.log(`nothing to format-check (${changed.length} ${what} file(s), no stack claims them)`);
     return status;
 }
 
 // The batching is this script's own decision, so the suite reads it here rather than through a shell:
-// a command line that was too long is a failure the formatter's output cannot show.
-module.exports = { batches, fill, combine, cannotRun, formattable, LIMIT, CANNOT_RUN };
+// a command line that was too long is a failure the formatter's output cannot show. So are which
+// alternatives a staged check may try, and which run is no verdict on its files.
+module.exports = { batches, fill, combine, cannotRun, checkedNothing, notARun, alternativesFor, formattable, LIMIT, CANNOT_RUN, CHECKED_NOTHING };
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));

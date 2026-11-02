@@ -37,6 +37,11 @@ scripts/check-staged-docs.js --dry-run	staged-intent.txt	0	-	would check the sta
 scripts/check-staged-docs.js --dry-run	staged-none.txt	0	-	nothing staged	a commit touching no chain file is skipped
 scripts/format-changed.js --dry-run	format-md.txt	0	plant package-lock.json {}	would check: npx --no-install prettier	a Node repo format-checks its changed files
 scripts/format-changed.js --dry-run	format-md.txt	0	absent package-lock.json	no stack claims them	without the stack lock file no formatter runs
+scripts/format-changed.js --dry-run --staged	format-md.txt	0	plant package-lock.json {}	would check: npx --no-install prettier --check "AGENTS.md" (npm)	a staged check hands the staged paths to the stack's formatter
+scripts/format-changed.js --dry-run --staged	format-cs.txt	0	plant src/Program.cs class P {}	would not run: dotnet husky run --group pre-push (dotnet: checks the whole project, not the staged files)	a staged check does not try an alternative that takes no {files}
+scripts/format-changed.js --dry-run --staged	format-cs.txt	0	plant src/Program.cs class P {}	would check: dotnet format --no-restore --verify-no-changes --include "src/Program.cs" (dotnet)	a staged check falls through to the alternative that does take the staged files
+scripts/format-changed.js --dry-run	format-cs.txt	0	plant src/Program.cs class P {}	would check: dotnet husky run --group pre-push (dotnet)	a push check still tries the whole-project alternative first
+scripts/format-changed.js --staged	paths-empty.txt	0	-	nothing staged to format-check	a commit staging nothing gets one notice line and passes
 scripts/on-manifest-change.js --dry-run	paths-lock.txt	0	-	would run: node scripts/skills.js install	a changed skills lock restores the skills
 scripts/on-manifest-change.js --dry-run	paths-dotnet-tools.txt	0	-	would run: dotnet tool restore	a changed dotnet tool manifest restores Husky.NET
 scripts/on-manifest-change.js --dry-run	paths-package-json.txt	0	absent package-lock.json	nothing to restore	package.json alone restores nothing while no lock file exists
@@ -52,6 +57,7 @@ scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	-	nothing staged from 
 scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	plant TODO.md # TODO	would check the unstaged TODO.md	a TODO.md nobody staged is still read, where the old shell pipe saw nothing
 scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	plant GLOSSARY.md # Glossary	no glossary staged	a glossary the commit does not touch is not the commit's to check
 scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	plant .github/workflows/ci.yml name: ci	no workflow staged	a workflow on disk but not staged is not the commit's to lint
+scripts/githook.js pre-commit --dry-run	paths-empty.txt	0	plant package-lock.json {}	nothing staged to format-check	outside a git index pre-commit has no staged files to format-check and says so
 scripts/githook.js pre-push --dry-run	paths-empty.txt	0	-	would format-check	pre-push says what it would check
 scripts/githook.js post-merge --dry-run	paths-empty.txt	0	-	-	post-merge works out the merge diff itself
 scripts/githook.js commit-msg .agents/hooks/tests/msg-conventional.txt	paths-empty.txt	0	-	conventional	commit-msg reads the file Git names

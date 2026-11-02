@@ -50,15 +50,23 @@ const lines = text => text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
 // Before a commit lands: refuse an unconfigured clone, refuse a merge conflict left in what is
 // staged, lint every workflow the commit touches, check the loose-ends ledger, every glossary the
-// commit touches, and the documentation chain as the commit will record it.
+// commit touches, the documentation chain as the commit will record it, and last, because it is the
+// slowest, the formatting of the files it stages.
 function preCommit(root, { dry }) {
     const gate = initialised.check(root);
     const stagedTodo = staged(root, TODO);
     const onDisk = fs.existsSync(path.join(root, TODO));
     const changed = lib.run("git", ["diff", "--cached", "--name-only", "--diff-filter=ACMRD"], { cwd: root });
-    const touched = stagedDocs.chainFiles(lines(changed.output));
-    const glossaries = lines(changed.output).filter(glossary.isGlossary);
-    const actions = lines(changed.output).filter(workflows.isWorkflow);
+    // An index nobody can read stages nothing; its error message is not a list of paths.
+    const paths = changed.status === 0 ? lines(changed.output) : [];
+    const touched = stagedDocs.chainFiles(paths);
+    const glossaries = paths.filter(glossary.isGlossary);
+    const actions = paths.filter(workflows.isWorkflow);
+    // The formatter gets the staged paths that will exist after the commit: a deletion is not a file
+    // to format, though the working tree may still hold one (git rm --cached). Unstaged edits are
+    // not the commit's and do not block it; the push checks them when they go.
+    const kept = lib.run("git", ["diff", "--cached", "--name-only", "--diff-filter=ACMR"], { cwd: root });
+    const toFormat = kept.status === 0 ? lines(kept.output) : [];
 
     if (dry) {
         console.log(`project: ${gate.reason}`);
@@ -72,7 +80,8 @@ function preCommit(root, { dry }) {
             : "no glossary staged");
         console.log(touched.length ? `would check the staged chain (${touched.length} file(s)): ${touched.join(" ")}`
             : "nothing staged from the documentation chain");
-        return 0;
+        if (toFormat.length) console.log(`would format-check the staged files (${toFormat.length} file(s)): ${toFormat.join(" ")}`);
+        return formatStaged(root, toFormat, { dry });
     }
 
     if (!gate.ok) { initialised.explain("commit", gate); return 1; }
@@ -107,8 +116,23 @@ function preCommit(root, { dry }) {
     }
 
     if (changed.status !== 0) console.error(`git diff --cached failed: ${changed.output}`);
-    return report(root, stagedDocs.check(root, lines(changed.output)),
-        "Fix them (the docs-check skill repairs what this reports) and stage the fix.\nTo commit anyway: git commit --no-verify");
+    if (report(root, stagedDocs.check(root, paths),
+        "Fix them (the docs-check skill repairs what this reports) and stage the fix.\nTo commit anyway: git commit --no-verify")) return 1;
+
+    // Formatting used to be checked only at push, and a slip in a test file's import order came back
+    // as a refused push several commits later, costing a second, style-only commit. Checked here over
+    // the staged files, it comes back before the commit that would have carried it. The push keeps
+    // its own check as the net under `--no-verify` and tools that skip hooks.
+    return formatStaged(root, toFormat, { dry: false });
+}
+
+// The staged paths through format-changed.js, worded for a commit. It reads the working tree, as
+// the push does, so a partially staged file is judged as it is on disk; the dry run says what it
+// would run and runs nothing.
+function formatStaged(root, files, { dry }) {
+    const args = [path.join(__dirname, "format-changed.js"), "--staged", `${lib.ROOT_FLAG}${root}`, ...(dry ? ["--dry-run"] : [])];
+    const r = lib.node(args, { cwd: root, input: files.join("\n") + "\n", stdio: ["pipe", "inherit", "inherit"] });
+    return r.status === 0 ? 0 : 1;
 }
 
 // Git passes the path of the message file. It is read here rather than piped by the shell so the
@@ -136,7 +160,9 @@ function commitMessage(root, args, { dry }) {
 
 // Before commits leave this machine: refuse an unconfigured clone, then check that what they
 // publish is formatted. Git gives a pre-push hook the ref updates on stdin, which format-changed
-// turns into paths.
+// turns into paths. The commit already checked its staged files; this is the net under a commit
+// made with --no-verify or by a tool that runs no hooks, and it runs every alternative of a format
+// cell, the whole-project ones included.
 function prePush(root, { dry }) {
     const gate = initialised.check(root);
     if (dry) { console.log(`project: ${gate.reason}`); console.log("would format-check what the push carries"); return 0; }
