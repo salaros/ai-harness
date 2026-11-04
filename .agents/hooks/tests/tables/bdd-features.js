@@ -134,3 +134,27 @@ exports.bddShapeIsAChainRule = function bddShapeIsAChainRule(t) {
             "docs-check reports a # language: line other than en", problems.join("\n"));
     });
 };
+
+// number(): the repair for a document written before the `# SC-n` rule. What it adds must be what
+// extract() then accepts, with the ids a SPEC may already cite from the document's headings.
+exports.bddScenarioNumbering = function bddScenarioNumbering(t) {
+    if (!fs.existsSync(SCRIPT)) { t.skip("bdd-features: no scripts/bdd-features.js here"); return; }
+    const { extract, number } = require(path.join(lib.checkout, "scripts", "feature-file.js"));
+
+    const before = ["# BDD-0001: Checkout", "", "**Derived from:** https://example.com/brief", "",
+        "### SC-4: Pay", "", "```gherkin", "Feature: Checkout", "", "@slow", "Scenario: Pay by card", "  Given a cart",
+        "", "Scenario: Pay by invoice", "  Given a cart", "```", "",
+        "### SC-1: Refund", "", "```gherkin", "# SC-1", "Scenario: Refund", "  Given a paid order", "```", ""];
+    const crlf = before.join("\r\n");
+    const r = number(crlf);
+    t.ok(r.added.map(a => a.id).join() === "SC-4,SC-5",
+        "a scenario under a ### SC-n heading takes that id, and the next one under it the next number the document has not used", JSON.stringify(r.added));
+    t.ok(r.text.includes("\r\n# SC-4\r\n@slow\r\nScenario: Pay by card") && r.text.includes("\r\n# SC-5\r\nScenario: Pay by invoice"),
+        "the line goes above the scenario's tags, and the document keeps its CRLF line endings", r.text);
+    t.ok(!r.text.replace(/\r\n/g, "").includes("\n"), "no bare LF is mixed into a CRLF document", JSON.stringify(r.text));
+    t.ok(!extract(r.text, FILE).problems.length, "extract() accepts what number() wrote", extract(r.text, FILE).problems.join("\n"));
+    t.ok(number(r.text).added.length === 0 && number(r.text).text === r.text, "a numbered document is left as it is");
+
+    const quoted = number(text("```md", "```gherkin", "Scenario: an example in prose", "```", "```"));
+    t.ok(!quoted.added.length, "a scenario inside another fenced block is prose, and gets no id", JSON.stringify(quoted.added));
+};

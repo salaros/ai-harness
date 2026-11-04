@@ -12,8 +12,10 @@
 // It is a step before the runner, run by the developer and by CI (ADR-0008); no Git hook runs it.
 // features(root, out) is the decision for the folder, returning what to write and what is wrong,
 // printing nothing and writing nothing; apply() writes.
-// Usage: node scripts/bdd-features.js [--out=<dir>] [--check]
+// Usage: node scripts/bdd-features.js [--out=<dir>] [--check | --number]
 //   --out=<dir>   where the feature files go, relative to the repo root; default tests/features
+//   --number      write no feature file; add the missing `# SC-n` lines to the documents themselves,
+//                 for documents written before the rule (feature-file.js's number() picks the ids)
 //   --check       write nothing; exit 1 when a document is refused or a feature file is missing,
 //                 stale, or left over from a document that no longer exists
 // Exit 1 when a document was refused, with the problems on stderr; the rest is still written.
@@ -22,7 +24,7 @@ const path = require("path");
 const lib = require("./lib");
 const docsCheck = require("./docs-check");
 // STAGE is the stage's name in the chain table; its folder is the table's to decide.
-const { extract, MARK, WRITER, STAGE } = require("./feature-file");
+const { extract, number, MARK, WRITER, STAGE } = require("./feature-file");
 
 const DEFAULT_OUT = "tests/features";
 
@@ -79,18 +81,41 @@ function apply(root, result) {
     return { written: [...missing, ...stale], unchanged: current, removed: leftover };
 }
 
-module.exports = { extract, features, compare, apply, DEFAULT_OUT, MARK };
+// Adds the missing `# SC-n` lines to every document of the stage, in place, and says what each got.
+// Only the documents, never the feature files: the ids are the record's, and a run without --number
+// writes the files from it afterwards.
+function numberDocs(root) {
+    const { docs } = docsCheck.readDocs(root);
+    const changed = [];
+    for (const doc of docs.values()) {
+        if (doc.stage !== STAGE) continue;
+        const r = number(doc.text);
+        if (!r.added.length) continue;
+        fs.writeFileSync(path.resolve(root, doc.file), r.text);
+        changed.push({ file: doc.file, added: r.added });
+    }
+    return changed;
+}
+
+module.exports = { extract, features, compare, apply, numberDocs, DEFAULT_OUT, MARK };
 
 if (require.main === module) {
     const argv = lib.args();
     if (argv.includes("-h") || argv.includes("--help")) {
-        console.log(`Usage: node ${WRITER} [--out=<dir>] [--check]\n` +
+        console.log(`Usage: node ${WRITER} [--out=<dir>] [--check | --number]\n` +
             `Writes every document of the ${STAGE} stage out as <out>/NNNN-<slug>.feature (default ${DEFAULT_OUT}).\n` +
             "  --out=<dir>   the folder the feature files go to, relative to the repo root\n" +
-            "  --check       write nothing; exit 1 if a document is refused or the folder is not what the documents say");
+            "  --check       write nothing; exit 1 if a document is refused or the folder is not what the documents say\n" +
+            "  --number      add the missing # SC-n lines to the documents themselves, and write no feature file");
         process.exit(0);
     }
     const root = lib.root();
+    if (argv.includes("--number")) {
+        const changed = numberDocs(root);
+        for (const c of changed) for (const a of c.added) console.log(`${c.file}: # ${a.id} above "${a.scenario}"`);
+        console.log(`${changed.length} document(s) numbered; check them with node scripts/docs-check.js`);
+        process.exit(0);
+    }
     const given = argv.find(a => a.startsWith("--out="));
     const out = given ? given.slice("--out=".length).replace(/\\/g, "/").replace(/\/+$/, "") || DEFAULT_OUT : DEFAULT_OUT;
     const result = features(root, out);

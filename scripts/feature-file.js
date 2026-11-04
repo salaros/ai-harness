@@ -13,6 +13,8 @@
 // pre-commit hook refuses is exactly what would not run: scripts/docs-check.js reports the problems
 // for every BDD document of the chain, and scripts/bdd-features.js writes the files. A third,
 // scripts/chain-skill.js, hands SHAPE to the author at the moment such a document is created.
+// number(text) is the repair for a document written before the rule: the missing `# SC-n` lines,
+// which bdd-features.js --number writes back into the documents.
 // Not a command: nothing here reads the disk, prints or exits.
 
 // The script that writes the files, named in each one's header so that a stale file can be told
@@ -100,7 +102,7 @@ function extract(text, file) {
         while (j >= 0 && TAG_RE.test(body[j])) j--;
         const m = j >= 0 ? body[j].match(SC_RE) : null;
         const name = line.trim();
-        if (!m) { say(`"${name}" has no \`# SC-n\` line directly above it (above its tags, at the start of the line)`); return; }
+        if (!m) { say(`"${name}" has no \`# SC-n\` line directly above it (above its tags, at the start of the line); node ${WRITER} --number adds the missing ones`); return; }
         if (seen.has(m[1])) say(`${m[1]} names both "${seen.get(m[1])}" and "${name}"`);
         else seen.set(m[1], name);
     });
@@ -112,4 +114,59 @@ function extract(text, file) {
     return { feature: lines.join("\n") + "\n", ids: [...seen.keys()], problems };
 }
 
-module.exports = { extract, MARK, WRITER, STAGE, SHAPE };
+// A Markdown heading naming a scenario, `### SC-3: Refund`, outside the gherkin blocks: the id the
+// scenario under it already goes by, which number() reuses rather than inventing a second one.
+const HEADING_RE = /^#{1,6}\s+(SC-\d+)\b/;
+const ANY_HEADING_RE = /^#{1,6}\s/;
+// Any SC-n the document holds as an item, wherever it sits, so a new id never takes a used number.
+const ANY_SC_RE = /^(?:[-*]\s+|#{1,6}\s+|\*\*|\|\s*)?SC-(\d+)\b/;
+
+// The document with a `# SC-n` line added above every scenario that lacks one, for a document
+// written before the rule or by a skill that does not know it. A scenario under a `### SC-n`
+// heading whose id no other scenario holds takes that id; any other takes the next number the
+// document has not used. The line goes above the scenario's tags, and the document keeps its line
+// endings. Returns the text and what was added, and touches nothing else.
+function number(text) {
+    const eol = text.includes("\r\n") ? "\r\n" : "\n";
+    const lines = text.split(/\r?\n/);
+    let max = 0;
+    const inGherkin = new Set();
+    for (const line of lines) {
+        const m = line.match(ANY_SC_RE);
+        if (m) max = Math.max(max, Number(m[1]));
+    }
+
+    // Walk the fences as blocks() does, noting each scenario line and the heading above its block.
+    const scenarios = [];
+    let close = null, gherkin = false, heading = null;
+    lines.forEach((line, i) => {
+        if (!close) {
+            const m = line.match(OPEN_RE);
+            if (m) { close = closeRe(m[1]); gherkin = m[2].toLowerCase() === "gherkin"; return; }
+            if (ANY_HEADING_RE.test(line)) heading = (line.match(HEADING_RE) || [])[1] || null;
+            return;
+        }
+        if (close.test(line)) { close = null; return; }
+        if (!gherkin) return;
+        const sc = line.match(SC_RE);
+        if (sc) inGherkin.add(sc[1]);
+        if (SCENARIO_RE.test(line)) scenarios.push({ i, heading });
+    });
+
+    const insert = new Map(), added = [];
+    for (const { i, heading: under } of scenarios) {
+        let j = i - 1;
+        while (j >= 0 && TAG_RE.test(lines[j])) j--;
+        if (j >= 0 && SC_RE.test(lines[j])) continue;
+        const id = under && !inGherkin.has(under) ? under : `SC-${++max}`;
+        inGherkin.add(id);
+        insert.set(j + 1, id);
+        added.push({ id, scenario: lines[i].trim() });
+    }
+    if (!added.length) return { text, added };
+    const out = [];
+    lines.forEach((line, i) => { if (insert.has(i)) out.push(`# ${insert.get(i)}`); out.push(line); });
+    return { text: out.join(eol), added };
+}
+
+module.exports = { extract, number, MARK, WRITER, STAGE, SHAPE };
