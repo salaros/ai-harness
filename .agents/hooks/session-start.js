@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // .agents/hooks/session-start.js
 // One-screen brief for an agent starting a session in this repo. Harness-neutral: takes no
-// arguments, ignores stdin, always exits 0. Its one call off the machine is `gh pr list`, and only on
-// a GitHub clone. Whatever it prints lands in the agent's context.
+// arguments, ignores stdin, always exits 0. Its calls off the machine are `gh pr list` and the open
+// Dependabot alerts, and only on a GitHub clone. Whatever it prints lands in the agent's context.
 // Wire it to your harness's session-start event (.agents/README.md, "Files per AI tool").
 const fs = require("fs");
 const lib = require("./lib");
@@ -63,6 +63,14 @@ if (!process.env.HOOK_TEST && /github\.com[:/]/.test(git(["remote", "get-url", "
     let open = [];
     try { if (r.status === 0) open = JSON.parse(r.output).filter(p => !p.isDraft).map(p => `#${p.number}`); } catch { /* nothing to say */ }
     if (open.length) say(`pull requests open: ${open.join(", ")}. Offer a pr-sweep of them, as the skill says.`);
+    // The open Dependabot alerts, counted by severity, because otherwise they surface only in the
+    // remote's banner after a push, when the work is already out. A token without access to them
+    // (403), or a repository with them turned off, says nothing.
+    const a = lib.run("gh", ["api", "repos/{owner}/{repo}/dependabot/alerts?state=open&per_page=100",
+        "--jq", 'map(.security_advisory.severity) | group_by(.) | map("\\(length) \\(.[0])") | join(", ")'],
+        { timeout: 5000, env: { ...process.env, GH_NO_UPDATE_NOTIFIER: "1", GH_PROMPT_DISABLED: "1" } });
+    const alerts = a.status === 0 ? a.output.trim() : "";
+    if (alerts) say(`dependabot alerts open: ${alerts}. Tell the user, and list them with gh api repos/{owner}/{repo}/dependabot/alerts before changing dependencies.`);
 }
 // How a session ends, from the routing row of that name: the deferred-work ledger first, so the
 // retrospective opens on what was actually put off. retro and handoff only run when the user types

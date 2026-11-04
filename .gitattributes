@@ -2,6 +2,12 @@
 # ending-only changes. Editors get the same rule from .editorconfig.
 * text=auto eol=lf
 
+# TODO.md is a ledger of one-line entries that branches add to at once, so a merge keeps the lines
+# both sides added instead of stopping on a conflict. The price: an entry one branch resolved and
+# the other edited around comes back, and docs/agents/chain.md's rule of deleting it in the commit
+# that resolves it is then a second deletion.
+TODO.md merge=union
+
 # Windows batch files need CRLF to run reliably.
 *.bat text eol=crlf
 *.cmd text eol=crlf
