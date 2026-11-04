@@ -41,8 +41,8 @@ Issues and specs for this repo live in Jira. Agents reach Jira through the **Atl
 ## Conventions
 
 - **Create an issue**: `createJiraIssue` with the project key, an issue type of `Bug` or `Task` (`Story` if the project uses it), the summary, and the Markdown body from the skill's issue template. Add labels in the same call.
-- **Read an issue**: `getJiraIssue` for fields, description and labels; comments are included in the issue payload.
-- **List issues**: `searchJiraIssuesUsingJql`, e.g. `project = TODO-PROJECT-KEY AND labels = needs-triage ORDER BY created ASC`. Unlabeled issues: `project = TODO-PROJECT-KEY AND labels IS EMPTY AND statusCategory != Done`.
+- **Read an issue**: `getJiraIssue` for fields, description and labels; comments are included in the issue payload. Read one body at a time: a search is for finding keys, not for reading issues.
+- **List issues**: `searchJiraIssuesUsingJql`, e.g. `project = TODO-PROJECT-KEY AND labels = needs-triage ORDER BY created ASC`. Unlabeled issues: `project = TODO-PROJECT-KEY AND labels IS EMPTY AND statusCategory != Done`. Always pass `fields: ["summary", "status"]` and a `maxResults` of 50 or less: the server returns whole issues by default, so a broad search dumps a hundred full bodies and blows the output budget before any work starts. Scope the JQL to the parent too, `parent = KEY-1` for an epic's children, instead of filtering the whole project by hand.
 - **Comment**: `addOrEditJiraIssueComment`. Every comment written during triage starts with the disclaimer line the `triage` skill prescribes.
 - **Apply / remove labels**: `editJiraIssue` on the `labels` field. Labels are the triage vocabulary (see `triage-labels.md`); do not change workflow status to express triage state.
 - **Close**: `listJiraIssueTransitions`, then `transitionJiraIssue` to the project's Done or Won't Do transition, after posting the closing comment.
