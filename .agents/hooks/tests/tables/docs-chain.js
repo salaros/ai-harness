@@ -98,11 +98,16 @@ exports.docsCheckDerivedFromShapes = function docsCheckDerivedFromShapes(t) {
         "brd/9106-root.md": ["# BRD-9106: Root", "", "**Derived from:** the product intent in INTENT.md"],
         "brd/9107-root-gone.md": ["# BRD-9107: Root gone", "", "**Derived from:** NO-SUCH-INTENT.md"],
         "brd/9108-dotted.md": ["# BRD-9108: Dotted", "", "**Derived from:** a talk about Node.js"],
+        // Prose here writes paths as code, so a backticked path in a list is still a path.
+        "brd/9109-backticked.md": ["# BRD-9109: Backticked", "", "**Derived from:** `.scratch/interview.md`, `INTENT.md`"],
+        "brd/9110-backticked-gone.md": ["# BRD-9110: Backticked gone", "", "**Derived from:** `docs/nowhere/missing.md`"],
     }, {
         ".scratch/interview.md": ["# Interview"],
         "INTENT.md": ["# INTENT.md", "", "## Product", "", "**Acme** bills people.", "", "## MVP stories", "", "### Bill", ""],
     });
-    for (const ok of ["brd/9100-url.md", "brd/9101-jira.md", "brd/9102-path.md", "brd/9106-root.md"])
+    t.ok(r.for("brd/9110-backticked-gone.md").some(p => p.includes("docs/nowhere/missing.md does not exist")),
+        "docs-check: a backticked path that is not there gets the does-not-exist hint", r.all);
+    for (const ok of ["brd/9100-url.md", "brd/9101-jira.md", "brd/9102-path.md", "brd/9106-root.md", "brd/9109-backticked.md"])
         t.ok(r.for(ok).length === 0, `docs-check: ${ok} derives from a valid source`, r.all);
     t.ok(r.for("brd/9107-root-gone.md").some(p => p.includes("NO-SUCH-INTENT.md does not exist")),
         "docs-check: Derived from names a root file that is not there", r.all);

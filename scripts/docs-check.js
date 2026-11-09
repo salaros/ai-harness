@@ -75,9 +75,10 @@ function isSource(token, at) {
 const CHAIN_FILES = [AGENTS, MEMORY, INTENT];
 const CHAIN_PATHS = [DOCS, ...CHAIN_FILES];
 const inChain = file => CHAIN_FILES.includes(file) || /^docs\/.+\.md$/.test(file);
-// "x, y (z)" -> ["x", "y", "z"], with surrounding punctuation stripped.
+// "x, y (z)" -> ["x", "y", "z"], with surrounding punctuation stripped. Backticks go too: this
+// repo's prose writes every path as code, so `scripts/lib.js` is the path scripts/lib.js.
 const tokensOf = text => text.split(/[\s,;]+/).filter(Boolean)
-    .map(t => t.replace(/^[("'<[]+|[)"'>\].]+$/g, ""))
+    .map(t => t.replace(/^[("'`<[]+|[)"'`>\].]+$/g, ""))
     .filter(Boolean);
 // The provenance marker every document carries, owned here for the checker and the portal alike.
 const DERIVED_RE = /^\**Derived from:?\**:?/i;
