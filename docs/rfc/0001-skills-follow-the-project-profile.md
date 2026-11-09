@@ -1,6 +1,6 @@
 # RFC-0001: How should a project load only the skills, agents and MCP servers its profile needs?
 
-**Status:** Open
+**Status:** Accepted
 **Derived from:** scripts/skills.js and scripts/project-facts.js and .mcp.json and skills-lock.json, and the user's request of 2026-11-09 to make skills part of the scaffold
 **Decider:** Yaroslav Zhmayev
 
@@ -234,4 +234,16 @@ Two points I contest. G-2 was not ignored quietly: the RFC's own table already s
 
 ## Resolution
 
+Accepted OPT-1 on 2026-11-09, as written, by Yaroslav Zhmayev: vendored skills move to a catalog on disk, and `scripts/profiles.tsv` with one selector decides which skills, agents and MCP servers each target exposes. The hybrid raised in Q-4 was offered and not taken.
+
+What it gives up:
+- **A breaking layout change.** Every existing target must move its vendored skills from `.agents/skills/` to the catalog, and the lock and `skills.js install` move with them.
+- **Windows clones without symlink support.** Such a clone loses every skill in every harness, where today only Claude Code loses them (Q-3).
+- **Disk.** Every target keeps every vendored skill, active or not.
+- **Reach by name.** An inactive skill cannot be called by `/name` until its profile row turns it on.
+
+Q-1, Q-2 and Q-5 were not answered at resolution. Q-3 and Q-5 belong to the SPEC; Q-1 and Q-2 stay with the decider and are filed in `TODO.md`.
+
 **Follow-ups:**
+- An ADR recording the catalog layout and the profile table as the way a target chooses its skills, agents and MCP servers, written with `grill-with-docs` and citing RFC-0001/OPT-1. It also records `Roles` and the wider `Unit type` as project facts.
+- A SPEC for the design, written with `spec` and citing RFC-0001: the `profiles.tsv` grammar, the selector, the three adapters, the migration in `update-harness.js`, the moved lock and install, the two harness invariants, and the answers to Q-3 and Q-5.
