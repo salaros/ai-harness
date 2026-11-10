@@ -57,12 +57,12 @@ Read by `devops` and `engineer`.
 | something over-built, or that works but reads badly | `ponytail-audit` ranks what to delete or replace; `code-simplification` where there is nothing to delete |
 | an issue or external PR to classify | `triage` |
 | open pull requests to review, fix and merge, once the user has said yes to sweeping them | `pr-sweep`, which runs `code-review` on each |
-| "what did we agree to fix later" | `duck-debt` for the `TODO`, `FIXME`, `HACK` and `XXX` comments; `ponytail-debt` for the `ponytail:` ones |
+| "what did we agree to fix later" | `loose-ends`, which sweeps the `TODO`, `FIXME`, `HACK` and `XXX` comments beside `TODO.md`; `ponytail-debt` for the `ponytail:` ones |
 | "that did not land" | `wait-what` |
-| the end of a session | `duck-debt`; then ask the user to type `/retro`, which improves this harness, and `/handoff`, which briefs a successor: `retro` and `handoff` run only when typed |
+| the end of a session | `loose-ends`, to sweep the deferred-work comments; then ask the user to type `/retro`, which improves this harness, and `/handoff`, which briefs a successor: `retro` and `handoff` run only when typed |
 
 The feature files under `tests/features/` are generated from `docs/bdd/`: change the document and run the extractor again, never the file. Which runner a stack has is the `runner` column of `scripts/stacks.tsv`, `project-init` wires it with `scripts/wire-acceptance.js`, and `docs/agents/chain.md` has the shape a document keeps to be extracted.
 
 An ADR is cross-cutting: write it the moment a decision is forced, whatever stage you are at, and derive it from whatever forced it. So is an RFC, for a decision that needs arguing first; once the user accepts one, each hard-to-reverse choice it settled becomes an ADR citing it.
 
-`duck-debt` tiers what it finds by whether each comment carries an issue link. Run it first at the end of a session, so the retrospective opens on what was actually deferred rather than on what anyone remembers. Reading `retro`'s or `handoff`'s `SKILL.md` to do its work by hand is not running it: ask, through the question tool, and wait.
+The `loose-ends` sweep tiers each comment by its marker and by whether it cites an issue. Run it first at the end of a session, so the retrospective opens on what was actually deferred rather than on what anyone remembers. Reading `retro`'s or `handoff`'s `SKILL.md` to do its work by hand is not running it: ask, through the question tool, and wait.

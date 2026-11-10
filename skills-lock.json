@@ -133,12 +133,6 @@
       "skillPath": "skills/dotnet-design-pattern-review/SKILL.md",
       "computedHash": "0b2b93ae1950e075045546dcf8d5a0971eea77abc5707916c99033c334accf69"
     },
-    "duck-debt": {
-      "source": "sprngr/rubber-duck",
-      "sourceType": "github",
-      "skillPath": "skills/duck-debt/SKILL.md",
-      "computedHash": "5c8a4b7298ae47c95d6ecb04318ce191c7eb8dc73ab5011f78c1413e74dd1831"
-    },
     "ef-core": {
       "source": "github/awesome-copilot",
       "sourceType": "github",

@@ -399,7 +399,7 @@ exports.invariantScopeDecisions = function invariantScopeDecisions(t) {
     const routed = (row, prose = "") => ({
         ".agents/routing.md": text("# Routing", "", "## Shared", "", "Read by `engineer`.", "", "| The ask is… | Skill(s) |", "| --- | --- |", row, "", prose),
         ".agents/agents/engineer.md": text("---", "name: engineer", "---", "See routing.md, Shared."),
-        ".agents/skills/duck-debt/SKILL.md": text("---", "name: duck-debt", "description: Does one thing.", "---"),
+        ".agents/skills/loose-ends/SKILL.md": text("---", "name: loose-ends", "description: Does one thing.", "---"),
         ".agents/skills/retro/SKILL.md": text("---", "name: retro", "description: Does one thing.", "---"),
     });
     // A skill with a body, and the one file that makes a map the upstream's checkout.
@@ -412,13 +412,13 @@ exports.invariantScopeDecisions = function invariantScopeDecisions(t) {
             "a project file in .githooks/ that Git never runs need not be executable"],
         ["gitHooksAreExecutable", { ".githooks/pre-commit": text("#!/bin/sh") },
             hooks({ "pre-commit": false }), "fail", "a harness hook committed 100644 still fails"],
-        ["everyRoutedSkillIsInstalled", routed("| the end of a session | `duck-debt`, then `retro` |"), null, "pass",
+        ["everyRoutedSkillIsInstalled", routed("| the end of a session | `loose-ends`, then `retro` |"), null, "pass",
             "a routing row naming installed skills passes"],
-        ["everyRoutedSkillIsInstalled", routed("| the end of a session | `duck-debt`, then `ghost` |"), null, "fail",
+        ["everyRoutedSkillIsInstalled", routed("| the end of a session | `loose-ends`, then `ghost` |"), null, "fail",
             "a routing row naming a skill that is not installed routes nothing"],
         ["everyRoutedSkillIsInstalled", routed("| a spec to build | hand it to `engineer` |"), null, "pass",
             "a row may hand the work to another agent"],
-        ["everyRoutedSkillIsInstalled", routed("| the end of a session | `duck-debt`, not `TODO.md` |", "Run `ghost` first, in prose."), null, "pass",
+        ["everyRoutedSkillIsInstalled", routed("| the end of a session | `loose-ends`, not `TODO.md` |", "Run `ghost` first, in prose."), null, "pass",
             "only the skill column of a row routes; prose around the table does not"],
         ["everyRoutedSkillIsInstalled", {}, null, "skip", "a repo with no routing has nothing to route"],
         ["theDocsPortalReadsTheChainModel", { "tools/docs-site/chain.mjs": portal }, null, "skip",

@@ -77,7 +77,7 @@ if (!process.env.HOOK_TEST && /github\.com[:/]/.test(git(["remote", "get-url", "
 // them, so the agent offers each rather than starting it; handoff only matters when someone else
 // carries on. Only the skills this repo installed are named.
 const ending = [
-    fs.existsSync(".agents/skills/duck-debt/SKILL.md") && "run duck-debt",
+    fs.existsSync(".agents/skills/loose-ends/SKILL.md") && "sweep the deferred-work comments with loose-ends",
     fs.existsSync(".agents/skills/retro/SKILL.md") && "offer the user /retro, which only they can start",
     fs.existsSync(".agents/skills/handoff/SKILL.md") && "offer the user /handoff when someone else carries the work on, which only they can start",
 ].filter(Boolean);
