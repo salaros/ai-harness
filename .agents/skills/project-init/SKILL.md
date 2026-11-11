@@ -161,11 +161,11 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
    Done when `CONTEXT-MAP.md` exists and names `CONTEXT.md`. Skip this step for every other unit type.
 
-12. **Close the loop.** Ask the developer to commit (`git add -A`, then a commit such as `initialise <name>`). If Requirements was `none yet`, hand off to the `pdd` skill when the idea is still in question, or to `brd` when the need is settled; otherwise point out that the `product-manager` agent can start the documentation chain from the requirements location now on record. The post-merge Git hook restores whatever `scripts/stacks.tsv` says for the changed manifests, so the row added in step 8 is all it needs.
+12. **Close the loop.** Run `node scripts/profiles.js apply`, so the skills, agents and MCP servers follow the facts just recorded: `scripts/profiles.tsv` says which each answer turns off, such as the Atlassian server without Jira. Then ask the developer to commit (`git add -A`, then a commit such as `initialise <name>`). If Requirements was `none yet`, hand off to the `pdd` skill when the idea is still in question, or to `brd` when the need is settled; otherwise point out that the `product-manager` agent can start the documentation chain from the requirements location now on record. The post-merge Git hook restores whatever `scripts/stacks.tsv` says for the changed manifests, so the row added in step 8 is all it needs.
 
 ## Report
 
-The facts recorded, whether `INTENT.md` was read, written or declined, whether the Git hooks were installed, where the merge permission was written or that it was declined, which files changed, the scaffold commands handed over, whether `wire-acceptance.js --prove` passed, whether `CONTEXT-MAP.md` was written, and the next skill to run.
+The facts recorded, whether `INTENT.md` was read, written or declined, whether the Git hooks were installed, where the merge permission was written or that it was declined, which files changed, the scaffold commands handed over, whether `wire-acceptance.js --prove` passed, whether `CONTEXT-MAP.md` was written, what `profiles.js apply` switched off, and the next skill to run.
 
 ## Gotchas
 

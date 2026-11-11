@@ -244,8 +244,8 @@ Each phase is a commit or a few, leaves every test passing, and reverts on its o
 | Phase | Ships | Reverting it |
 | --- | --- | --- |
 | 1 | D-1, D-2, D-3, the self-check half of D-8 | deletes two files |
-| 2 | D-4 and D-5: the `apply` command and the MCP switches | `apply` with every row `always` clears the switches |
-| 3 | the ADR, D-6 for agents, D-10, the `stacks.tsv` row and the session-start check of D-9 | moves the agents back to `.agents/agents/` |
+| 2 | D-4 and D-5: the `apply` command and the MCP switches; of D-9, the `stacks.tsv` row and the runs from `update-harness.js` and `project-init` | `apply` with every row `always` clears the switches |
+| 3 | the ADR, D-6 for agents, D-10 and the session-start check of D-9 | moves the agents back to `.agents/agents/` |
 | 4 | D-6 and D-7 for skills, the rest of D-8 and D-9, D-12 | per group: moves that group's folders back |
 | 5 | D-11 | sets the rows back to `always` |
 
@@ -254,7 +254,7 @@ Each phase is a commit or a few, leaves every test passing, and reverts on its o
 - R-1: the reference profile's headroom is about 900 characters, and one more always-on skill of average size uses half of it. The self-check in D-8 fails before a release does, and `plan` prints the margin.
 - R-2: a fresh clone that never ran a session hook or `apply` has no generated links, so a harness started without hooks sees only the project's own skills. Likely for a tool with no session-start wiring (Codex, Cursor). `session-start.js` covers Claude Code and OpenCode; `githooks-init.js` runs `apply` too, and the session brief tells the others to.
 - R-3: `npx skills experimental_install` may write through a link into the catalog, or replace the link with a folder. D-7 handles both: a write through the link updates the catalog in place, and a folder is collected. Phase 4 checks which on a scratch target before relying on either.
-- R-4: Claude Code may ignore `disabledMcpjsonServers` in a project's shared settings. Phase 2 checks it with `claude mcp list` on this checkout before the release; if it does, the adapter falls back to removing the entry from `.mcp.json` and restoring it from the upstream's copy.
+- R-4: Claude Code may ignore `disabledMcpjsonServers` in a project's shared settings. Checked on 2026-11-11 with `claude mcp list` on this checkout: it honours the list. Had it not, the adapter would have fallen back to removing the entry from `.mcp.json` and restoring it from the upstream's copy.
 - R-5: an existing target that never answers `Roles` saves nothing from the role groups. The open-fact line in the session brief says why, and `project-init` asks it on its next run.
 
 ## Test strategy

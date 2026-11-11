@@ -146,6 +146,64 @@ exports.profilePlan = function profilePlan(t) {
     t.ok(none.errors.length === 1 && none.errors[0].message.includes("not found"), "a missing table is an error", JSON.stringify(none.errors));
 };
 
+// apply and its MCP adapter (SPEC-0004/D-4, D-5): a server is switched off, never removed. Claude
+// Code reads disabledMcpjsonServers in .claude/settings.json (verified 2026-11-11 with claude mcp
+// list: a server listed there is not loaded), OpenCode reads `enabled` on each entry of opencode.json.
+exports.profileApplyMcp = function profileApplyMcp(t) {
+    const profiles = module_();
+    if (!profiles || !profiles.applyTo) { t.skip("profile apply: no apply here"); return; }
+    const repoEdit = require(path.join(lib.checkout, "scripts", "repo-edit.js"));
+    const table = tsv([["tdd", "skill", "always"], ["atlassian", "mcp", "Issue tracker = Jira"], ["figma", "mcp", "Frontend != none"]]);
+    const mcpJson = JSON.stringify({ mcpServers: { atlassian: { type: "http", url: "a" }, figma: { type: "http", url: "f" }, ours: { type: "http", url: "o" } } }, null, 2) + "\n";
+    const settings = JSON.stringify({ hooks: { Stop: [] }, disabledMcpjsonServers: ["ours"] }, null, 4) + "\n";
+    const opencode = JSON.stringify({ mcp: { atlassian: { type: "remote", url: "a", enabled: true }, figma: { type: "remote", url: "f" } } }, null, 2) + "\n";
+    const memory = tracker => `# Memory\n\n- **Issue tracker:** ${tracker}\n- **Frontend:** React\n`;
+    const edit = repoEdit.mapEdit({
+        "scripts/profiles.tsv": table, "MEMORY.md": memory("none"), ".mcp.json": mcpJson,
+        ".claude/settings.json": settings, "opencode.json": opencode,
+    });
+    const read = file => JSON.parse(edit.view().read(file));
+
+    const dry = profiles.applyTo(edit.view(), edit, { dryRun: true });
+    t.ok(dry.entries.length === 2 && read(".claude/settings.json").disabledMcpjsonServers.length === 1,
+        "a dry run returns the entries and writes nothing", JSON.stringify(dry.entries.map(e => e.file)));
+
+    const first = profiles.applyTo(edit.view(), edit);
+    const s = read(".claude/settings.json");
+    t.ok(JSON.stringify(s.disabledMcpjsonServers) === JSON.stringify(["ours", "atlassian"]) && "hooks" in s,
+        "an inactive server joins disabledMcpjsonServers beside the project's own, and every other key stays", JSON.stringify(s));
+    t.ok(edit.view().read(".claude/settings.json").includes('\n    "hooks"'), "the settings file keeps its indent",
+        edit.view().read(".claude/settings.json"));
+    const o = read("opencode.json").mcp;
+    t.ok(o.atlassian.enabled === false && !("enabled" in o.figma),
+        "OpenCode's entry for an inactive server is disabled, and an active one is left as it was", JSON.stringify(o));
+    t.ok(!first.problems.length && first.lines.some(l => l.includes("atlassian")), "apply says what it switched", JSON.stringify(first));
+    t.ok(edit.view().read(".mcp.json") === mcpJson, ".mcp.json is never edited, so its merge with the upstream sees no change");
+
+    const again = profiles.applyTo(edit.view(), edit);
+    t.ok(!again.entries.length && !again.lines.length, "a second run changes nothing", JSON.stringify(again));
+
+    edit.apply([{ file: "MEMORY.md", write: memory("Jira (PROJ)") }]);
+    profiles.applyTo(edit.view(), edit);
+    t.ok(JSON.stringify(read(".claude/settings.json").disabledMcpjsonServers) === JSON.stringify(["ours"])
+        && read("opencode.json").mcp.atlassian.enabled === true,
+        "answering the fact switches the server back on, and the project's own entry stays", edit.view().read(".claude/settings.json"));
+
+    const plain = repoEdit.mapEdit({ "scripts/profiles.tsv": table, ".mcp.json": mcpJson, ".claude/settings.json": settings });
+    t.ok(!profiles.applyTo(plain.view(), plain).entries.length,
+        "with no MEMORY.md every server stays on, and the project's own switches are left alone");
+
+    const broken = repoEdit.mapEdit({ "scripts/profiles.tsv": table, "MEMORY.md": memory("none"), ".mcp.json": mcpJson, ".claude/settings.json": "{ not json" });
+    const b = profiles.applyTo(broken.view(), broken);
+    t.ok(!b.entries.length && b.problems.length === 1 && broken.view().read(".claude/settings.json") === "{ not json",
+        "a settings file that is not JSON is left as it is and reported", JSON.stringify(b));
+
+    const bad = repoEdit.mapEdit({ "scripts/profiles.tsv": "atlassian\tplugin\talways\n", "MEMORY.md": memory("none"), ".mcp.json": mcpJson, ".claude/settings.json": settings });
+    const r = profiles.applyTo(bad.view(), bad);
+    t.ok(!r.entries.length && r.problems.length === 1 && r.problems[0].includes(":1:"),
+        "a table with an error changes nothing", JSON.stringify(r));
+};
+
 // The upstream's own table: every skill, agent and server this checkout ships is classified, every
 // row names one of them, and the RFC's reference profile stays under its cap (RFC-0001/C-1).
 exports.profileTableCoversThisCheckout = function profileTableCoversThisCheckout(t) {

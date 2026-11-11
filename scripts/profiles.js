@@ -3,15 +3,17 @@
 // The one reader of scripts/profiles.tsv: which skills, agents and MCP servers a project's facts
 // make active (SPEC-0004). A module first, as skills.js is: parse(text) reads the table, select()
 // is a pure function of the facts and the rows, and plan(view) reads both through a repo view and
-// says what the profile would do. Nothing here writes, prints or exits; the command line below
-// is a wrapper.
-//   node scripts/profiles.js plan [--json]   the active set and its description size; exit 1 on table errors
+// says what the profile would do. applyTo(view, edit) is the one act that changes a file, through a
+// repo edit. Nothing here prints or exits; the command line below is a wrapper.
+//   node scripts/profiles.js plan [--json]      the active set and its description size; exit 1 on table errors
+//   node scripts/profiles.js apply [--dry-run]  expose the active set; exit 1 on table errors or a refused write
 // The selector fails open: a test over a fact the project has not answered is true, and the fact
 // is reported as open. A profile narrows what a project has; a missing fact never hides anything,
 // so the upstream, which has no MEMORY.md, keeps everything.
 const path = require("path");
 const lib = require("./lib");
 const repoView = require("./repo-view");
+const repoEdit = require("./repo-edit");
 const projectFacts = require("./project-facts");
 
 const FILE = "scripts/profiles.tsv";
@@ -156,6 +158,89 @@ function plan(view, { facts } = {}) {
     return { kinds, chars, open, unlisted, missing, errors };
 }
 
+// ---------------------------------------------------------------- apply
+
+const SETTINGS = ".claude/settings.json", MCP_JSON = ".mcp.json", OPENCODE = "opencode.json";
+const isObject = v => v !== null && typeof v === "object" && !Array.isArray(v);
+const facts = view => projectFacts.readFacts({ memory: view.read(projectFacts.MEMORY), intent: view.read(projectFacts.INTENT) });
+
+// A JSON file rewritten as it was found: its indent, its line endings, a final newline.
+function rewrite(text, value) {
+    const indent = (text.match(/^([ \t]+)"/m) || [null, "  "])[1];
+    return lib.asFound(JSON.stringify(value, null, indent) + "\n", lib.isCrlf(text));
+}
+// A file's JSON object, null when the file is absent, or false when it is not an object.
+function object(view, file) {
+    const text = view.read(file);
+    if (text === null) return null;
+    try { const v = JSON.parse(text); return isObject(v) ? v : false; } catch { return false; }
+}
+
+// SPEC-0004/D-5. A server is switched off, never removed, so turning it back on needs nothing from
+// the upstream. Claude Code skips a .mcp.json server named in disabledMcpjsonServers; that list may
+// hold the project's own names too, so only names with a row are added or taken out. OpenCode reads
+// `enabled` on each entry of opencode.json; an entry the file does not hold is not added.
+function mcpAdapter(selection, view) {
+    const rows = selection.filter(s => s.kind === "mcp");
+    const out = { entries: [], lines: [], problems: [] };
+    if (!rows.length) return out;
+    const managed = new Set(rows.map(r => r.name));
+    const registered = Object.keys((object(view, MCP_JSON) || {}).mcpServers || {});
+    const off = rows.filter(r => !r.active && registered.includes(r.name)).map(r => r.name).sort();
+
+    const settings = object(view, SETTINGS);
+    if (settings === false) {
+        out.problems.push(`${SETTINGS} is not a JSON object, so its MCP servers were left as they are`);
+    } else if (settings || off.length) {
+        const was = settings && Array.isArray(settings.disabledMcpjsonServers) ? settings.disabledMcpjsonServers : [];
+        const next = [...was.filter(n => !managed.has(n)), ...off];
+        if (JSON.stringify(next) !== JSON.stringify(was)) {
+            const updated = { ...(settings || {}) };
+            if (next.length) updated.disabledMcpjsonServers = next; else delete updated.disabledMcpjsonServers;
+            const text = view.read(SETTINGS);
+            out.entries.push({ file: SETTINGS, write: text === null ? JSON.stringify(updated, null, 2) + "\n" : rewrite(text, updated) });
+            for (const n of off.filter(n => !was.includes(n))) out.lines.push(`mcp: ${n} switched off for Claude Code in ${SETTINGS}`);
+            for (const n of was.filter(n => managed.has(n) && !off.includes(n))) out.lines.push(`mcp: ${n} switched back on for Claude Code in ${SETTINGS}`);
+        }
+    }
+
+    const opencode = object(view, OPENCODE);
+    if (opencode === false) {
+        out.problems.push(`${OPENCODE} is not a JSON object, so its MCP servers were left as they are`);
+    } else if (opencode && isObject(opencode.mcp)) {
+        const mcp = { ...opencode.mcp };
+        for (const r of rows) {
+            if (!isObject(mcp[r.name]) || (mcp[r.name].enabled !== false) === r.active) continue;
+            mcp[r.name] = { ...mcp[r.name], enabled: r.active };
+            out.lines.push(`mcp: ${r.name} switched ${r.active ? "back on" : "off"} for OpenCode in ${OPENCODE}`);
+        }
+        if (JSON.stringify(mcp) !== JSON.stringify(opencode.mcp)) out.entries.push({ file: OPENCODE, write: rewrite(view.read(OPENCODE), { ...opencode, mcp }) });
+    }
+    return out;
+}
+
+const ADAPTERS = [mcpAdapter];
+
+// SPEC-0004/D-4: select, hand the selection to each adapter, and apply what they return through
+// one repo edit. A table with an error changes nothing. Returns the entries, what each adapter had
+// to say, and the problems: table errors, files that could not be read, writes that were refused.
+function applyTo(view, edit, { dryRun = false } = {}) {
+    const text = view.read(FILE);
+    const { rows, errors } = text === null ? { rows: [], errors: [{ line: 0, message: `${FILE} not found` }] } : parse(text);
+    if (errors.length) return { entries: [], lines: [], problems: errors.map(e => `${FILE}:${e.line}: ${e.message}`) };
+    const selection = select(facts(view), rows);
+    const results = ADAPTERS.map(adapter => adapter(selection, view));
+    const out = {
+        entries: results.flatMap(r => r.entries),
+        lines: results.flatMap(r => r.lines),
+        problems: results.flatMap(r => r.problems),
+    };
+    if (!dryRun && out.entries.length) {
+        for (const r of edit.apply(out.entries)) if (!r.done) out.problems.push(r.why);
+    }
+    return out;
+}
+
 function printPlan(p) {
     const n = x => x.toLocaleString("en-US");
     const count = kind => `${p.kinds[kind].active.length} of ${p.kinds[kind].active.length + p.kinds[kind].inactive.length} active`;
@@ -177,6 +262,15 @@ const commands = {
         for (const e of p.errors) console.error(`${FILE}:${e.line}: ${e.message}`);
         return p.errors.length ? 1 : 0;
     },
+    apply(root, ...args) {
+        const dryRun = args.includes("--dry-run");
+        const r = applyTo(repoView.worktree(root), repoEdit.worktreeEdit(root), { dryRun });
+        if (dryRun) for (const e of r.entries) console.log(`would write ${e.file}`);
+        for (const line of r.lines) console.log(line);
+        if (!r.entries.length && !r.problems.length) console.log("profiles: nothing to change");
+        for (const p of r.problems) console.error(`profiles: ${p}`);
+        return r.problems.length ? 1 : 0;
+    },
 };
 
 if (require.main === module) {
@@ -185,4 +279,4 @@ if (require.main === module) {
     process.exit(commands[cmd](lib.root(), ...args));
 }
 
-module.exports = { FILE, KINDS, REFERENCE, BUDGET, parse, select, plan };
+module.exports = { FILE, KINDS, REFERENCE, BUDGET, parse, select, plan, applyTo };

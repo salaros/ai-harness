@@ -568,11 +568,15 @@ function apply(entries, edit, options, out = say) {
 // target with --root: the shared resolver prefers a harness's project-dir variable to the checkout a
 // script sits in, and an install started from a session open on another repo would otherwise wire,
 // link and describe that repo instead.
-//   { hooks, lines }: whether the hooks were wired, and what the three steps had to say
+//   { hooks, lines }: whether the hooks were wired, and what the steps had to say
 function finish(target, options) {
     const lines = [];
     if (!options.quiet) lines.push("\nGit hooks, links and notices");
     const steps = [["git hooks", "scripts/githooks-init.js", []], ["links", "scripts/skills.js", ["relink"]], ["notices", "scripts/skills.js", ["notices"]]];
+    // The profile last, once the files it switches are written: a fact change and an update in one
+    // merge then come out the same whichever landed first (SPEC-0004/D-9). An upstream ref older
+    // than the profile has no script for it, and there is nothing to apply.
+    if (fs.existsSync(path.join(target, "scripts/profiles.js"))) steps.push(["profiles", "scripts/profiles.js", ["apply"]]);
     let hooks = true;
     for (const [label, script, args] of steps) {
         const r = lib.node([path.join(target, script), ...args, `${lib.ROOT_FLAG}${target}`], { cwd: target });
