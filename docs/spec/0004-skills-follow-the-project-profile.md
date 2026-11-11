@@ -55,14 +55,17 @@ Every shipped skill, agent and server has exactly one row. The first rows, from 
 
 | Rows | when |
 | --- | --- |
-| the chain, harness and writing skills | `always` |
+| the chain, harness, writing and coding skills | `always` |
 | frontend and Figma, 9 skills; the `figma` server | `Frontend != none` |
-| .NET, 6 skills, and the two C# skills | `Language = C#` |
-| `php-pro` | `Language = PHP` |
-| marketing, 12 skills | `Roles = marketing` |
-| product management, 9 skills | `Roles = product-manager` |
+| .NET, 6 skills | `Language = C#` |
+| marketing, 9 skills | `Roles = marketing` |
+| `analytics`, `launch`, `product-marketing`, `pre-mortem` and `release-notes`, which both roles route | `Roles = marketing or Roles = product-manager` |
+| product management, 8 skills | `Roles = product-manager` |
+| the three DevOps skills | `Roles = devops` |
 | the `atlassian` server | `Issue tracker = Jira` |
 | each agent | `Roles = <its name>` |
+
+On the reference profile this leaves 54 of 85 skills and 13,085 of 28,525 description characters active (measured 2026-11-11).
 
 Failure modes: an unknown kind, an unknown fact, an operator other than `=` and `!=`, an empty condition, or a name listed twice for one kind is an error naming the line. `plan` prints the errors and exits 1; `apply` changes nothing while the table has one.
 
@@ -81,11 +84,11 @@ Satisfies: RFC-0001/G-2.
 `node scripts/profiles.js plan` reads the table, the facts and each skill's frontmatter, and prints, changing nothing:
 
 ```
-skills: 52 of 85 active, 13,480 of 28,601 description characters (47%)
+skills: 54 of 85 active, 13,085 of 28,525 description characters (46%)
 agents: 2 of 6 active
 mcp: 0 of 2 active
 open facts: none
-inactive: ads, analytics, ... (one line per kind)
+inactive skills: ads, analytics, ... (one line per kind)
 ```
 
 The character count is the length of each active skill's `description`, skipping skills with `disable-model-invocation: true`, which no harness lists. `--json` prints the same as one object for the tests and for session-start. Exit 0, or 1 when the table has errors.
@@ -161,11 +164,11 @@ Satisfies: RFC-0001/C-3, RFC-0001/C-4.
 
 ### D-8 Harness invariants
 
-- **Every shipped entry has a row.** Phase 1 holds the upstream to it in `tests/self-checks.js`: every folder under `.agents/skills`, every agent and every `.mcp.json` server has exactly one row. From phase 4 it is a harness invariant over the catalog, so a target that vendors a skill with `npx skills add` is told to classify it, as it is told to add a licence row.
+- **Every shipped entry has a row.** Phase 1 holds the upstream to it in the decision table `.agents/hooks/tests/tables/profiles.js`, which runs on this checkout: every folder under `.agents/skills`, every agent and every `.mcp.json` server has exactly one row. From phase 4 it is a harness invariant over the catalog, so a target that vendors a skill with `npx skills add` is told to classify it, as it is told to add a licence row.
 - **Every row names an entry.** A row whose name is in no catalog, no skills folder and no MCP file is reported, so a renamed skill does not leave a dead row.
 - **A routed skill is in the catalog.** `everyRoutedSkillIsInstalled` accepts a skill that is in the catalog, active or not, since a profile may switch a routed skill off.
 - **The skills folder holds skills or generated links.** `skillsFolderHoldsSkillsNotLinks` becomes: every link under `.agents/skills` is untracked and points into the catalog; a tracked link is reported.
-- **The reference profile fits.** `tests/self-checks.js` runs `plan` on the RFC's reference profile (daemon, C#, no frontend, no tracker, roles engineer and devops) and fails above 14,300 description characters.
+- **The reference profile fits.** The same table runs `plan` on the RFC's reference profile (daemon, C#, no frontend, no tracker, roles engineer and devops) and fails above 14,300 description characters.
 
 `readRoster` reads the catalog beside `.agents/skills`, so the notice and the frontmatter checks cover inactive skills too.
 
@@ -260,5 +263,5 @@ Each phase is a commit or a few, leaves every test passing, and reverts on its o
 - **`plan`** runs against a `files` repo view with a small table, facts and three skills, and its JSON is compared whole; the character count skips a user-only skill.
 - **Each adapter** runs against `repo-view` and `repo-edit`'s `mapEdit`: the MCP switches with a project's own disabled server kept, a non-JSON settings file left; links made, a link refused (`mapEdit` with links off) turning into a copy, a tracked name shadowing, a second run changing nothing.
 - **Collect and migrate** run in `update-harness`'s tables against a fake upstream with a receipt: a vendored folder removed, a project's folder of the same name kept, an untracked lock-recorded folder collected.
-- **Self-checks** in `tests/self-checks.js`: every shipped entry has one row, every row names an entry, and the reference profile fits under 14,300.
+- **On this checkout**, in the same table: every shipped entry has one row, every row names an entry, and the reference profile fits under 14,300 with no fact left open.
 - **For real**, once per phase on this checkout: `plan` before and after, and in phase 4 a scratch target updated from 0.9.1, with `git status` clean afterwards.

@@ -16,6 +16,7 @@ How the harness is put together: what each file is for, how skills, hooks and ag
 | `CODING_STANDARDS.md` | Rules the `code-review` skill applies. Anything a tool enforces stays out of it. |
 | `skills-lock.json` | Source, path and hash of every vendored skill, written by `npx skills`. |
 | `THIRD-PARTY-NOTICES.md`, `scripts/skill-licences.tsv` | Licence notices for vendored skills. The TSV holds one row per upstream; `node scripts/skills.js notices` regenerates the notice from it. |
+| `scripts/profiles.tsv` | When each skill, agent and MCP server is active, as a condition over the facts in `MEMORY.md`. `node scripts/profiles.js plan` prints what this clone's facts select and how many description characters that loads. |
 | `.agents/README.md` | This file. |
 | `.agents/skills/` | The vendored skills. |
 | `.agents/agents/`, `.agents/routing.md` | Agent definitions, and the route rows several agents share. |
@@ -45,6 +46,7 @@ node scripts/skills.js list                                            # what is
 - **Relink after every change.** `.claude/skills` is one link to `.agents/skills`, so Claude Code sees every skill already. Relink repairs per-skill links in other harness folders and turns the absolute junctions `npx skills` creates on Windows into relative symlinks Git can store.
 - **Don't edit a vendored skill.** The next update overwrites it. Fork it under another name, or change it upstream.
 - **New upstream, new licence row.** Add a row to `scripts/skill-licences.tsv`, then run `node scripts/skills.js notices`. `node scripts/check-harness.js` fails until you do.
+- **New skill, new profile row.** Add a row to `scripts/profiles.tsv` saying when it is active: `always`, or a condition such as `Language = C#` or `Roles = marketing`. The harness tests fail until every skill, agent and MCP server has one.
 - **Update now and then.** The lock file stores only a hash, so an upstream going private goes unnoticed. Run `npx skills update`, then `node scripts/check-harness.js`, and read the diff before committing. The `skills-update` workflow does this weekly.
 - **A skill needs valid frontmatter.** `node scripts/check-harness.js` fails when a folder under `.agents/skills` has no `SKILL.md`, a `name` that differs from the folder or breaks the [Agent Skills](https://agentskills.io/specification) rules, or a `description` that is missing or over 1024 characters. A tool silently ignores such a skill.
 - **Two kinds of skill.** An agent picks a model-invoked skill by its description. A user-invoked skill (`disable-model-invocation: true`) runs only when you type `/name`.

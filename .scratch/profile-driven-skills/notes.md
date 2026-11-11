@@ -22,3 +22,5 @@ Work that outlives one context window: the SPEC, five phases, then release 0.10.
 - stacks.tsv patterns: `*` matches within one path segment, by full path or basename.
 - check-harness has `skillsFolderHoldsSkillsNotLinks` (line 236), which phase 4 must change.
 - Git hooks: commit-msg, post-merge, pre-commit, pre-push. No post-checkout.
+- Phase 1 done: the reference profile selects 54 of 85 skills, 13,085 of 28,525 description characters (cap 14,300). No C# or PHP skill is in the repo (csharp-*, php-pro are user-level).
+- package.json `files` ships only the installer scripts; profiles.js reaches a target through the scripts/ merge row.

@@ -1,0 +1,96 @@
+# scripts/profiles.tsv: one row per skill, agent and MCP server the harness ships, saying when a project's facts make it active (SPEC-0004/D-1). Read through scripts/profiles.js, its one reader: `node scripts/profiles.js plan` prints what this clone's MEMORY.md selects.
+# Columns, tab-separated: name: the skill's folder, the agent's file without .md, or the MCP server's key | kind: skill, agent or mcp | when: always, or tests joined by " and " and clauses joined by " or ", a test being <fact> = <value> or <fact> != <value>. A fact is a MEMORY.md label (Language, Frontend, Issue tracker, Runtime / package manager, ...) or Roles. A test compares the first word of each comma- or slash-separated item of the fact's value, ignoring case: Language = C# holds for "C# 13". A fact the project has not answered makes its test true, so a profile only ever narrows what a project has.
+# Every skill, agent and server needs a row, as every vendored skill needs a licence row: an unclassified one stays active everywhere, and the harness tests fail until it has a row.
+ads	skill	Roles = marketing
+agent-browser	skill	always
+analytics	skill	Roles = marketing or Roles = product-manager
+analyze-feature-requests	skill	Roles = product-manager
+aspnet-core	skill	Language = C#
+aspnet-minimal-api-openapi	skill	Language = C#
+bdd-scenarios	skill	always
+brd	skill	always
+ci-cd-best-practices	skill	Roles = devops
+clean-architecture	skill	always
+code-review	skill	always
+code-review-and-quality	skill	always
+code-simplification	skill	always
+codebase-design	skill	always
+competitor-profiling	skill	Roles = marketing
+content-strategy	skill	Roles = marketing
+copywriting	skill	Roles = marketing
+create-implementation-plan	skill	always
+devops-engineer	skill	Roles = devops
+devops-rollout-plan	skill	Roles = devops
+docs-check	skill	always
+domain-modeling	skill	always
+dotnet-best-practices	skill	Language = C#
+dotnet-design-pattern-review	skill	Language = C#
+ef-core	skill	Language = C#
+emails	skill	Roles = marketing
+feature-forge	skill	always
+figma	skill	Frontend != none
+figma-generate-design	skill	Frontend != none
+figma-implement-design	skill	Frontend != none
+figma-use	skill	Frontend != none
+find-skills	skill	always
+frontend-design	skill	Frontend != none
+git-commit	skill	always
+grill-with-docs	skill	always
+grilling	skill	always
+handoff	skill	always
+implement	skill	always
+improve-codebase-architecture	skill	always
+interview-notes	skill	always
+interview-synthesis	skill	always
+launch	skill	Roles = marketing or Roles = product-manager
+loop-me	skill	always
+loose-ends	skill	always
+marketing-plan	skill	Roles = marketing
+metrics-dashboard	skill	Roles = product-manager
+north-star-metric	skill	Roles = product-manager
+opportunity-solution-tree	skill	Roles = product-manager
+outcome-roadmap	skill	Roles = product-manager
+pdd	skill	always
+ponytail	skill	always
+ponytail-audit	skill	always
+ponytail-debt	skill	always
+pr-sweep	skill	always
+prd	skill	always
+pre-mortem	skill	Roles = marketing or Roles = product-manager
+product-marketing	skill	Roles = marketing or Roles = product-manager
+product-strategy	skill	Roles = product-manager
+product-vision	skill	Roles = product-manager
+project-init	skill	always
+prototype	skill	always
+release-notes	skill	Roles = marketing or Roles = product-manager
+resolving-merge-conflicts	skill	always
+retro	skill	always
+rfc	skill	always
+roadmap-prioritization	skill	Roles = product-manager
+sales-enablement	skill	Roles = marketing
+seo-audit	skill	Roles = marketing
+setup-matt-pocock-skills	skill	always
+social	skill	Roles = marketing
+spec	skill	always
+tailwind-design-system	skill	Frontend != none
+tdd	skill	always
+teach	skill	always
+to-questionnaire	skill	always
+to-tickets	skill	always
+trd	skill	always
+triage	skill	always
+vercel-react-best-practices	skill	Frontend != none
+vercel-react-view-transitions	skill	Frontend != none
+vertical-slice	skill	Language = C#
+vue-best-practices	skill	Frontend != none
+wait-what	skill	always
+writing-clearly-and-concisely	skill	always
+writing-for-agents	skill	always
+assistant	agent	Roles = assistant
+business-analyst	agent	Roles = business-analyst
+devops	agent	Roles = devops
+engineer	agent	Roles = engineer
+marketing	agent	Roles = marketing
+product-manager	agent	Roles = product-manager
+atlassian	mcp	Issue tracker = Jira
+figma	mcp	Frontend != none
