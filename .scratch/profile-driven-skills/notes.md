@@ -1,0 +1,24 @@
+# Profile-driven skills (RFC-0001 OPT-1)
+
+Work that outlives one context window: the SPEC, five phases, then release 0.10.0.
+
+## Decisions
+
+- 2026-11-10: the user chose to build all five phases before releasing 0.10.0 (not ship now, not phases 1-2 only). Release = annotated tag on master, release.yml publishes to npm (README.md:100-106). Last tag 0.9.1.
+- 2026-11-10: the SPEC cites RFC-0001 directly (an accepted RFC may be cited by a SPEC). The ADR for the catalog layout is written by the user with /grill-with-docs before phase 3, the first step that needs the catalog (agents need one too).
+- Phases, from TODO.md: 1 dry run (profiles.tsv, selector, profiles.js plan), 2 MCP gated by facts, 3 agents by Roles, 4 skills to .agents/catalog/ by group (frontend first), 5 requirements-only profile.
+- 2026-11-11: the selector fails open: a clause over a fact that has no line or is unanswered is true, so the upstream (no MEMORY.md) and an unconfigured clone keep everything.
+- 2026-11-11: MCP is gated by switching servers off, not by removing entries: `disabledMcpjsonServers` in .claude/settings.json (a project key, which mergeSettings keeps) and `enabled: false` in opencode.json. Nothing to re-add, so no MCP catalog is needed.
+- 2026-11-11: the SPEC proposes generated, untracked links in .agents/skills and .agents/agents (listed in .git/info/exclude, copies where the platform cannot link). That answers Q-3 without a tracked-file fallback. Hard to reverse, so the ADR decides it.
+- 2026-11-11: the lock stays at the root. skills.js install and npx skills add write real folders into .agents/skills; apply collects an untracked, lock-recorded real folder into the catalog, then links it.
+- 2026-11-11: the migration in update-harness removes a tracked real folder in .agents/skills only if the upstream shipped that name at the receipt's base; any other is the project's and stays.
+
+## Verified facts
+
+- duck-debt was dropped in 41d0d47; loose-ends step 5 sweeps comments.
+- check-initialised accepts `none` already: it is an answer. The requirements-only TODO entry is wrong to say otherwise.
+- A clone made with core.symlinks=false checks .claude/skills out as a 17-byte text file holding `../.agents/skills`: Claude Code sees no skill on such a clone today.
+- opencode.json is `template` in harness-files.tsv (never shipped); .mcp.json is `keyed`; .claude/settings.json is `settings` (mergeKeys: the project's keys stay).
+- stacks.tsv patterns: `*` matches within one path segment, by full path or basename.
+- check-harness has `skillsFolderHoldsSkillsNotLinks` (line 236), which phase 4 must change.
+- Git hooks: commit-msg, post-merge, pre-commit, pre-push. No post-checkout.
