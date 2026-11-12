@@ -43,6 +43,7 @@ const LOCK = "harness-lock.json";
 const MANIFEST = "scripts/harness-files.tsv";
 // Where the agents were shipped, and where the catalog holds them now (ADR-0009/D-6).
 const AGENTS = ".agents/agents", CATALOG_AGENTS = ".agents/catalog/agents";
+const SKILLS = ".agents/skills", CATALOG_SKILLS = ".agents/catalog/skills";
 const DEFAULT_REF = "master";
 
 // Every argument the installer knows. An optional part of the harness adds its own flag through the
@@ -504,6 +505,15 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
     if (moved.length) {
         add(entry.heading("agents moved to the catalog"));
         for (const file of moved) add(entry.removed(file, entry.shown("merge", "100644", "removed", "removed")));
+    }
+    // The same for skills (SPEC-0004/D-7), a folder at a time: the tracked copy of a skill the base
+    // shipped goes, and profiles.js apply links the catalog's in its place once the run is over.
+    const movedSkills = atHead.list(CATALOG_SKILLS).map(n => `${SKILLS}/${n}`)
+        .filter(dir => (shipped ? shipped.isFile(`${dir}/SKILL.md`) : options.adopt)
+            && !(target.lstat(dir) || {}).link && target.isFile(`${dir}/SKILL.md`));
+    if (movedSkills.length) {
+        add(entry.heading("skills moved to the catalog"));
+        for (const dir of movedSkills) add(entry.removed(dir, entry.shown("skills", "040000", "removed", "removed")));
     }
 
     add(entry.heading("skeletons a project starts with"));

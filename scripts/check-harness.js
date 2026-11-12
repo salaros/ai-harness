@@ -209,7 +209,7 @@ function claudeSkillLinksAreSymlinks(t, repo) {
 function everyInstalledSkillIsLinked(t, repo, roster = rosterOf(repo)) {
     const links = ".claude/skills";
     if (!repo.exists(".agents/skills") || !repo.exists(links)) { t.skip("skill link check: no skills directories"); return; }
-    const installed = roster().skills.map(s => s.name);
+    const installed = roster().skills.filter(s => s.active).map(s => s.name);
     t.ok(installed.length > 0, "skills are installed under .agents/skills/");
     const whole = (repo.lstat(links) || {}).link;
     if (whole) {
@@ -229,16 +229,22 @@ function everyInstalledSkillIsLinked(t, repo, roster = rosterOf(repo)) {
 
 // .claude/skills resolves to .agents/skills, so anything a tool writes into the first lands in the
 // second. `npx skills` links what it vendors into every harness folder it finds, and a link it puts
-// there would appear beside the skills as a sibling pointing at one of them. Nothing else in the
-// harness ever creates one, so an entry here that is not a directory is that, and it is worth
-// catching: the roster reads this folder, and a skill that is really a link to another skill counts
-// twice and vendors as neither.
+// there would appear beside the skills as a sibling pointing at one of them: counted twice by the
+// roster and vendored as neither. The one link that belongs here is the profile's (SPEC-0004/D-8):
+// a skill's own name, pointing at its catalog folder, relative or as an absolute junction, and never
+// committed, since a clone that cannot make links checks a committed one out as a text file.
 function skillsFolderHoldsSkillsNotLinks(t, repo, roster = rosterOf(repo)) {
     if (!repo.exists(".agents/skills")) { t.skip("skills folder check: no skills directory"); return; }
-    const links = roster().entries.filter(e => e.link).map(e => e.name);
-    t.ok(!links.length,
-        "every entry under .agents/skills/ is a skill, not a link to one",
-        links.slice(0, 10).join(", "));
+    const intoCatalog = e => {
+        const to = e.target.split("\\").join("/").replace(/\/+$/, "");
+        return to === `../catalog/skills/${e.name}` || to.endsWith(`/.agents/catalog/skills/${e.name}`);
+    };
+    const stray = roster().entries.filter(e => e.link && (!e.folder.startsWith(".agents/skills/") || !intoCatalog(e))).map(e => e.folder);
+    t.ok(!stray.length, "every link under .agents/skills/ is the profile's, into the catalog skill of its name",
+        stray.slice(0, 10).join(", "));
+    const committed = (repo.recorded([".agents/skills", ".agents/catalog/skills"]) || []).filter(r => r.link).map(r => r.file);
+    t.ok(!committed.length, "no skill link is committed: scripts/profiles.js apply makes them on each clone",
+        committed.slice(0, 10).join(", "));
 }
 
 // A harness finds a skill by the frontmatter of its SKILL.md, and one it cannot read is dropped
@@ -264,7 +270,7 @@ function everySkillHasValidFrontmatter(t, repo, roster = rosterOf(repo)) {
         if (!fm.description) problems.push(`${name}: no description`);
         else if (fm.description.length > 1024) problems.push(`${name}: description is ${fm.description.length} characters, over 1024`);
     }
-    t.ok(!problems.length, "every skill under .agents/skills/ has a SKILL.md with a valid name and description", problems.join("\n"));
+    t.ok(!problems.length, "every skill under .agents/skills/ and the catalog has a SKILL.md with a valid name and description", problems.join("\n"));
 }
 
 // The lock file and .agents/skills must agree. This is breakage, not bookkeeping: a skill recorded
@@ -339,7 +345,29 @@ function everyRoutedSkillIsInstalled(t, repo, roster = rosterOf(repo)) {
     });
     const unknown = [...new Set(routed.filter(n => !known.has(n)))];
     t.ok(!unknown.length, "every skill a routing row names is installed",
-        `not in .agents/skills: ${unknown.join(", ")}`);
+        `not in .agents/skills or the catalog: ${unknown.join(", ")}`);
+}
+
+// SPEC-0004/D-8. scripts/profiles.tsv decides which catalog entries a project loads, and one with no
+// row is loaded whatever the facts say: the case a vendored skill is in until someone classifies
+// it, which is what this is here to say. A row naming nothing is a renamed or dropped entry, and
+// it would quietly select nothing. MCP rows are the MCP files' business and are left out.
+function everyCatalogEntryHasAProfileRow(t, repo) {
+    const table = repo.read("scripts/profiles.tsv");
+    if (table === null || !repo.exists(".agents/catalog")) { t.skip("profile rows: no scripts/profiles.tsv or no catalog"); return; }
+    const { rows, errors } = require("./profiles").parse(table);
+    t.ok(!errors.length, "scripts/profiles.tsv parses", errors.map(e => `${e.line}: ${e.message}`).join("\n"));
+    const names = (dir, ext = "") => repo.list(dir).filter(n => n.endsWith(ext)).map(n => ext ? n.slice(0, -ext.length) : n);
+    const has = {
+        skill: new Set([...names(".agents/catalog/skills"), ...names(".agents/skills")]),
+        agent: new Set([...names(".agents/catalog/agents", ".md"), ...names(".agents/agents", ".md")]),
+    };
+    const listed = new Set(rows.map(r => `${r.kind} ${r.name}`));
+    const unlisted = [...names(".agents/catalog/skills").map(n => `skill ${n}`), ...names(".agents/catalog/agents", ".md").map(n => `agent ${n}`)]
+        .filter(k => !listed.has(k));
+    t.ok(!unlisted.length, "every skill and agent in .agents/catalog/ has a row in scripts/profiles.tsv (SPEC-0004/D-1)", unlisted.join(", "));
+    const dead = rows.filter(r => has[r.kind] && !has[r.kind].has(r.name)).map(r => `${r.kind} ${r.name} (line ${r.line})`);
+    t.ok(!dead.length, "every skill and agent row in scripts/profiles.tsv names one this repo has", dead.join(", "));
 }
 
 // docs-check reads the stages of the documentation chain out of the table in AGENTS.md, so a table
@@ -482,6 +510,7 @@ const INVARIANTS = [
     acceptanceWorkflowProvesEveryRunner,
     theDocsPortalReadsTheChainModel,
     noSteeringFileNamesTheContextAlone,
+    everyCatalogEntryHasAProfileRow,
 ];
 
 // Every invariant against one repo -- a repo-view, or the root of a working tree. A failure carries

@@ -274,6 +274,38 @@ exports.skillRosterDecisions = function skillRosterDecisions(t) {
     });
 };
 
+// SPEC-0004/D-8: the roster reads the catalog beside .agents/skills, so an inactive skill is still
+// installed, attributed and checked; the one link the skills folder may hold is the profile's, into
+// the catalog and uncommitted; and every catalog entry has a profile row that names something.
+exports.skillRosterReadsTheCatalog = function skillRosterReadsTheCatalog(t) {
+    const invariant = name => checkHarness.INVARIANTS.find(f => f.name === name);
+    if (!invariant("everyCatalogEntryHasAProfileRow")) { t.skip("skill catalog: no catalog invariants here"); return; }
+    const said = (name, v) => { const out = []; invariant(name)({ ok: (c, title, detail) => c || out.push(`${title}: ${detail}`), skip: w => out.push(`skip: ${w}`) }, v); return out.join("\n"); };
+    const files = {
+        ".agents/catalog/skills/tdd/SKILL.md": skill("tdd"), ".agents/catalog/skills/ef-core/SKILL.md": skill("ef-core"),
+        ".agents/skills/tdd": { link: "../catalog/skills/tdd" }, ".agents/skills/mine/SKILL.md": skill("mine"),
+        ".agents/catalog/agents/engineer.md": "---\nname: engineer\n---\n",
+        "scripts/profiles.tsv": "tdd\tskill\talways\nmine\tskill\talways\nengineer\tagent\talways\ngone\tskill\talways\n",
+    };
+    const untracked = extra => ({ ...repoView.fromMap({ ...files, ...extra }), recorded: () => [] });
+    const r = skills.readRoster(untracked({}));
+    const s = n => r.skills.find(x => x.name === n) || {};
+    t.ok(r.skills.map(x => x.name).sort().join() === "ef-core,mine,tdd" && s("tdd").active && s("mine").active && !s("ef-core").active,
+        "skill catalog: the roster holds the catalog's skills once each, active where .agents/skills has them",
+        JSON.stringify(r.skills.map(x => [x.name, x.active])));
+
+    t.ok(!said("skillsFolderHoldsSkillsNotLinks", untracked({})), "skill catalog: the profile's link into the catalog is allowed",
+        said("skillsFolderHoldsSkillsNotLinks", untracked({})));
+    t.ok(/\.agents\/skills\/stray/.test(said("skillsFolderHoldsSkillsNotLinks", untracked({ ".agents/skills/stray": { link: "../skills/mine" } }))),
+        "skill catalog: a link anywhere else is reported");
+    t.ok(/committed/.test(said("skillsFolderHoldsSkillsNotLinks", repoView.fromMap(files))),
+        "skill catalog: a committed link is reported, since a clone without symlinks checks it out as a text file");
+
+    const rows = said("everyCatalogEntryHasAProfileRow", untracked({}));
+    t.ok(/skill ef-core/.test(rows) && /skill gone \(line 4\)/.test(rows) && !/tdd|engineer/.test(rows),
+        "skill catalog: a catalog skill with no row and a row naming nothing are both reported", rows);
+};
+
 // THIRD-PARTY-NOTICES.md exists to stop a vendored skill going unattributed, and it had a way of
 // doing the opposite. A skill somebody copied in by hand rather than vendoring with `npx skills` has
 // no lock entry -- that tool is what writes one -- so the roster called it local and the notice

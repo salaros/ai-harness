@@ -129,9 +129,10 @@ function readChain(view) {
         const stage = col(row, "Stage");
         const lives = (col(row, "Lives in").match(/`([^`]+)`/) || [])[1] || "";
         const skills = [...col(row, "Skill").matchAll(/`([^`]+)`/g)].map(m => m[1]);
+        // The catalog counts: a profile may switch a chain skill off (SPEC-0004/D-6).
         for (const skill of skills)
-            if (!view.isFile(`.agents/skills/${skill}/SKILL.md`))
-                say(`stage ${stage} names skill \`${skill}\`, which is not under .agents/skills/`);
+            if (!view.isFile(`.agents/skills/${skill}/SKILL.md`) && !view.isFile(`.agents/catalog/skills/${skill}/SKILL.md`))
+                say(`stage ${stage} names skill \`${skill}\`, which is not under .agents/skills/ or .agents/catalog/skills/`);
         const m = lives.match(/^docs\/([a-z0-9-]+)\/$/);   // tests/, .scratch/, src/: not a document stage
         if (m && m[1].toUpperCase() !== stage) say(`stage ${stage} lives in ${lives}; the folder must be docs/${stage.toLowerCase()}/`);
         // Cites says what a stage's documents may reference. A table written before the column

@@ -287,6 +287,84 @@ exports.profileApplyAgents = function profileApplyAgents(t) {
         "outside a Git checkout the links are made and no exclude file is written");
 };
 
+// SPEC-0004/D-6 and D-7 for skills (ADR-0009/D-2): the agents' rules, for folders, plus the two
+// fallbacks a folder has, a junction and then a copy, and collecting what `npx skills` wrote.
+exports.profileApplySkills = function profileApplySkills(t) {
+    const profiles = module_();
+    if (!profiles || !profiles.applyTo || !profiles.EXCLUDE) { t.skip("profile apply for skills: no skill adapter here"); return; }
+    const repoEdit = require(path.join(lib.checkout, "scripts", "repo-edit.js"));
+    const table = tsv([["tdd", "skill", "always"], ["frontend-design", "skill", "Frontend != none"]]);
+    const memory = frontend => `# Memory\n\n- **Frontend:** ${frontend}\n`;
+    const skill = (name, extra = "") => `---\nname: ${name}\ndescription: ${name}\n---\n${extra}`;
+    const files = (frontend, more = {}) => ({
+        "scripts/profiles.tsv": table, "MEMORY.md": memory(frontend), ".git/info/exclude": "",
+        ".agents/catalog/skills/tdd/SKILL.md": skill("tdd"), ".agents/catalog/skills/tdd/refs/a.md": "a\n",
+        ".agents/catalog/skills/frontend-design/SKILL.md": skill("frontend-design"), ...more,
+    });
+    // A view whose index holds nothing: what a clone looks like right after `npx skills add`.
+    const untracked = edit => ({ ...edit.view(), recorded: () => [] });
+
+    const edit = repoEdit.mapEdit(files("none"));
+    const first = profiles.applyTo(edit.view(), edit);
+    t.ok(edit.view().lstat(".agents/skills/tdd").link === "../catalog/skills/tdd" && !edit.view().lstat(".agents/skills/frontend-design"),
+        "an active skill is linked into the catalog as a folder, and an inactive one is not", JSON.stringify(first));
+    t.ok(edit.view().read(".git/info/exclude").includes("/.agents/skills/tdd\n"), "the link is listed in the exclude block",
+        edit.view().read(".git/info/exclude"));
+    t.ok(!profiles.applyTo(edit.view(), edit).entries.length, "a second run changes nothing");
+    edit.apply([{ file: "MEMORY.md", write: memory("React") }]);
+    profiles.applyTo(edit.view(), edit);
+    edit.apply([{ file: "MEMORY.md", write: memory("none") }]);
+    const narrowed = profiles.applyTo(edit.view(), edit);
+    t.ok(!edit.view().lstat(".agents/skills/frontend-design") && narrowed.lines.some(l => l.includes("switched off frontend-design")),
+        "a skill the facts switch off loses its link", JSON.stringify(narrowed));
+
+    const own = repoEdit.mapEdit(files("none", { ".agents/skills/tdd/SKILL.md": skill("tdd", "ours\n") }));
+    const shadowed = profiles.applyTo(own.view(), own);
+    t.ok(own.view().read(".agents/skills/tdd/SKILL.md").includes("ours") && !shadowed.entries.some(e => e.file === ".agents/skills/tdd")
+        && profiles.plan(own.view()).shadowed.includes("skill tdd"),
+        "the project's own tracked skill of a catalog name is left alone, and plan reports the shadow", JSON.stringify(shadowed.entries));
+
+    // npx skills add: an untracked folder the lock records moves into the catalog, over any copy
+    // there, and is then linked. One the lock does not record is somebody's own work, left alone.
+    const lock = JSON.stringify({ version: 1, skills: { tdd: { source: "x/y" }, added: { source: "x/y" } } });
+    const added = repoEdit.mapEdit(files("none", {
+        "skills-lock.json": lock, ".agents/skills/added/SKILL.md": skill("added", "new\n"),
+        ".agents/catalog/skills/added/SKILL.md": skill("added", "old\n"), ".agents/skills/handmade/SKILL.md": skill("handmade"),
+    }));
+    const collected = profiles.applyTo(untracked(added), added);
+    t.ok(added.view().read(".agents/catalog/skills/added/SKILL.md").includes("new")
+        && added.view().lstat(".agents/skills/added").link === "../catalog/skills/added"
+        && added.view().read(".agents/skills/handmade/SKILL.md") === skill("handmade")
+        && collected.lines.some(l => l.includes("collected added")) && !collected.problems.length,
+        "a folder npx skills wrote is collected into the catalog over the old copy and linked; one it did not write stays",
+        JSON.stringify(collected));
+
+    // A clone that refuses symlinks gets an absolute junction, rewritten once the clone has moved.
+    const junctions = repoEdit.mapEdit(files("none"), { links: false });
+    profiles.applyTo(junctions.view(), junctions, { root: "/clone" });
+    const target = junctions.view().lstat(".agents/skills/tdd").link;
+    t.ok(target && target.endsWith("/clone/.agents/catalog/skills/tdd"), "where the symlink is refused, a junction points at the catalog", target);
+    t.ok(!profiles.applyTo(junctions.view(), junctions, { root: "/clone" }).entries.length, "a junction into this clone's catalog is current");
+    profiles.applyTo(junctions.view(), junctions, { root: "/moved" });
+    t.ok(junctions.view().lstat(".agents/skills/tdd").link.endsWith("/moved/.agents/catalog/skills/tdd"),
+        "a junction into another folder's catalog is rewritten", junctions.view().lstat(".agents/skills/tdd").link);
+
+    // And one that refuses junctions too gets a copy of the folder, kept while it matches.
+    const copies = repoEdit.mapEdit(files("none"), { links: false, junctions: false });
+    const copied = profiles.applyTo(copies.view(), copies, { root: "/clone" });
+    t.ok(copies.view().read(".agents/skills/tdd/refs/a.md") === "a\n" && copied.lines.some(l => l.includes("copied from the catalog")),
+        "where no link can be made, the skill folder is copied and the run says so", JSON.stringify(copied));
+    t.ok(!profiles.applyTo(copies.view(), copies, { root: "/clone" }).entries.length, "a copy that matches the catalog is current");
+    copies.apply([{ file: ".agents/catalog/skills/tdd/refs/a.md", write: "b\n" }]);
+    profiles.applyTo(copies.view(), copies, { root: "/clone" });
+    t.ok(copies.view().read(".agents/skills/tdd/refs/a.md") === "b\n", "a copy that drifted from the catalog is rewritten");
+
+    edit.apply([{ file: ".agents/catalog/skills/tdd", remove: true }]);
+    profiles.applyTo(edit.view(), edit);
+    t.ok(!edit.view().lstat(".agents/skills/tdd") && !edit.view().read(".git/info/exclude").includes("tdd"),
+        "a generated link whose catalog skill is gone is removed");
+};
+
 // The upstream's own table: every skill, agent and server this checkout ships is classified, every
 // row names one of them, and the RFC's reference profile stays under its cap (RFC-0001/C-1).
 exports.profileTableCoversThisCheckout = function profileTableCoversThisCheckout(t) {

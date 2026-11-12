@@ -17,6 +17,8 @@ There is a fifth, and it is not a matter of judgement: a skill whose frontmatter
 
 **The agent's own row wins.** Where an agent's table and a section here cover one trigger, follow the agent's table: that is the specific case and this is the general one.
 
+**Skip a row whose skill is switched off.** A skill in `.agents/catalog/skills/` but not in `.agents/skills/` is one this project's facts turned off (`scripts/profiles.tsv`). Do not load it from the catalog. If the user asks for it, say it is off and which fact would turn it on: `node scripts/profiles.js plan` lists what is off.
+
 ## Working the chain
 
 Read by `business-analyst`, `devops`, `engineer` and `product-manager`.

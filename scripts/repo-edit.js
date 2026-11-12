@@ -100,8 +100,10 @@ const asExec = held => {
 // `links: false` stands for a target the platform will not let anyone make a symlink in, which is
 // every Windows checkout without Developer Mode. It is a shape a target really has, not a lever for
 // a test: the case it makes reachable is the one the suite could otherwise only run on a machine
-// that happens to refuse.
-function mapEdit(files = {}, { links = true } = {}) {
+// that happens to refuse. `junctions` is whether such a target still makes the junction a link entry
+// may carry as its fallback, as Windows does without the privilege; a target refusing both is a
+// filesystem with no links at all.
+function mapEdit(files = {}, { links = true, junctions = true } = {}) {
     const held = { ...files };
     const marked = [];
     const view = () => repoView.fromMap(held);
@@ -126,13 +128,13 @@ function mapEdit(files = {}, { links = true } = {}) {
                 return null;
             },
             link: e => {
-                if (!links) return noLink(e, "EPERM");
+                if (!links && !(e.junction && junctions)) return noLink(e, "EPERM");
                 if (ancestorFile(e.file)) return noLink(e, "ENOTDIR");
                 // A file or a link at the path is replaced and a folder holding anything is not,
                 // because that is what the disk does: `clear` unlinks, and its rmdir fallback fails
                 // on a folder with something in it, so the symlink then refuses with EEXIST.
                 if (anyUnder(e.file).some(k => k !== e.file)) return noLink(e, "EEXIST");
-                held[e.file] = { link: e.link };
+                held[e.file] = { link: links ? e.link : e.junction };
                 return null;
             },
             // A map holds files, and a folder in it is whatever a path implies, so there is nothing
@@ -283,7 +285,14 @@ function worktreeEdit(root) {
                 let type = "dir";
                 try { if (fs.statSync(path.resolve(path.dirname(at(e.file)), to)).isFile()) type = "file"; } catch { /* not there yet */ }
                 try { fs.symlinkSync(to, at(e.file), type); }
-                catch (err) { return noLink(e, err.code || err.message); }
+                catch (err) {
+                    // A folder link may carry an absolute `junction` to fall back on, which Windows
+                    // makes without Developer Mode (ADR-0009/D-2). It cannot point at a file, and
+                    // elsewhere it is one more symlink, refused for the same reason the first was.
+                    if (!e.junction || type !== "dir") return noLink(e, err.code || err.message);
+                    try { fs.symlinkSync(e.junction.split("/").join(path.sep), at(e.file), "junction"); }
+                    catch { return noLink(e, err.code || err.message); }
+                }
                 return null;
             },
             // A link of either kind goes with `clear`, never followed into what it points at; a

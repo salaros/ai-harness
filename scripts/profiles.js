@@ -22,6 +22,7 @@ const KINDS = ["skill", "agent", "mcp"];
 const COLUMNS = ["name", "kind", "when"];
 const SKILLS = ".agents/skills", AGENTS = ".agents/agents";
 const CATALOG_SKILLS = ".agents/catalog/skills", CATALOG_AGENTS = ".agents/catalog/agents";
+const LOCK = "skills-lock.json";
 
 // The generated links are the clone's, not the repository's (ADR-0009/D-2), so Git is told to ignore
 // them in the clone's own exclude file, in a block this script owns and rewrites whole. The block is
@@ -162,9 +163,53 @@ function agentEntries(view, generated) {
     });
 }
 
+// A link target as readlink spells it, compared with a path this clone would write: Windows hands a
+// junction back absolute, sometimes with a \\?\ prefix, and compares paths without case.
+const spelled = p => String(p).split("\\").join("/").replace(/^\/\/\?\//, "").replace(/\/+$/, "");
+const samePath = (a, b) => process.platform === "win32"
+    ? spelled(a).toLowerCase() === spelled(b).toLowerCase() : spelled(a) === spelled(b);
+
+// Every file under a folder, as paths relative to it.
+const tree = (view, dir) => view.list(dir).flatMap(n => view.isFile(`${dir}/${n}`) ? [n] : tree(view, `${dir}/${n}`).map(f => `${n}/${f}`));
+const sameTree = (view, a, b) => {
+    const files = tree(view, a);
+    return files.join("\n") === tree(view, b).join("\n") && files.every(f => view.bytes(`${a}/${f}`).equals(view.bytes(`${b}/${f}`)));
+};
+
+// What the skills folder holds besides the generated entries: the skills Git tracks there, by name,
+// or null where there is no index to ask, which counts every one as tracked so nothing is collected;
+// and the lock's skills, which are what `npx skills` wrote.
+function skillContext(view, root) {
+    const rows = view.recorded([SKILLS]);
+    const tracked = rows ? new Set(rows.map(r => r.file.slice(SKILLS.length + 1).split("/")[0])) : null;
+    let lock = {};
+    try { lock = JSON.parse(view.read(LOCK) || "{}").skills || {}; } catch { /* the invariants report the lock */ }
+    return { root, tracked, lock };
+}
+
+// Each catalog skill, and each skill `npx skills` just wrote into the skills folder, as that folder
+// holds it (D-6, D-7). `junction` is the absolute target a clone that refuses the symlink gets
+// instead, known only with the root to resolve it from. An untracked folder the lock records, which
+// apply did not make, is collected into the catalog; anything else there that apply did not make, and
+// that is not a link into this clone's catalog, is the project's and shadows the catalog's.
+function skillEntries(view, generated, { root = null, tracked = null, lock = {} } = {}) {
+    const catalog = new Set(view.list(CATALOG_SKILLS).filter(n => view.isFile(`${CATALOG_SKILLS}/${n}/SKILL.md`)));
+    const entry = name => {
+        const file = `${SKILLS}/${name}`, link = `../catalog/skills/${name}`, source = `${CATALOG_SKILLS}/${name}`;
+        const junction = root ? path.resolve(root, source).split(path.sep).join("/") : null;
+        const at = view.lstat(file);
+        const current = !!(at && at.link && (at.link === link || (junction && samePath(at.link, junction))));
+        const made = generated.has(file);
+        const collect = !!(at && !at.link && !made && tracked && !tracked.has(name) && lock[name] && view.isFile(`${file}/SKILL.md`));
+        return { name, file, link, junction, source, at, current, collect, inCatalog: catalog.has(name), shadowed: !!(at && !made && !current && !collect) };
+    };
+    const names = new Set([...catalog, ...view.list(SKILLS).filter(n => !catalog.has(n))]);
+    return [...names].sort().map(entry).filter(s => s.inCatalog || s.collect);
+}
+
 // What the profile would do, changing nothing. `facts` stands in for MEMORY.md's, to ask about a
 // profile the project does not hold.
-function plan(view, { facts, exclude = EXCLUDE } = {}) {
+function plan(view, { facts, exclude = EXCLUDE, root = null } = {}) {
     const text = view.read(FILE);
     const { rows, errors } = text === null ? { rows: [], errors: [{ line: 0, message: `${FILE} not found` }] } : parse(text);
     const memory = facts || projectFacts.readFacts({ memory: view.read(projectFacts.MEMORY), intent: view.read(projectFacts.INTENT) });
@@ -189,7 +234,11 @@ function plan(view, { facts, exclude = EXCLUDE } = {}) {
         if (kinds.skill.active.includes(name)) chars.active += size;
     }
     const open = [...new Set(selection.flatMap(s => s.open))].sort();
-    const shadowed = agentEntries(view, generatedPaths(exclude && view.read(exclude))).filter(a => a.shadowed).map(a => `agent ${a.name}`);
+    const generated = generatedPaths(exclude && view.read(exclude));
+    const shadowed = [
+        ...skillEntries(view, generated, skillContext(view, root)).filter(s => s.shadowed).map(s => `skill ${s.name}`),
+        ...agentEntries(view, generated).filter(a => a.shadowed).map(a => `agent ${a.name}`),
+    ];
     return { kinds, chars, open, unlisted, missing, shadowed, errors };
 }
 
@@ -275,7 +324,7 @@ function agentAdapter(selection, view, { generated }) {
         if (a.at && a.at.link === a.link) continue;
         const source = view.read(a.source);
         if (a.at && !a.at.link && view.read(a.file) === source) continue;
-        out.entries.push({ file: a.file, link: a.link, copy: source });
+        out.entries.push({ file: a.file, link: a.link, copy: () => source });
         on.push(a.name);
     }
     // A generated entry whose catalog agent is gone: renamed or dropped upstream.
@@ -291,25 +340,69 @@ function agentAdapter(selection, view, { generated }) {
     return out;
 }
 
-const ADAPTERS = [mcpAdapter, agentAdapter];
+// SPEC-0004/D-6 and D-7 for skills: the agents' adapter, for folders. A link the clone refuses falls
+// back to the absolute junction and then to a copy of the folder, and a junction pointing at another
+// clone's catalog, or a copy that no longer matches this one's, is rewritten. A folder `npx skills`
+// wrote is collected first: moved into the catalog, over any copy there (`before` clears the way, in
+// a pass of its own, since a move owns its destination), then linked like any other. A skill with no
+// row stays active, so one just added does not vanish before anyone classifies it (D-8 asks them to).
+function skillAdapter(selection, view, { generated, ...context }) {
+    const out = { before: [], entries: [], lines: [], problems: [], generated: [] };
+    const rows = new Map(selection.filter(s => s.kind === "skill").map(s => [s.name, s]));
+    const on = [], off = [], collected = [];
+    const entries = skillEntries(view, generated, context);
+    for (const s of entries) {
+        if (s.shadowed) continue;
+        if (s.collect) {
+            if (s.inCatalog) out.before.push({ file: s.source, remove: true });
+            out.entries.push({ file: s.source, move: s.file });
+            collected.push(s.name);
+        }
+        const row = rows.get(s.name);
+        if (row && !row.active) {
+            if (s.at && !s.collect) { out.entries.push({ file: s.file, remove: true }); off.push(s.name); }
+            continue;
+        }
+        out.generated.push(s.file);
+        if (s.current) continue;
+        if (s.at && !s.at.link && !s.collect && sameTree(view, s.file, s.source)) continue;
+        const copy = () => tree(view, s.source).map(f => ({ file: f, write: view.bytes(`${s.source}/${f}`) }));
+        out.entries.push({ file: s.file, link: s.link, ...(s.junction ? { junction: s.junction } : {}), copy });
+        on.push(s.name);
+    }
+    const known = new Set(entries.map(s => s.file));
+    for (const file of generated) {
+        if (file.startsWith(`${SKILLS}/`) && !known.has(file) && view.lstat(file)) {
+            out.entries.push({ file, remove: true });
+            off.push(path.posix.basename(file));
+        }
+    }
+    if (collected.length) out.lines.push(`skills: collected ${collected.join(", ")} into ${CATALOG_SKILLS}; commit it with ${LOCK}`);
+    if (on.length) out.lines.push(`skills: linked ${on.join(", ")} from the catalog`);
+    if (off.length) out.lines.push(`skills: switched off ${off.join(", ")}`);
+    return out;
+}
+
+const ADAPTERS = [mcpAdapter, skillAdapter, agentAdapter];
 
 // SPEC-0004/D-4: select, hand the selection to each adapter, and apply what they return through
 // one repo edit. A table with an error changes nothing. Returns the entries, what each adapter had
 // to say, and the problems: table errors, files that could not be read, writes that were refused.
 // `exclude` is the clone's exclude file (the command line asks Git where it is, which a linked
 // worktree needs), or null for a root that is no Git checkout, where there is nothing to ignore
-// anything in. A link the clone refuses is written as a copy instead, and only a copy refused too is
-// a problem.
-function applyTo(view, edit, { dryRun = false, exclude = EXCLUDE } = {}) {
+// anything in. `root` is the clone's folder, which a junction's absolute target is resolved from. A
+// link the clone refuses is written as a copy instead, and only a copy refused too is a problem.
+function applyTo(view, edit, { dryRun = false, exclude = EXCLUDE, root = null } = {}) {
     const text = view.read(FILE);
     const { rows, errors } = text === null ? { rows: [], errors: [{ line: 0, message: `${FILE} not found` }] } : parse(text);
     if (errors.length) return { entries: [], lines: [], problems: errors.map(e => `${FILE}:${e.line}: ${e.message}`), open: [] };
     const selection = select(facts(view), rows);
     const excluded = exclude ? view.read(exclude) : null;
-    const ctx = { generated: generatedPaths(excluded) };
+    const ctx = { generated: generatedPaths(excluded), ...skillContext(view, root) };
     const results = ADAPTERS.map(adapter => adapter(selection, view, ctx));
+    const before = results.flatMap(r => r.before || []);
     const out = {
-        entries: results.flatMap(r => r.entries),
+        entries: [...before, ...results.flatMap(r => r.entries)],
         lines: results.flatMap(r => r.lines),
         problems: results.flatMap(r => r.problems),
         open: [...new Set(selection.flatMap(s => s.open))].sort(),
@@ -320,15 +413,16 @@ function applyTo(view, edit, { dryRun = false, exclude = EXCLUDE } = {}) {
     }
     if (!dryRun && out.entries.length) {
         const copies = new Map(out.entries.filter(e => e.copy !== undefined).map(e => [e.file, e.copy]));
-        for (const r of edit.apply(out.entries.map(({ copy, ...e }) => e))) {
+        const failed = r => { if (!r.done) out.problems.push(r.why); return !r.done; };
+        before.forEach(e => edit.apply([e]).forEach(failed));
+        for (const r of edit.apply(out.entries.slice(before.length).map(({ copy, ...e }) => e))) {
             if (r.done) continue;
-            if (r.kind === "link" && copies.has(r.file)) {
-                const [copied] = edit.apply([{ file: r.file, write: copies.get(r.file) }]);
-                if (copied.done) { out.lines.push(`${r.file}: copied from the catalog, since this clone refuses the link`); continue; }
-                out.problems.push(copied.why);
-                continue;
-            }
-            out.problems.push(r.why);
+            if (r.kind !== "link" || !copies.has(r.file)) { failed(r); continue; }
+            // A file's copy is its text; a folder's is its files, written once the way is clear.
+            const copy = copies.get(r.file)();
+            const writes = typeof copy === "string" ? [{ file: r.file, write: copy }]
+                : [{ file: r.file, remove: true }, ...copy.map(f => ({ file: `${r.file}/${f.file}`, write: f.write }))];
+            if (!edit.apply(writes).some(failed)) out.lines.push(`${r.file}: copied from the catalog, since this clone refuses the link`);
         }
     }
     return out;
@@ -356,7 +450,7 @@ function printPlan(p) {
 
 const commands = {
     plan(root, ...args) {
-        const p = plan(repoView.worktree(root), { exclude: excludeFile(root) });
+        const p = plan(repoView.worktree(root), { exclude: excludeFile(root), root });
         if (args.includes("--json")) console.log(JSON.stringify(p, null, 2));
         else printPlan(p);
         for (const e of p.errors) console.error(`${FILE}:${e.line}: ${e.message}`);
@@ -364,8 +458,8 @@ const commands = {
     },
     apply(root, ...args) {
         const dryRun = args.includes("--dry-run");
-        const r = applyTo(repoView.worktree(root), repoEdit.worktreeEdit(root), { dryRun, exclude: excludeFile(root) });
-        const verb = e => e.remove ? "remove" : e.link !== undefined ? "link" : "write";
+        const r = applyTo(repoView.worktree(root), repoEdit.worktreeEdit(root), { dryRun, exclude: excludeFile(root), root });
+        const verb = e => e.remove ? "remove" : e.move !== undefined ? `move ${e.move} to` : e.link !== undefined ? "link" : "write";
         if (dryRun) for (const e of r.entries) console.log(`would ${verb(e)} ${e.file}`);
         for (const line of r.lines) console.log(line);
         if (!r.entries.length && !r.problems.length) console.log("profiles: nothing to change");

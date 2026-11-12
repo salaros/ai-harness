@@ -38,7 +38,7 @@ try {
     if (fs.existsSync(profiles.FILE)) {
         const root = process.cwd();
         const r = profiles.applyTo(require("../../scripts/repo-view").worktree(root), require("../../scripts/repo-edit").worktreeEdit(root),
-            { exclude: profiles.excludeFile(root) });
+            { exclude: profiles.excludeFile(root), root });
         if (r.lines.length || r.problems.length) say(`profile: ${[...r.lines, ...r.problems].join("; ")}`);
         if (fs.existsSync("MEMORY.md") && r.open.length) say(`profile: no answer in MEMORY.md for ${r.open.join(", ")}, so everything those facts select stays on`);
     }

@@ -269,6 +269,43 @@ exports.installPlanMovesAgentsToTheCatalog = function installPlanMovesAgentsToTh
     t.ok(summary.includes("removed, now in the catalog (1):\n  .agents/agents/engineer.md"), "agents to the catalog: the summary lists what was removed", summary);
 };
 
+// SPEC-0004/D-7: the same move for skills, a folder at a time, with the catalog installed by the
+// skills policy. The tracked copy of a skill the base shipped goes; the profile links it afterwards.
+exports.installPlanMovesSkillsToTheCatalog = function installPlanMovesSkillsToTheCatalog(t) {
+    const harness = installer();
+    if (!harness) { t.skip("skills to the catalog: the installer is the upstream's own, not installed here"); return; }
+    const skill = (name, v) => `---\nname: ${name}\ndescription: ${v}\n---\n`;
+    const up = memoryUpstream([
+        ["c1", { ".agents/skills/tdd/SKILL.md": skill("tdd", "v1"), ".agents/skills/tdd/refs/a.md": "a\n", ".agents/skills/retro/SKILL.md": skill("retro", "v1") }],
+        ["c2", { ".agents/catalog/skills/tdd/SKILL.md": skill("tdd", "v2"), ".agents/catalog/skills/tdd/refs/a.md": "a\n",
+            ".agents/catalog/skills/retro/SKILL.md": skill("retro", "v2"), ".agents/catalog/skills/mine/SKILL.md": skill("mine", "v2") }],
+    ]);
+    const rows = [{ path: "skills-lock.json", policy: "skills" }, { path: ".agents/skills/", policy: "skills" }, { path: ".agents/catalog/skills/", policy: "skills" }];
+    const run = (files, previous) => harness.plan({
+        upstream: up, target: repoView.fromMap(files), rows, head: "c2", ref: "master", previous,
+        options: { dryRun: false, adopt: false, quiet: true, check: true, wants: () => false },
+    });
+    const removed = p => p.entries.filter(e => e.remove).map(e => e.file).sort().join(", ");
+    const target = {
+        ".agents/skills/tdd/SKILL.md": skill("tdd", "v1, edited"), ".agents/skills/tdd/refs/a.md": "a\n",
+        ".agents/skills/retro": { link: "../catalog/skills/retro" },
+        ".agents/skills/mine/SKILL.md": skill("mine", "the project's"),
+    };
+    const update = run(target, { commit: "c1", ref: "master" });
+    t.ok(removed(update) === ".agents/skills/tdd",
+        "skills to the catalog: a shipped skill's folder goes, edited or not; a generated link and a name never shipped stay", removed(update));
+    const written = update.entries.filter(e => e.write !== undefined).map(e => e.file);
+    t.ok(written.includes(".agents/catalog/skills/tdd/SKILL.md") && written.includes(".agents/catalog/skills/mine/SKILL.md"),
+        "skills to the catalog: the catalog is installed by the skills policy", written.join(", "));
+    t.ok(!removed(run(target, null)), "skills to the catalog: a first install removes nothing");
+
+    const edit = repoEdit.mapEdit(target);
+    harness.apply(update.entries, edit, { dryRun: false, quiet: true }, () => {});
+    t.ok(!edit.view().exists(".agents/skills/tdd") && edit.view().read(".agents/catalog/skills/tdd/SKILL.md") === skill("tdd", "v2")
+        && edit.view().lstat(".agents/skills/retro").link,
+        "skills to the catalog: applying the plan takes the folder away, writes the catalog and leaves the link");
+};
+
 // SPEC-0001, and the whole reason bytes() is a question of its own rather than a flag on read(). A
 // skill ships a logo, and until repo-view there was no way to put a file with a zero byte in it in
 // front of plan(): the stand-in this table used answered a bytes read by re-encoding its own string,

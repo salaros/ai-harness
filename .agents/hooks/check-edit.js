@@ -29,7 +29,7 @@ const vendored = name => { try { return !!(skills.readRoster(repoView.worktree(r
 
 const rules = [
     {   // Vendored skills (recorded in skills-lock.json) must not be edited in place; local skills may be.
-        when: /^(?:\.agents|\.claude)\/skills\/([^/]+)\/./,
+        when: /^(?:\.agents|\.claude|\.agents\/catalog)\/skills\/([^/]+)\/./,
         check: (file, m) => vendored(m[1])
             && `${file} belongs to the vendored skill '${m[1]}': npx skills update will overwrite it. Change it upstream, or copy it to a new local skill under .agents/skills/<other-name>/.`,
     },

@@ -22,7 +22,8 @@ const lib = require("./lib");
 const repoView = require("./repo-view");
 const repoEdit = require("./repo-edit");
 
-const SKILLS = ".agents/skills", AGENTS = ".agents/agents", CATALOG_AGENTS = ".agents/catalog/agents", LOCK = "skills-lock.json";
+const SKILLS = ".agents/skills", AGENTS = ".agents/agents", LOCK = "skills-lock.json";
+const CATALOG_SKILLS = ".agents/catalog/skills", CATALOG_AGENTS = ".agents/catalog/agents";
 const SHARED = ".agents/routing.md", SHARED_REF = "routing.md";
 const LICENCES = "scripts/skill-licences.tsv", NOTICES = "THIRD-PARTY-NOTICES.md";
 
@@ -52,13 +53,13 @@ function frontmatter(text) {
 const named = text => new Set([...text.matchAll(/`([a-z0-9][a-z0-9-]*)`/g)].map(m => m[1]));
 const body = text => text.replace(/^---\r?\n[\s\S]*?\r?\n---/, "");
 
-// Every entry under .agents/skills, whatever it is: a skill is a folder holding a SKILL.md, and
-// anything else -- a link to another skill, a folder with no SKILL.md -- is listed too, marked, so
-// the invariant that objects to it reads the same pass as everything else.
+// Every entry under .agents/skills and the catalog, whatever it is: a skill is a folder holding a
+// SKILL.md, and anything else -- a link, a folder with no SKILL.md -- is listed too, marked, so the
+// invariant that objects to it reads the same pass as everything else. `folder` says which of the
+// two it is in, and `target` is where a link points, as readlink spells it.
 function readEntries(view) {
-    if (!view.exists(SKILLS)) return [];
-    return view.list(SKILLS).map(name => {
-        const folder = `${SKILLS}/${name}`;
+    return [SKILLS, CATALOG_SKILLS].flatMap(home => view.exists(home) ? view.list(home).map(name => {
+        const folder = `${home}/${name}`;
         const file = `${folder}/SKILL.md`;
         // `dir` follows the link, so a link to a real skill folder is both a link and a folder, and
         // a link to nothing is neither. isFile answers for the file at the end of the path, which is
@@ -71,8 +72,9 @@ function readEntries(view) {
         // COPYING is how a GPL work names its file. ADR-0006 has the argument.
         const licence = dir ? (view.list(folder) || []).find(f => /^(licen[cs]e|notice|copying)\b/i.test(f)) : null;
         const carries = licence ? `\`${licence}\`` : (fm && fm.license ? `a \`license: ${fm.license}\` line` : null);
-        return { name, link: !!(view.lstat(folder) || {}).link, dir, hasSkillMd, frontmatter: fm, carries };
-    });
+        const target = (view.lstat(folder) || {}).link || null;
+        return { name, folder, link: !!target, target, dir, hasSkillMd, frontmatter: fm, carries };
+    }) : []);
 }
 
 // Every agent definition a repo has, one path per name: the one in .agents/agents when there is
@@ -212,10 +214,15 @@ function readRoster(view) {
     // routed nowhere would bury the case the column is for, a skill nothing at all points at.
     const agentsMd = view.read("AGENTS.md");
     const everywhere = agentsMd === null ? new Set() : named(agentsMd);
-    const skills = entries.filter(e => e.hasSkillMd).map(e => {
+    // One skill per name: what .agents/skills holds, which is what a harness reads, and the catalog's
+    // for a name it lacks. `active` is whether a harness sees it at all (SPEC-0004/D-6).
+    const active = new Set(entries.filter(e => (e.hasSkillMd || e.link) && e.folder.startsWith(`${SKILLS}/`)).map(e => e.name));
+    const taken = new Set();
+    const skills = entries.filter(e => e.hasSkillMd && !taken.has(e.name) && taken.add(e.name)).map(e => {
         const fm = e.frontmatter || {};
         return {
             name: e.name,
+            active: active.has(e.name),
             frontmatter: e.frontmatter,
             invoke: fm["disable-model-invocation"] === "true" ? `\`/${e.name}\`` : "by description",
             source: vendored[e.name] ? vendored[e.name].source : "local",
@@ -305,7 +312,9 @@ function relinkPlan(view, root = null) {
         }
     }
 
-    const installed = [...readRoster(view).skills.map(s => s.name), ...adopting.keys()];
+    // The active skills only: a link in a harness folder points through .agents/skills, where an
+    // inactive one has nothing to point at (SPEC-0004/D-6).
+    const installed = [...readRoster(view).skills.filter(s => s.active).map(s => s.name), ...adopting.keys()];
     for (const dir of folders) {
         const held = new Set(view.list(dir));
         for (const name of held) {
@@ -430,6 +439,15 @@ const commands = {
         if (!fs.existsSync(path.join(root, LOCK))) { console.error(`${LOCK} not found in ${root}`); return 1; }
         const r = lib.shell("npx --yes skills@latest experimental_install", { cwd: root, stdio: "inherit" });
         if (r.status !== 0) return r.status === null ? 1 : r.status;
+        // npx skills restores every locked skill into .agents/skills, the inactive ones included; the
+        // profile collects them into the catalog and links back only the active set (SPEC-0004/D-7).
+        // Before relink, which links the harness folders to what the profile leaves there.
+        const profiles = path.join(root, "scripts", "profiles.js");
+        if (fs.existsSync(profiles) && fs.existsSync(path.join(root, "scripts", "profiles.tsv"))) {
+            const applied = lib.node([profiles, "apply"], { cwd: root });
+            if (applied.output) console.log(applied.output);
+            if (applied.status !== 0) return 1;
+        }
         printRelink(relink(root));
         console.log(`Skills restored from ${LOCK}.`);
         return 0;

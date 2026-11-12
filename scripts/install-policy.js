@@ -336,7 +336,9 @@ const POLICIES = {
 
 // ---------------------------------------------------------------- deciding a whole folder
 
-const SKILLS = ".agents/skills/";
+// The catalog first: where the upstream keeps its skills from SPEC-0004 on, and the folder that
+// held them before it, which an upstream mid-move still ships some from.
+const SKILL_FOLDERS = [".agents/catalog/skills/", ".agents/skills/"];
 const SKILLS_LOCK = "skills-lock.json";
 
 // Skills merge by name, not by content: the upstream's are added and updated, and a skill the
@@ -358,9 +360,10 @@ function skills(roster, reads) {
         // A skill link is relink's to make, once the directory it lives in exists: relink knows which
         // skills this project actually has, where the upstream only knows its own.
         if (link) { out.push(entry.folder(file, entry.quiet())); continue; }
-        if (!file.startsWith(SKILLS)) continue;
-        const name = file.slice(SKILLS.length).split("/")[0];
-        const tally = seen(name);
+        const folder = SKILL_FOLDERS.find(f => file.startsWith(f));
+        if (!folder) continue;
+        const name = file.slice(folder.length).split("/")[0];
+        const tally = seen(`${folder}${name}`);
         tally.files++;
         const exists = reads.exists(file);
         // A script the skill runs keeps its executable bit whoever owns the content, as a hook does.
@@ -384,9 +387,9 @@ function skills(roster, reads) {
         if (exists) tally.updated++; else tally.added++;
         out.push(entry.written(file, write, entry.quiet(exists ? "merged" : "written"), { exec: exec && !exists }));
     }
-    for (const [name, t] of [...outcomes].sort()) {
+    for (const [skill, t] of [...outcomes].sort()) {
         const what = t.yours ? "yours" : t.added ? "added" : t.updated ? "updated" : "unchanged";
-        out.push(entry.noted(`${SKILLS}${name}  (${t.files} file(s))`, entry.shown("skills", "100644", what)));
+        out.push(entry.noted(`${skill}  (${t.files} file(s))`, entry.shown("skills", "100644", what)));
     }
     for (const [name, pinned] of Object.entries(theirLock.skills)) {
         if (!ourLock.skills[name]) ourLock.skills[name] = pinned;
