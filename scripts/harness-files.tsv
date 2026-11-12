@@ -52,7 +52,8 @@ scripts/harness-files.tsv	template	This table. Read from the upstream checkout d
 .github/	template	CI that runs the suite, which does not travel either. A project brings its own.
 scripts/skill-licences.tsv	union	One licence row per skill source. A skill the upstream drops stays here, so its row has to stay with it or the notices cannot be written.
 skills-lock.json	skills	Merged as a union, so a skill the project vendored itself survives.
-.agents/skills/	skills	Added and updated, never removed: the project may install its own.
+.agents/skills/	template	Links scripts/profiles.js writes from the catalog, untracked, plus whatever the project vendored itself. The upstream ships nothing here, and an install never touches the project's own.
+.agents/agents/	template	Links scripts/profiles.js writes from .agents/catalog/agents, untracked. The upstream ships nothing here.
 .agents/catalog/skills/	skills	Every skill the harness ships, active or not; scripts/profiles.js links the active ones into .agents/skills. Added and updated, never removed. The agents beside it are harness files, under .agents/ below.
 .claude/skills	merge	One link to .agents/skills, not a link per skill, so every skill a repo has is visible through it -- including one written by hand that nothing vendored.
 .claude/agents	merge	One link to .agents/agents, the same shape. Declared rather than left to the fallback, because the fallback is what a reader has to know to predict it.
