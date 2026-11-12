@@ -339,6 +339,16 @@ exports.profileApplySkills = function profileApplySkills(t) {
         "a folder npx skills wrote is collected into the catalog over the old copy and linked; one it did not write stays",
         JSON.stringify(collected));
 
+    // npx skills experimental_install replaces a generated link with a folder of its own. The next
+    // run puts the link back, rather than refusing it for the folder in the way.
+    const restored = repoEdit.mapEdit(files("none"));
+    profiles.applyTo(restored.view(), restored);
+    restored.apply([{ file: ".agents/skills/tdd", remove: true }, { file: ".agents/skills/tdd/SKILL.md", write: skill("tdd", "upstream\n") }]);
+    const relinked = profiles.applyTo(restored.view(), restored);
+    t.ok(restored.view().lstat(".agents/skills/tdd").link === "../catalog/skills/tdd" && !relinked.problems.length
+        && !relinked.lines.some(l => l.includes("copied")),
+        "a folder written over a generated link is replaced by the link again", JSON.stringify(relinked));
+
     // A clone that refuses symlinks gets an absolute junction, rewritten once the clone has moved.
     const junctions = repoEdit.mapEdit(files("none"), { links: false });
     profiles.applyTo(junctions.view(), junctions, { root: "/clone" });

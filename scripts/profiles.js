@@ -365,7 +365,13 @@ function skillAdapter(selection, view, { generated, ...context }) {
         }
         out.generated.push(s.file);
         if (s.current) continue;
-        if (s.at && !s.at.link && !s.collect && sameTree(view, s.file, s.source)) continue;
+        if (s.at && !s.at.link && !s.collect) {
+            if (sameTree(view, s.file, s.source)) continue;
+            // A stale copy, or the folder `npx skills experimental_install` writes over a generated
+            // link (it replaces the link rather than writing through it). A link refuses a folder
+            // with anything in it, so the folder goes first.
+            out.before.push({ file: s.file, remove: true });
+        }
         const copy = () => tree(view, s.source).map(f => ({ file: f, write: view.bytes(`${s.source}/${f}`) }));
         out.entries.push({ file: s.file, link: s.link, ...(s.junction ? { junction: s.junction } : {}), copy });
         on.push(s.name);
