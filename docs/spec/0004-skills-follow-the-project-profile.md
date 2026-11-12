@@ -1,6 +1,6 @@
 # SPEC-0004: Skills, agents and MCP servers follow the project profile
 
-**Derived from:** RFC-0001
+**Derived from:** RFC-0001, ADR-0009
 
 Every target exposes every vendored skill, all six agents and both MCP servers to every session, whatever the project is. RFC-0001 accepted OPT-1: a decision table, `scripts/profiles.tsv`, and one pure selector decide the active set from the project facts in `MEMORY.md`, and three adapters expose it. This is the design, rolled out in five phases that each leave a working harness.
 
@@ -18,7 +18,7 @@ Every target exposes every vendored skill, all six agents and both MCP servers t
 - **The installer ships three scripts in the npm package** (`update-harness.js`, `lib.js`, `project-facts.js`). It runs `profiles.js` from the target's own `scripts/` after writing it, as it runs `skills.js relink` today.
 - **Fail open.** A clone with no `MEMORY.md`, the upstream included, keeps every skill, agent and server. A profile can only narrow what a project already has; it never hides a skill because a fact is missing.
 - **No harness switch for skills, no vendored edit.** RFC-0001/Q-5 asks whether OpenCode's `permission.skill` and Codex's `skills.config` hide a skill, and whether `npx skills` checks `computedHash`. This design relies on none of them: it hides a skill by not linking it, and it edits no vendored file, so no hash goes stale.
-- **The catalog layout waits for an ADR.** D-6 and D-7 change the layout of every target, which is hard to reverse. The user records the layout with `grill-with-docs` before phase 3; if the ADR chooses otherwise, those two sections are revised before any code for them is written.
+- **The catalog layout is ADR-0009.** D-6 and D-7 follow it: the catalog under `.agents/catalog/`, generated links ignored per clone, a junction where a symlink is refused, a project's entry shadowing the catalog, and the migration rule.
 
 ## Architecture
 
@@ -138,7 +138,7 @@ The links are generated, not committed. `apply` lists each one it made in a bloc
 # end ai-harness profiles
 ```
 
-This answers RFC-0001/Q-3. A clone made with `core.symlinks=false` checks a committed link out as a text file (verified 2026-11-11: `.claude/skills` became a 17-byte file holding `../.agents/skills`), so a committed per-skill link would hide every skill from every harness there. A generated one is made on the clone itself: where `core.symlinks` is false or repo edit reports it could not create the symlink, `apply` writes a copy of the catalog entry instead, excluded the same way, and rewrites a copy whose files differ from the catalog's on each run. Nothing a clone generates reaches a commit, so a copy is never mistaken for an edit.
+This answers RFC-0001/Q-3. A clone made with `core.symlinks=false` checks a committed link out as a text file (verified 2026-11-11: `.claude/skills` became a 17-byte file holding `../.agents/skills`), so a committed per-skill link would hide every skill from every harness there. A generated one is made on the clone itself. Where `core.symlinks` is false or repo edit reports it could not create the symlink, `apply` falls back by kind (ADR-0009/D-2): a skill folder gets an absolute junction, which Windows makes without a privilege, and an agent file, which a junction cannot point at, gets a copy, as does a skill where the junction is refused too. Both are excluded the same way. Each run rewrites a junction that no longer points at this clone's catalog, as after the repository folder moved, and a copy whose files differ from the catalog's. Nothing a clone generates reaches a commit, so a copy is never mistaken for an edit. Repo edit gains a junction write beside its `dir` symlink, and `relinkPlan` leaves alone any entry listed in the exclude block: the junctions it rewrites as relative links are the ones `npx skills` wrote, not the ones `apply` made.
 
 A name the project holds as a tracked folder or file is the project's: the adapter neither replaces nor links over it, and `plan` reports it as shadowing the catalog entry. `relinkPlan` keeps linking the harness folders (`.claude/skills` and the rest) to `.agents/skills`, unchanged.
 
@@ -245,7 +245,7 @@ Each phase is a commit or a few, leaves every test passing, and reverts on its o
 | --- | --- | --- |
 | 1 | D-1, D-2, D-3, the self-check half of D-8 | deletes two files |
 | 2 | D-4 and D-5: the `apply` command and the MCP switches; of D-9, the `stacks.tsv` row and the runs from `update-harness.js` and `project-init` | `apply` with every row `always` clears the switches |
-| 3 | the ADR, D-6 for agents, D-10 and the session-start check of D-9 | moves the agents back to `.agents/agents/` |
+| 3 | D-6 for agents, D-10 and the session-start check of D-9 | moves the agents back to `.agents/agents/` |
 | 4 | D-6 and D-7 for skills, the rest of D-8 and D-9, D-12 | per group: moves that group's folders back |
 | 5 | D-11 | sets the rows back to `always` |
 
@@ -261,7 +261,7 @@ Each phase is a commit or a few, leaves every test passing, and reverts on its o
 
 - **The selector** is a decision table, `.agents/hooks/tests/tables/profiles.js`: parsing (each error kind, by line), matching (`C# 13`, a list, `none`, case), `and` and `or`, and failing open (no line, an empty value, a placeholder).
 - **`plan`** runs against a `files` repo view with a small table, facts and three skills, and its JSON is compared whole; the character count skips a user-only skill.
-- **Each adapter** runs against `repo-view` and `repo-edit`'s `mapEdit`: the MCP switches with a project's own disabled server kept, a non-JSON settings file left; links made, a link refused (`mapEdit` with links off) turning into a copy, a tracked name shadowing, a second run changing nothing.
+- **Each adapter** runs against `repo-view` and `repo-edit`'s `mapEdit`: the MCP switches with a project's own disabled server kept, a non-JSON settings file left; links made, a link refused (`mapEdit` with links off) turning into a junction for a skill and a copy for an agent, a junction refused too turning into a copy, a tracked name shadowing, a second run changing nothing.
 - **Collect and migrate** run in `update-harness`'s tables against a fake upstream with a receipt: a vendored folder removed, a project's folder of the same name kept, an untracked lock-recorded folder collected.
 - **On this checkout**, in the same table: every shipped entry has one row, every row names an entry, and the reference profile fits under 14,300 with no fact left open.
 - **For real**, once per phase on this checkout: `plan` before and after, and in phase 4 a scratch target updated from 0.9.1, with `git status` clean afterwards.

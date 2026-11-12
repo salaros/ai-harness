@@ -33,8 +33,28 @@ What an install does with one kind of path, named by its row in `scripts/harness
 _Avoid_: strategy, mode, rule
 
 **Skill roster**:
-What a repo's harness knows about its skills at one moment: every entry under `.agents/skills`, each skill's frontmatter and source, which agents route it, the skills the lock records but the disk lacks, and whether the licence notice is current. Read in one pass and never written; relinking and writing the notice are separate acts.
+What a repo's harness knows about its skills at one moment: every entry in the catalog and under `.agents/skills`, each skill's frontmatter and source, which agents route it, the skills the lock records but the disk lacks, and whether the licence notice is current. Read in one pass and never written; relinking and writing the notice are separate acts.
 _Avoid_: skill registry, skill index, skill list
+
+**Catalog**:
+Every skill and agent the harness ships or the target vendored, on disk under `.agents/catalog/` and tracked, whether active or not. The harnesses never read it directly; they read the generated links into it.
+_Avoid_: library, store, pool
+
+**Profile**:
+A target's answers to the project facts the profile table reads, taken as one set, as in "the reference profile". An unanswered fact leaves its rows active, so a profile only narrows what a target has.
+_Avoid_: preset, bundle, configuration
+
+**Active set**:
+The skills, agents and MCP servers the selector picks for a profile: what the harnesses see. The rest of the catalog stays on disk, and inactive servers are switched off rather than removed.
+_Avoid_: enabled list, selection, loadout
+
+**Generated link**:
+An untracked link, junction or copy that `apply` makes from `.agents/skills` or `.agents/agents` into the catalog for one active entry, on each clone, and lists in its block of `.git/info/exclude`. Never committed, so a clone that refuses symlinks still gets a working entry.
+_Avoid_: symlink (it may be a junction or a copy), shortcut
+
+**Shadow**:
+A target's own tracked entry in `.agents/skills` or `.agents/agents` with a catalog entry's name. It wins: nothing is linked over it, and `plan` reports it.
+_Avoid_: override, conflict, clash
 
 **Licence signal**:
 A licence file (`LICENSE`, `LICENCE`, `NOTICE` or `COPYING`, in any case, alone or with an extension or suffix) or a `license:` line in the frontmatter, inside a skill's own folder. A skill written here is covered by the repository's licence and restates nothing, so a signal is the fingerprint of a copy, whatever it says.
