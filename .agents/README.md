@@ -18,7 +18,8 @@ How the harness is put together: what each file is for, how skills, hooks and ag
 | `THIRD-PARTY-NOTICES.md`, `scripts/skill-licences.tsv` | Licence notices for vendored skills. The TSV holds one row per upstream; `node scripts/skills.js notices` regenerates the notice from it. |
 | `scripts/profiles.tsv` | When each skill, agent and MCP server is active, as a condition over the facts in `MEMORY.md`. `node scripts/profiles.js plan` prints what this clone's facts select and how many description characters that loads. |
 | `.agents/README.md` | This file. |
-| `.agents/skills/` | The vendored skills. |
+| `.agents/catalog/skills/` | Every vendored skill, active or not. |
+| `.agents/skills/` | Untracked links to the skills the profile selects, which `node scripts/profiles.js apply` makes, beside any skill of the project's own. |
 | `.agents/catalog/agents/`, `.agents/routing.md` | Agent definitions, and the route rows several agents share. |
 | `.agents/agents/` | Untracked links to the agents the profile selects, which `node scripts/profiles.js apply` makes, beside any agent of the project's own. |
 | `.agents/hooks/` | Hook scripts for AI tools. See [Agent hooks](#agent-hooks). |
@@ -34,22 +35,24 @@ How the harness is put together: what each file is for, how skills, hooks and ag
 
 ## Skills
 
-A skill is a folder with a `SKILL.md` whose frontmatter carries a `name` and a `description`, plus optional reference files. The [`skills` CLI](https://skills.sh) manages them. Commit `skills-lock.json`, `.agents/skills` and the `.claude/skills` link together.
+A skill is a folder with a `SKILL.md` whose frontmatter carries a `name` and a `description`, plus optional reference files. The [`skills` CLI](https://skills.sh) manages them. Every skill the harness ships is committed in `.agents/catalog/skills/`; `node scripts/profiles.js apply` links the ones `scripts/profiles.tsv` selects for this project's facts into `.agents/skills/`, which every harness reads, and lists the links in a block of `.git/info/exclude` rather than committing them (ADR-0009). The session-start hook reapplies the profile, so a missing link comes back. Commit `skills-lock.json`, `.agents/catalog/skills` and the `.claude/skills` link together.
 
 ```bash
 npx skills add mattpocock/skills -s wait-what -a claude-code codex -y   # add a skill
 npx skills remove wait-what -y                                         # remove one
 npx skills update                                                      # update all
-node scripts/skills.js relink                                          # after any of the above
+node scripts/profiles.js apply                                         # after any of the above
+node scripts/skills.js relink                                          # then this
 node scripts/skills.js list                                            # what is installed, and who routes it
 ```
 
-- **Relink after every change.** `.claude/skills` is one link to `.agents/skills`, so Claude Code sees every skill already. Relink repairs per-skill links in other harness folders and turns the absolute junctions `npx skills` creates on Windows into relative symlinks Git can store.
+- **Apply after every change.** `npx skills` writes a folder into `.agents/skills/`, over the link if there was one. `apply` collects each folder the lock records into the catalog, over the old version, and links it back, so an update shows as a change under `.agents/catalog/skills/` to review and commit with the lock. A folder the lock does not record is the project's own and stays where it is.
+- **Relink after apply.** `.claude/skills` is one link to `.agents/skills`, so Claude Code sees every active skill already. Relink repairs per-skill links in other harness folders and turns the absolute junctions `npx skills` creates on Windows into relative symlinks Git can store.
 - **Don't edit a vendored skill.** The next update overwrites it. Fork it under another name, or change it upstream.
 - **New upstream, new licence row.** Add a row to `scripts/skill-licences.tsv`, then run `node scripts/skills.js notices`. `node scripts/check-harness.js` fails until you do.
 - **New skill, new profile row.** Add a row to `scripts/profiles.tsv` saying when it is active: `always`, or a condition such as `Language = C#` or `Roles = marketing`. The harness tests fail until every skill, agent and MCP server has one.
 - **Update now and then.** The lock file stores only a hash, so an upstream going private goes unnoticed. Run `npx skills update`, then `node scripts/check-harness.js`, and read the diff before committing. The `skills-update` workflow does this weekly.
-- **A skill needs valid frontmatter.** `node scripts/check-harness.js` fails when a folder under `.agents/skills` has no `SKILL.md`, a `name` that differs from the folder or breaks the [Agent Skills](https://agentskills.io/specification) rules, or a `description` that is missing or over 1024 characters. A tool silently ignores such a skill.
+- **A skill needs valid frontmatter.** `node scripts/check-harness.js` fails when a folder under `.agents/catalog/skills` or `.agents/skills` has no `SKILL.md`, a `name` that differs from the folder or breaks the [Agent Skills](https://agentskills.io/specification) rules, or a `description` that is missing or over 1024 characters. A tool silently ignores such a skill.
 - **Two kinds of skill.** An agent picks a model-invoked skill by its description. A user-invoked skill (`disable-model-invocation: true`) runs only when you type `/name`.
 
 ## Agent hooks
@@ -105,7 +108,7 @@ Only the Claude Code wiring ships in the repository and has been tested. The oth
 | Agents | `.claude/agents`, a symlink to `../.agents/agents` | yes |
 | Personal overrides | `.claude/settings.local.json`, ignored by Git | no |
 
-On Windows the symlinks need Developer Mode and `git config --global core.symlinks true`. Without symlinks, run `npx skills add … --copy`; `profiles.js apply` already writes each agent as a copy where the clone refuses a link, and rewrites a copy that drifted from the catalog.
+On Windows the symlinks need Developer Mode and `git config --global core.symlinks true`. Without them, `profiles.js apply` links each skill as a junction, which Windows makes without Developer Mode, and failing that writes it as a copy; an agent, a single file, goes straight to a copy. A copy that drifted from the catalog is rewritten on the next apply.
 
 ### Other tools
 

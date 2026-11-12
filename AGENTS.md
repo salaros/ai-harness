@@ -37,7 +37,7 @@ Before writing or editing any document of the chain, read `docs/agents/chain.md`
 
 ## Skills
 
-Skills live in `.agents/skills/<name>/SKILL.md`. If your harness has not surfaced them, read the `description` line of each and load the ones that match the task. Vendoring, licence notices and relinking are in `docs/agents/skills.md`.
+Skills live in `.agents/catalog/skills/<name>/SKILL.md`, and `.agents/skills/` links the ones this project's facts select (`scripts/profiles.tsv`). If your harness has not surfaced them, read the `description` line of each under `.agents/skills/` and load the ones that match the task; one only in the catalog is switched off here. Vendoring, licence notices and relinking are in `docs/agents/skills.md`.
 
 The agents in `.agents/catalog/agents/` route a task through the skills, and `.agents/agents/` links the ones the `Roles` fact selects: `engineer`, `devops`, `product-manager`, `business-analyst`, `marketing`, `assistant`. A row two or three of them read lives in `.agents/routing.md`; what every agent needs is in "Working here" below.
 
