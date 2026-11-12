@@ -505,4 +505,17 @@ exports.repoEditRemovesAndLinksFiles = function repoEditRemovesAndLinksFiles(t) 
         t.ok(fs.readFileSync(path.join(root, "catalog/agents/engineer.md"), "utf8") === "agent\n" && fs.existsSync(path.join(root, "catalog/skills/tdd/SKILL.md")),
             "repo edit remove: what the links pointed at is untouched");
     });
+
+    // A tracked file the upstream moved into the catalog: removed from disk alone, the link apply
+    // makes in its place would be a type change of a tracked file, and `git add -A` would commit it.
+    withRoot({ "agents/engineer.md": "shipped\n", "agents/mine.md": "ours\n" }, root => {
+        const git = args => spawnSync("git", ["-C", root, ...args], { encoding: "utf8" });
+        if (git(["init", "-q", "."]).status !== 0) { t.skip("repo edit remove: git is not available"); return; }
+        git(["config", "user.email", "t@t"]); git(["config", "user.name", "t"]);
+        git(["add", "-A"]); git(["commit", "-qm", "init"]);
+        const [r] = repoEdit.worktreeEdit(root).apply([{ file: "agents/engineer.md", remove: true }]);
+        const staged = git(["diff", "--cached", "--name-status"]).stdout.trim();
+        t.ok(r.done && staged === "D\tagents/engineer.md", "repo edit remove: a tracked file leaves the index too, and nothing else does",
+            `${JSON.stringify(r)}\n${staged}`);
+    });
 };

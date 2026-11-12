@@ -287,8 +287,11 @@ function worktreeEdit(root) {
                 return null;
             },
             // A link of either kind goes with `clear`, never followed into what it points at; a
-            // folder goes whole. Only ever asked of what the harness generated itself (SPEC-0004/D-6),
-            // so the folder is a copy of the catalog's and nothing of the project's.
+            // folder goes whole. Only ever asked of what the harness generated itself or what the
+            // upstream shipped and moved into the catalog (SPEC-0004/D-6), never of the project's own.
+            // A tracked path leaves the index too, for the reason `stage` above gives: otherwise the
+            // link apply makes in its place is a type change of a tracked file, which the exclude
+            // block cannot hide and the next `git add -A` commits.
             remove: e => {
                 if (!there(e.file)) return null;
                 let s;
@@ -298,7 +301,11 @@ function worktreeEdit(root) {
                     else fs.rmSync(at(e.file), { recursive: true, force: true });
                 }
                 catch (err) { return `could not remove ${e.file}: ${err.code || err.message}`; }
-                return there(e.file) ? `could not remove ${e.file}` : null;
+                if (there(e.file)) return `could not remove ${e.file}`;
+                const tracked = repoView.indexModes(root, [e.file]);
+                if (!tracked || !tracked.length) return null;
+                const r = git(root, ["rm", "-r", "--cached", "--quiet", "--ignore-unmatch", "--", e.file]);
+                return r.status === 0 ? null : `removed ${e.file}, but Git would not drop it from the index: ${(r.stderr || "").trim()}`;
             },
             mark: e => {
                 if (alreadyExec(e.file)) return null;
