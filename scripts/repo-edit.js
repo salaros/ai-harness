@@ -311,6 +311,10 @@ function worktreeEdit(root) {
                 }
                 catch (err) { return `could not remove ${e.file}: ${err.code || err.message}`; }
                 if (there(e.file)) return `could not remove ${e.file}`;
+                // Unless something takes the path straight back, as a skill collected over its
+                // catalog copy does (SPEC-0004/D-7): then the index keeps it, and the new content
+                // shows as an ordinary change to review and commit, never as a staged deletion.
+                if (e.keepIndex) return null;
                 const tracked = repoView.indexModes(root, [e.file]);
                 if (!tracked || !tracked.length) return null;
                 const r = git(root, ["rm", "-r", "--cached", "--quiet", "--ignore-unmatch", "--", e.file]);

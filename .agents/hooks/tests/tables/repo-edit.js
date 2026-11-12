@@ -517,5 +517,11 @@ exports.repoEditRemovesAndLinksFiles = function repoEditRemovesAndLinksFiles(t) 
         const staged = git(["diff", "--cached", "--name-status"]).stdout.trim();
         t.ok(r.done && staged === "D\tagents/engineer.md", "repo edit remove: a tracked file leaves the index too, and nothing else does",
             `${JSON.stringify(r)}\n${staged}`);
+        // A catalog skill a collected folder replaces at once: the index keeps it, so the new
+        // content reads as an edit to review rather than a deletion already staged.
+        const [kept] = repoEdit.worktreeEdit(root).apply([{ file: "agents/mine.md", remove: true, keepIndex: true }]);
+        const after = git(["diff", "--cached", "--name-status"]).stdout.trim();
+        t.ok(kept.done && !fs.existsSync(path.join(root, "agents/mine.md")) && after === "D\tagents/engineer.md",
+            "repo edit remove: keepIndex removes from disk and leaves the index alone", `${JSON.stringify(kept)}\n${after}`);
     });
 };

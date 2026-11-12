@@ -192,15 +192,21 @@ function skillContext(view, root) {
 // instead, known only with the root to resolve it from. An untracked folder the lock records, which
 // apply did not make, is collected into the catalog; anything else there that apply did not make, and
 // that is not a link into this clone's catalog, is the project's and shadows the catalog's.
+// `npx skills update` and `experimental_install` replace a generated link with a folder rather than
+// writing through it, so a folder where apply made an entry is collected too, when it differs from the
+// catalog and the clone makes links: there apply never writes a copy, so the folder is the CLI's. In
+// a clone with no generated link left, it is taken for a copy apply wrote, and rewritten.
 function skillEntries(view, generated, { root = null, tracked = null, lock = {} } = {}) {
     const catalog = new Set(view.list(CATALOG_SKILLS).filter(n => view.isFile(`${CATALOG_SKILLS}/${n}/SKILL.md`)));
+    const linking = [...generated].some(f => { const s = view.lstat(f); return !!(s && s.link); });
     const entry = name => {
         const file = `${SKILLS}/${name}`, link = `../catalog/skills/${name}`, source = `${CATALOG_SKILLS}/${name}`;
         const junction = root ? path.resolve(root, source).split(path.sep).join("/") : null;
         const at = view.lstat(file);
         const current = !!(at && at.link && (at.link === link || (junction && samePath(at.link, junction))));
         const made = generated.has(file);
-        const collect = !!(at && !at.link && !made && tracked && !tracked.has(name) && lock[name] && view.isFile(`${file}/SKILL.md`));
+        const collect = !!(at && !at.link && tracked && !tracked.has(name) && lock[name] && view.isFile(`${file}/SKILL.md`)
+            && (!made || (linking && catalog.has(name) && !sameTree(view, file, source))));
         return { name, file, link, junction, source, at, current, collect, inCatalog: catalog.has(name), shadowed: !!(at && !made && !current && !collect) };
     };
     const names = new Set([...catalog, ...view.list(SKILLS).filter(n => !catalog.has(n))]);
@@ -354,7 +360,7 @@ function skillAdapter(selection, view, { generated, ...context }) {
     for (const s of entries) {
         if (s.shadowed) continue;
         if (s.collect) {
-            if (s.inCatalog) out.before.push({ file: s.source, remove: true });
+            if (s.inCatalog) out.before.push({ file: s.source, remove: true, keepIndex: true });
             out.entries.push({ file: s.source, move: s.file });
             collected.push(s.name);
         }
@@ -367,9 +373,8 @@ function skillAdapter(selection, view, { generated, ...context }) {
         if (s.current) continue;
         if (s.at && !s.at.link && !s.collect) {
             if (sameTree(view, s.file, s.source)) continue;
-            // A stale copy, or the folder `npx skills experimental_install` writes over a generated
-            // link (it replaces the link rather than writing through it). A link refuses a folder
-            // with anything in it, so the folder goes first.
+            // A stale copy, or a folder written over a generated link that is not the CLI's to
+            // collect. A link refuses a folder with anything in it, so the folder goes first.
             out.before.push({ file: s.file, remove: true });
         }
         const copy = () => tree(view, s.source).map(f => ({ file: f, write: view.bytes(`${s.source}/${f}`) }));

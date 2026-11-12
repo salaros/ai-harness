@@ -349,6 +349,16 @@ exports.profileApplySkills = function profileApplySkills(t) {
         && !relinked.lines.some(l => l.includes("copied")),
         "a folder written over a generated link is replaced by the link again", JSON.stringify(relinked));
 
+    // npx skills update does the same with a newer version. Where the clone still holds a generated
+    // link, apply never wrote a copy, so the folder is the CLI's and the update reaches the catalog.
+    const updating = repoEdit.mapEdit(files("React", { "skills-lock.json": lock }));
+    profiles.applyTo(updating.view(), updating);
+    updating.apply([{ file: ".agents/skills/tdd", remove: true }, { file: ".agents/skills/tdd/SKILL.md", write: skill("tdd", "newer\n") }]);
+    const updated = profiles.applyTo(untracked(updating), updating);
+    t.ok(updating.view().read(".agents/catalog/skills/tdd/SKILL.md").includes("newer")
+        && updating.view().lstat(".agents/skills/tdd").link === "../catalog/skills/tdd" && !updated.problems.length,
+        "an update npx skills wrote over a generated link is collected into the catalog and linked", JSON.stringify(updated));
+
     // A clone that refuses symlinks gets an absolute junction, rewritten once the clone has moved.
     const junctions = repoEdit.mapEdit(files("none"), { links: false });
     profiles.applyTo(junctions.view(), junctions, { root: "/clone" });
