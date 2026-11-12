@@ -454,6 +454,7 @@ exports.repoEditAdaptersAnswerForEveryKind = function repoEditAdaptersAnswerForE
         ["mkdir", { file: "d", mkdir: true }],
         ["mark", { file: ".keep", exec: true }],
         ["move", { file: "m", move: ".keep" }],
+        ["remove", { file: "r", remove: true }],
     ].filter(([kind, entry]) => repoEdit.kindOf(entry) === kind);
     t.ok(kinds.length >= 4, "repo edit kinds: the module names the kinds this check knows about", JSON.stringify(kinds.map(k => k[0])));
 
@@ -473,5 +474,35 @@ exports.repoEditAdaptersAnswerForEveryKind = function repoEditAdaptersAnswerForE
             catch (err) { t.ok(false, `repo edit kinds: the worktree adapter answers for ${kind}`, err.message); continue; }
             t.ok(true, `repo edit kinds: the worktree adapter answers for ${kind}`, JSON.stringify(entry));
         }
+    });
+};
+
+// SPEC-0004/D-6. What the profile asks of an edit besides a write: a generated entry taken away when
+// its agent or skill goes inactive, and a link to a file made as a file link. A removal of nothing is
+// done, since the absence it asks for is already there; a folder goes whole; a link goes without
+// touching what it points at.
+exports.repoEditRemovesAndLinksFiles = function repoEditRemovesAndLinksFiles(t) {
+    if (repoEdit.kindOf({ file: "a", remove: true }) !== "remove") { t.skip("repo edit remove: this scripts/repo-edit.js does not remove"); return; }
+    const map = repoEdit.mapEdit({ "a/x.md": "x\n", "a/y.md": "y\n", "b.md": { link: "a/x.md" }, "keep.md": "k\n" });
+    const results = map.apply([{ file: "b.md", remove: true }, { file: "a", remove: true }, { file: "gone.md", remove: true }]);
+    t.ok(results.every(r => r.kind === "remove" && r.done), "repo edit remove: a link, a folder and nothing at all are each removed", JSON.stringify(results));
+    t.ok(JSON.stringify(map.view().modes().map(r => r.file)) === JSON.stringify(["keep.md"]), "repo edit remove: and nothing else goes",
+        JSON.stringify(map.view().modes().map(r => r.file)));
+
+    withRoot({ "catalog/agents/engineer.md": "agent\n", "catalog/skills/tdd/SKILL.md": "skill\n", "copy/SKILL.md": "c\n" }, root => {
+        const edit = repoEdit.worktreeEdit(root);
+        const made = edit.apply([
+            { file: "agents/engineer.md", link: "../catalog/agents/engineer.md" },
+            { file: "skills/tdd", link: "../catalog/skills/tdd" },
+        ]);
+        if (made.some(r => !r.done)) { t.skip(`repo edit file link: this platform refused a symlink (${made.map(r => r.why).filter(Boolean).join("; ")})`); return; }
+        t.ok(fs.readFileSync(path.join(root, "agents/engineer.md"), "utf8") === "agent\n", "repo edit file link: a link to a file reads as the file");
+        t.ok(fs.readFileSync(path.join(root, "skills/tdd/SKILL.md"), "utf8") === "skill\n", "repo edit file link: a link to a folder still reads as the folder");
+        const gone = edit.apply([{ file: "agents/engineer.md", remove: true }, { file: "skills/tdd", remove: true }, { file: "copy", remove: true }]);
+        t.ok(gone.every(r => r.done), "repo edit remove: links and a copied folder are removed on disk", JSON.stringify(gone));
+        t.ok(!fs.existsSync(path.join(root, "agents/engineer.md")) && !fs.existsSync(path.join(root, "skills/tdd")) && !fs.existsSync(path.join(root, "copy")),
+            "repo edit remove: nothing is left at the paths");
+        t.ok(fs.readFileSync(path.join(root, "catalog/agents/engineer.md"), "utf8") === "agent\n" && fs.existsSync(path.join(root, "catalog/skills/tdd/SKILL.md")),
+            "repo edit remove: what the links pointed at is untouched");
     });
 };

@@ -5,7 +5,7 @@
 //   apply(entries)  carry out a finished plan, and return what became of it
 // Each entry that asks for work gets one result:
 //   { file, kind, done, why }
-// `kind` is write, link, mkdir, mark or move; `done` is whether the tree now holds what the entry asked
+// `kind` is write, link, mkdir, mark, move or remove; `done` is whether the tree now holds what the entry asked
 // for; `why` is the mechanical reason it does not, or null. No outcome word and no summary bucket
 // appears here: those are the install policy's, and the run translates these results into them.
 // Nothing here prints or exits, so a refusal is a value the caller reads rather than a message a
@@ -46,6 +46,7 @@ function work(e) {
     if (e.link !== undefined) return "link";
     if (e.write !== undefined) return "write";
     if (e.mkdir) return "mkdir";
+    if (e.remove) return "remove";
     if (e.exec) return "mark";
     return null;
 }
@@ -151,6 +152,12 @@ function mapEdit(files = {}, { links = true } = {}) {
                     held[`${e.file}${key.slice(e.move.length)}`] = held[key];
                     delete held[key];
                 }
+                return null;
+            },
+            // Whatever is at the path, everything under it included, and nothing when nothing is:
+            // a removal asks for an absence, and an absence is already there.
+            remove: e => {
+                for (const key of anyUnder(e.file)) delete held[key];
                 return null;
             },
             mark: e => {
@@ -269,10 +276,29 @@ function worktreeEdit(root) {
                 clear(e.file);
                 // Windows needs Developer Mode and core.symlinks=true for this to work at all, so a
                 // refusal is a result rather than a throw: the harness still functions with the link
-                // missing, it is just invisible to the agent harnesses that read it.
-                try { fs.symlinkSync(e.link.split("/").join(path.sep), at(e.file), "dir"); }
+                // missing, it is just invisible to the agent harnesses that read it. A link to a file
+                // is made as one: Windows records which kind a symlink is, and a folder link to a file
+                // opens as nothing. Anything else, a target missing so far included, is a folder.
+                const to = e.link.split("/").join(path.sep);
+                let type = "dir";
+                try { if (fs.statSync(path.resolve(path.dirname(at(e.file)), to)).isFile()) type = "file"; } catch { /* not there yet */ }
+                try { fs.symlinkSync(to, at(e.file), type); }
                 catch (err) { return noLink(e, err.code || err.message); }
                 return null;
+            },
+            // A link of either kind goes with `clear`, never followed into what it points at; a
+            // folder goes whole. Only ever asked of what the harness generated itself (SPEC-0004/D-6),
+            // so the folder is a copy of the catalog's and nothing of the project's.
+            remove: e => {
+                if (!there(e.file)) return null;
+                let s;
+                try { s = fs.lstatSync(at(e.file)); } catch { return null; }
+                try {
+                    if (s.isSymbolicLink()) clear(e.file);
+                    else fs.rmSync(at(e.file), { recursive: true, force: true });
+                }
+                catch (err) { return `could not remove ${e.file}: ${err.code || err.message}`; }
+                return there(e.file) ? `could not remove ${e.file}` : null;
             },
             mark: e => {
                 if (alreadyExec(e.file)) return null;
@@ -291,5 +317,5 @@ function worktreeEdit(root) {
 // `kindOf` is exported for the plan's entries, which are built to be read by it: one name per kind
 // across the two, checked rather than kept in step by hand. It covers the four an install plan
 // builds; `move` is relink's alone, and relink assembles its entries directly rather than
-// through `scripts/plan-entry.js`.
+// through `scripts/plan-entry.js`; `remove` is the profile's and the migration's.
 module.exports = { worktreeEdit, mapEdit, kindOf: work };

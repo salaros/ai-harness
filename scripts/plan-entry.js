@@ -9,7 +9,7 @@
 // repo, at print time, with no way to tell which producer built the entry.
 //
 // The kinds below are the whole vocabulary an install plan needs. Each says what is done to the path
-// -- four of the five words repo-edit.js reads, write, link, mkdir and mark, plus doing nothing at
+// -- five of the six words repo-edit.js reads, write, link, mkdir, mark and remove, plus doing nothing at
 // all -- and carries
 // how it is reported, which is either `shown(...)`, four columns demanded where the entry is made,
 // or `quiet(...)`, counted in the summary and never printed. Nothing here touches a repo, prints, or
@@ -59,6 +59,10 @@ const marked = (file, as) => at(file, as, { exec: true });
 // The folder and nothing in it, for a link whose parent has to exist before it can be made.
 const folder = (file, as) => at(file, as, { mkdir: true });
 
+// The path taken away: a file the upstream moved into the catalog, which an update would otherwise
+// leave behind to shadow the catalog's copy forever (ADR-0009/D-6).
+const removed = (file, as) => at(file, as, { remove: true });
+
 // The run's line for an entry, or null for one that prints nothing. One function rather than a
 // format string at each consumer, so the widths and the rule for what is printed live with the
 // record they are about.
@@ -77,4 +81,4 @@ const describe = e => (e.phase || e.silent ? null : `  ${column(e.policy, 9)}${e
 // asked, whatever became of it.
 const turnedOut = (e, outcome, bucket = null) => ({ ...e, outcome, bucket });
 
-module.exports = { shown, quiet, heading, noted, written, linked, marked, folder, describe, turnedOut };
+module.exports = { shown, quiet, heading, noted, written, linked, marked, folder, removed, describe, turnedOut };

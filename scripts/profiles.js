@@ -11,6 +11,7 @@
 // is reported as open. A profile narrows what a project has; a missing fact never hides anything,
 // so the upstream, which has no MEMORY.md, keeps everything.
 const path = require("path");
+const { spawnSync } = require("child_process");
 const lib = require("./lib");
 const repoView = require("./repo-view");
 const repoEdit = require("./repo-edit");
@@ -22,17 +23,22 @@ const COLUMNS = ["name", "kind", "when"];
 const SKILLS = ".agents/skills", AGENTS = ".agents/agents";
 const CATALOG_SKILLS = ".agents/catalog/skills", CATALOG_AGENTS = ".agents/catalog/agents";
 
+// The generated links are the clone's, not the repository's (ADR-0009/D-2), so Git is told to ignore
+// them in the clone's own exclude file, in a block this script owns and rewrites whole. The block is
+// also the record of what apply made: an entry in .agents/agents that it does not list, and that is
+// not a link into the catalog, is the project's own.
+const EXCLUDE = ".git/info/exclude";
+const BLOCK_START = "# ai-harness profiles: written by scripts/profiles.js apply";
+const BLOCK_END = "# end ai-harness profiles";
+
 // RFC-0001's reference profile and the cap it must load under (RFC-0001/C-1): the check that the
 // table keeps its promise, run on the upstream by its decision table.
 const REFERENCE = { "Unit type": "daemon", Language: "C#", Frontend: "none", "Issue tracker": "none", Roles: "engineer, devops" };
 const BUDGET = 14300;
 
-// The facts a condition may name: MEMORY.md's, and Roles until project-facts.js reads it itself.
-// A label is matched case-insensitively and reported as MEMORY.md writes it.
-const factLabels = () => {
-    const labels = projectFacts.FACTS.map(f => f.label);
-    return new Map([...labels, ...(labels.includes("Roles") ? [] : ["Roles"])].map(l => [l.toLowerCase(), l]));
-};
+// The facts a condition may name: MEMORY.md's. A label is matched case-insensitively and reported
+// as MEMORY.md writes it.
+const factLabels = () => new Map(projectFacts.FACTS.map(f => [f.label.toLowerCase(), f.label]));
 
 // A condition: clauses joined by " or ", each tests joined by " and ", each test `always`,
 // `<fact> = <value>` or `<fact> != <value>`. Returns { clauses } or { error }.
@@ -128,9 +134,37 @@ function descriptionSize(view, file) {
     return fm["disable-model-invocation"] === "true" ? 0 : (fm.description || "").length;
 }
 
+// The paths the block lists, and the exclude file's text with the block rewritten to list `paths`:
+// anything of the clone's own around it stays as it was, and no paths leave no block.
+function generatedPaths(text) {
+    const lines = (text || "").split(/\r?\n/);
+    const start = lines.indexOf(BLOCK_START), end = lines.indexOf(BLOCK_END);
+    if (start < 0 || end < start) return new Set();
+    return new Set(lines.slice(start + 1, end).filter(l => l.startsWith("/")).map(l => l.slice(1)));
+}
+function withBlock(text, paths) {
+    let lines = (text || "").split(/\r?\n/);
+    const start = lines.indexOf(BLOCK_START), end = lines.indexOf(BLOCK_END);
+    if (start >= 0 && end >= start) lines = [...lines.slice(0, start), ...lines.slice(end + 1)];
+    while (lines.length && lines[lines.length - 1] === "") lines.pop();
+    const all = [...lines, ...(paths.length ? [BLOCK_START, ...paths.map(p => `/${p}`), BLOCK_END] : [])];
+    return all.length ? all.join("\n") + "\n" : "";
+}
+
+// Each catalog agent as the folder the harnesses read holds it: the generated entry's path, what it
+// should link to, and whether something is there that apply did not make, which shadows it (D-6).
+function agentEntries(view, generated) {
+    return view.list(CATALOG_AGENTS).filter(n => n.endsWith(".md")).map(n => {
+        const name = n.slice(0, -3), file = `${AGENTS}/${n}`, link = `../catalog/agents/${n}`;
+        const at = view.lstat(file);
+        const ours = !at || generated.has(file) || at.link === link;
+        return { name, file, link, source: `${CATALOG_AGENTS}/${n}`, at, shadowed: !ours };
+    });
+}
+
 // What the profile would do, changing nothing. `facts` stands in for MEMORY.md's, to ask about a
 // profile the project does not hold.
-function plan(view, { facts } = {}) {
+function plan(view, { facts, exclude = EXCLUDE } = {}) {
     const text = view.read(FILE);
     const { rows, errors } = text === null ? { rows: [], errors: [{ line: 0, message: `${FILE} not found` }] } : parse(text);
     const memory = facts || projectFacts.readFacts({ memory: view.read(projectFacts.MEMORY), intent: view.read(projectFacts.INTENT) });
@@ -155,7 +189,8 @@ function plan(view, { facts } = {}) {
         if (kinds.skill.active.includes(name)) chars.active += size;
     }
     const open = [...new Set(selection.flatMap(s => s.open))].sort();
-    return { kinds, chars, open, unlisted, missing, errors };
+    const shadowed = agentEntries(view, generatedPaths(exclude && view.read(exclude))).filter(a => a.shadowed).map(a => `agent ${a.name}`);
+    return { kinds, chars, open, unlisted, missing, shadowed, errors };
 }
 
 // ---------------------------------------------------------------- apply
@@ -219,26 +254,90 @@ function mcpAdapter(selection, view) {
     return out;
 }
 
-const ADAPTERS = [mcpAdapter];
+// SPEC-0004/D-6 for agents. Each active catalog agent gets a generated link in .agents/agents, which
+// .claude/agents already points at; an inactive one loses the link it had. An agent with no row stays
+// active, as an unlisted one does in `plan`. A shadowed name is the project's and is left alone. An
+// entry may carry `copy`, what applyTo writes instead where the clone refuses the link, and a copy a
+// later run finds is current while it matches the catalog. `generated` is what the block will list.
+function agentAdapter(selection, view, { generated }) {
+    const out = { entries: [], lines: [], problems: [], generated: [] };
+    const rows = new Map(selection.filter(s => s.kind === "agent").map(s => [s.name, s]));
+    const on = [], off = [];
+    const entries = agentEntries(view, generated);
+    for (const a of entries) {
+        if (a.shadowed) continue;
+        const row = rows.get(a.name);
+        if (row && !row.active) {
+            if (a.at) { out.entries.push({ file: a.file, remove: true }); off.push(a.name); }
+            continue;
+        }
+        out.generated.push(a.file);
+        if (a.at && a.at.link === a.link) continue;
+        const source = view.read(a.source);
+        if (a.at && !a.at.link && view.read(a.file) === source) continue;
+        out.entries.push({ file: a.file, link: a.link, copy: source });
+        on.push(a.name);
+    }
+    // A generated entry whose catalog agent is gone: renamed or dropped upstream.
+    const known = new Set(entries.map(a => a.file));
+    for (const file of generated) {
+        if (file.startsWith(`${AGENTS}/`) && !known.has(file) && view.lstat(file)) {
+            out.entries.push({ file, remove: true });
+            off.push(path.posix.basename(file, ".md"));
+        }
+    }
+    if (on.length) out.lines.push(`agents: linked ${on.join(", ")} from the catalog`);
+    if (off.length) out.lines.push(`agents: switched off ${off.join(", ")}`);
+    return out;
+}
+
+const ADAPTERS = [mcpAdapter, agentAdapter];
 
 // SPEC-0004/D-4: select, hand the selection to each adapter, and apply what they return through
 // one repo edit. A table with an error changes nothing. Returns the entries, what each adapter had
 // to say, and the problems: table errors, files that could not be read, writes that were refused.
-function applyTo(view, edit, { dryRun = false } = {}) {
+// `exclude` is the clone's exclude file (the command line asks Git where it is, which a linked
+// worktree needs), or null for a root that is no Git checkout, where there is nothing to ignore
+// anything in. A link the clone refuses is written as a copy instead, and only a copy refused too is
+// a problem.
+function applyTo(view, edit, { dryRun = false, exclude = EXCLUDE } = {}) {
     const text = view.read(FILE);
     const { rows, errors } = text === null ? { rows: [], errors: [{ line: 0, message: `${FILE} not found` }] } : parse(text);
-    if (errors.length) return { entries: [], lines: [], problems: errors.map(e => `${FILE}:${e.line}: ${e.message}`) };
+    if (errors.length) return { entries: [], lines: [], problems: errors.map(e => `${FILE}:${e.line}: ${e.message}`), open: [] };
     const selection = select(facts(view), rows);
-    const results = ADAPTERS.map(adapter => adapter(selection, view));
+    const excluded = exclude ? view.read(exclude) : null;
+    const ctx = { generated: generatedPaths(excluded) };
+    const results = ADAPTERS.map(adapter => adapter(selection, view, ctx));
     const out = {
         entries: results.flatMap(r => r.entries),
         lines: results.flatMap(r => r.lines),
         problems: results.flatMap(r => r.problems),
+        open: [...new Set(selection.flatMap(s => s.open))].sort(),
     };
+    if (exclude) {
+        const block = withBlock(excluded, results.flatMap(r => r.generated || []).sort());
+        if (block !== (excluded || "")) out.entries.push({ file: exclude, write: block });
+    }
     if (!dryRun && out.entries.length) {
-        for (const r of edit.apply(out.entries)) if (!r.done) out.problems.push(r.why);
+        const copies = new Map(out.entries.filter(e => e.copy !== undefined).map(e => [e.file, e.copy]));
+        for (const r of edit.apply(out.entries.map(({ copy, ...e }) => e))) {
+            if (r.done) continue;
+            if (r.kind === "link" && copies.has(r.file)) {
+                const [copied] = edit.apply([{ file: r.file, write: copies.get(r.file) }]);
+                if (copied.done) { out.lines.push(`${r.file}: copied from the catalog, since this clone refuses the link`); continue; }
+                out.problems.push(copied.why);
+                continue;
+            }
+            out.problems.push(r.why);
+        }
     }
     return out;
+}
+
+// Where Git keeps this clone's exclude file, or null outside a checkout.
+function excludeFile(root) {
+    const r = spawnSync("git", ["rev-parse", "--git-path", "info/exclude"], { cwd: root, encoding: "utf8" });
+    return r.status === 0 && r.stdout.trim() ? path.resolve(root, r.stdout.trim()) : null;
 }
 
 function printPlan(p) {
@@ -252,11 +351,12 @@ function printPlan(p) {
     for (const kind of KINDS) if (p.kinds[kind].inactive.length) console.log(`inactive ${kind}s: ${p.kinds[kind].inactive.join(", ")}`);
     for (const u of p.unlisted) console.log(`no row: ${u}. Add one to ${FILE}`);
     for (const m of p.missing) console.log(`nothing to select: ${m} has a row but is not shipped here`);
+    for (const s of p.shadowed || []) console.log(`shadowed: ${s} is the project's own, so the catalog's is not linked`);
 }
 
 const commands = {
     plan(root, ...args) {
-        const p = plan(repoView.worktree(root));
+        const p = plan(repoView.worktree(root), { exclude: excludeFile(root) });
         if (args.includes("--json")) console.log(JSON.stringify(p, null, 2));
         else printPlan(p);
         for (const e of p.errors) console.error(`${FILE}:${e.line}: ${e.message}`);
@@ -264,8 +364,9 @@ const commands = {
     },
     apply(root, ...args) {
         const dryRun = args.includes("--dry-run");
-        const r = applyTo(repoView.worktree(root), repoEdit.worktreeEdit(root), { dryRun });
-        if (dryRun) for (const e of r.entries) console.log(`would write ${e.file}`);
+        const r = applyTo(repoView.worktree(root), repoEdit.worktreeEdit(root), { dryRun, exclude: excludeFile(root) });
+        const verb = e => e.remove ? "remove" : e.link !== undefined ? "link" : "write";
+        if (dryRun) for (const e of r.entries) console.log(`would ${verb(e)} ${e.file}`);
         for (const line of r.lines) console.log(line);
         if (!r.entries.length && !r.problems.length) console.log("profiles: nothing to change");
         for (const p of r.problems) console.error(`profiles: ${p}`);
@@ -279,4 +380,4 @@ if (require.main === module) {
     process.exit(commands[cmd](lib.root(), ...args));
 }
 
-module.exports = { FILE, KINDS, REFERENCE, BUDGET, parse, select, plan, applyTo };
+module.exports = { FILE, KINDS, REFERENCE, BUDGET, EXCLUDE, parse, select, plan, applyTo, excludeFile };

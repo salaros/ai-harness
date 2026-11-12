@@ -19,7 +19,8 @@ How the harness is put together: what each file is for, how skills, hooks and ag
 | `scripts/profiles.tsv` | When each skill, agent and MCP server is active, as a condition over the facts in `MEMORY.md`. `node scripts/profiles.js plan` prints what this clone's facts select and how many description characters that loads. |
 | `.agents/README.md` | This file. |
 | `.agents/skills/` | The vendored skills. |
-| `.agents/agents/`, `.agents/routing.md` | Agent definitions, and the route rows several agents share. |
+| `.agents/catalog/agents/`, `.agents/routing.md` | Agent definitions, and the route rows several agents share. |
+| `.agents/agents/` | Untracked links to the agents the profile selects, which `node scripts/profiles.js apply` makes, beside any agent of the project's own. |
 | `.agents/hooks/` | Hook scripts for AI tools. See [Agent hooks](#agent-hooks). |
 | `.claude/` | Claude Code wiring: `skills` and `agents` link into `.agents/`, and `settings.json` wires the hooks. |
 | `.githooks/`, `scripts/githooks-init.js` | Git hooks and their installer. See [Git hooks](#git-hooks). |
@@ -79,7 +80,7 @@ Node scripts in `.agents/hooks/`, one row each; `scripts/check-harness.js` holds
 
 ## Agents
 
-Agent definitions live in `.agents/agents/*.md`: frontmatter with `name` and `description`, then the system prompt. Each agent routes a request to the skills it owns. A route several agents share lives in `.agents/routing.md`; a rule every agent needs lives in `AGENTS.md`.
+Agent definitions live in `.agents/catalog/agents/*.md`: frontmatter with `name` and `description`, then the system prompt. `node scripts/profiles.js apply` links the ones the `Roles` fact in `MEMORY.md` names into `.agents/agents/`, which is what the harnesses read; with no answer it links them all. The links are the clone's, listed in a block of `.git/info/exclude` rather than committed, and the session-start hook remakes any that went missing (ADR-0009). An agent of the project's own goes in `.agents/agents/` as a tracked file, and one with a catalog agent's name takes its place. Each agent routes a request to the skills it owns. A route several agents share lives in `.agents/routing.md`; a rule every agent needs lives in `AGENTS.md`.
 
 | Agent | For |
 | --- | --- |
@@ -104,7 +105,7 @@ Only the Claude Code wiring ships in the repository and has been tested. The oth
 | Agents | `.claude/agents`, a symlink to `../.agents/agents` | yes |
 | Personal overrides | `.claude/settings.local.json`, ignored by Git | no |
 
-On Windows the symlinks need Developer Mode and `git config --global core.symlinks true`. Without symlinks, run `npx skills add … --copy` and copy `.agents/agents/*.md` into `.claude/agents/`.
+On Windows the symlinks need Developer Mode and `git config --global core.symlinks true`. Without symlinks, run `npx skills add … --copy`; `profiles.js apply` already writes each agent as a copy where the clone refuses a link, and rewrites a copy that drifted from the catalog.
 
 ### Other tools
 

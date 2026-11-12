@@ -21,7 +21,8 @@ const INTENT = "INTENT.md";
 // read by the skills that need them and never block. `intent` marks the two an INTENT.md owns.
 // `Issue tracker` is optional because a tracker is a choice rather than a property of the code,
 // `Frontend` because a service or a library has no UI, and `Prose language` because a missing line
-// already means English.
+// already means English. `Roles` names the agents the project runs (ADR-0009/D-5) and is optional
+// because an unanswered one keeps them all.
 const FACTS = [
     { label: "Name", required: true, intent: true, placeholder: "<name>" },
     { label: "Purpose", required: true, intent: true, placeholder: "<purpose>" },
@@ -32,6 +33,7 @@ const FACTS = [
     { label: "Runtime / package manager", required: true, placeholder: "<runtime>" },
     { label: "Frontend", required: false, placeholder: "<framework>" },
     { label: "Issue tracker", required: false, placeholder: "<tracker>" },
+    { label: "Roles", required: false, placeholder: "<roles>" },
 ];
 
 // INTENT.md (https://www.intentdocs.com/intent-md): the product's intent, one per product, at the

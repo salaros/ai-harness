@@ -228,6 +228,47 @@ exports.installPlanCoversEveryCase = function installPlanCoversEveryCase(t) {
         "install plan: a dry run writes nothing", `${done.length} entries; the map holds ${JSON.stringify(edit.view().list(""))}`);
 };
 
+// ADR-0009/D-6 for agents: the upstream moved them into the catalog, and an update takes away each
+// tracked copy the upstream shipped at the base, edited or not, so it cannot shadow the catalog's.
+exports.installPlanMovesAgentsToTheCatalog = function installPlanMovesAgentsToTheCatalog(t) {
+    const harness = installer();
+    if (!harness) { t.skip("agents to the catalog: the installer is the upstream's own, not installed here"); return; }
+    const up = memoryUpstream([
+        ["c1", { ".agents/agents/engineer.md": "engineer v1\n", ".agents/agents/devops.md": "devops v1\n" }],
+        ["c2", { ".agents/catalog/agents/engineer.md": "engineer v2\n", ".agents/catalog/agents/devops.md": "devops v2\n",
+            ".agents/catalog/agents/marketing.md": "marketing\n" }],
+    ]);
+    const run = (files, previous, options = {}) => harness.plan({
+        upstream: up, target: repoView.fromMap(files), rows: [], head: "c2", ref: "master", previous,
+        options: { dryRun: false, adopt: false, quiet: true, check: true, wants: () => false, ...options },
+    });
+    const removed = p => p.entries.filter(e => e.remove).map(e => e.file).sort().join(", ");
+    const target = {
+        ".agents/agents/engineer.md": "engineer v1, edited\n",
+        ".agents/agents/devops.md": { link: "../catalog/agents/devops.md" },
+        ".agents/agents/marketing.md": "the project's marketing\n",
+        ".agents/agents/mine.md": "the project's own\n",
+    };
+    const update = run(target, { commit: "c1", ref: "master" });
+    t.ok(removed(update) === ".agents/agents/engineer.md",
+        "agents to the catalog: a shipped agent goes, edited or not; a generated link, a name never shipped and the project's own stay",
+        removed(update));
+    const e = update.entries.find(x => x.remove) || {};
+    t.ok(e.outcome === "removed" && e.bucket === "removed", "agents to the catalog: the removal is reported in its own bucket", JSON.stringify(e));
+    t.ok(!removed(run(target, null)), "agents to the catalog: a first install removes nothing", removed(run(target, null)));
+    t.ok(removed(run(target, null, { adopt: true })) === ".agents/agents/engineer.md, .agents/agents/marketing.md",
+        "agents to the catalog: --adopt with no base removes every copy of a catalog agent", removed(run(target, null, { adopt: true })));
+    t.ok(!removed(run({}, { commit: "c1", ref: "master" })), "agents to the catalog: nothing to remove when the target holds none");
+
+    const edit = repoEdit.mapEdit(target);
+    const said = [];
+    harness.apply(update.entries, edit, { dryRun: false, quiet: false }, m => said.push(m));
+    t.ok(edit.view().lstat(".agents/agents/engineer.md") === null && edit.view().lstat(".agents/agents/devops.md").link,
+        "agents to the catalog: applying the plan takes the file away and leaves the link", said.join("\n"));
+    const summary = harness.summarise({ entries: update.entries, base: "c1", head: "c2", ref: "master", target: "t", options: { quiet: true } }).join("\n");
+    t.ok(summary.includes("removed, now in the catalog (1):\n  .agents/agents/engineer.md"), "agents to the catalog: the summary lists what was removed", summary);
+};
+
 // SPEC-0001, and the whole reason bytes() is a question of its own rather than a flag on read(). A
 // skill ships a logo, and until repo-view there was no way to put a file with a zero byte in it in
 // front of plan(): the stand-in this table used answered a bytes read by re-encoding its own string,

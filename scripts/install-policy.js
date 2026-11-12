@@ -313,7 +313,7 @@ function layDown(existing) {
 // The summary used to keep its own copy, so a policy answering with a name that copy did not have
 // threw at the push rather than being reported. UNFINISHED is the ones that leave work for the
 // reader, which is what makes a run exit 1.
-const BUCKETS = ["written", "merged", "conflicted", "seeded", "kept", "skipped", "template", "unreadable"];
+const BUCKETS = ["written", "merged", "removed", "conflicted", "seeded", "kept", "skipped", "template", "unreadable"];
 const UNFINISHED = ["conflicted", "unreadable"];
 
 const POLICIES = {

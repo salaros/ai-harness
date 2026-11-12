@@ -41,6 +41,8 @@ const entry = require("./plan-entry");
 const TEMPLATE = "https://github.com/salaros/ai-harness.git";
 const LOCK = "harness-lock.json";
 const MANIFEST = "scripts/harness-files.tsv";
+// Where the agents were shipped, and where the catalog holds them now (ADR-0009/D-6).
+const AGENTS = ".agents/agents", CATALOG_AGENTS = ".agents/catalog/agents";
 const DEFAULT_REF = "master";
 
 // Every argument the installer knows. An optional part of the harness adds its own flag through the
@@ -489,6 +491,21 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
         line(outcome, bucket, act, silent);
     }
 
+    // ADR-0009/D-6: the upstream moved its agents into the catalog, and this loop only ever walks
+    // what the upstream ships now, so an agent the target got from an earlier release would stay in
+    // .agents/agents as a tracked file shadowing the catalog's copy forever. One the upstream shipped
+    // at the base goes, edited or not, as an update already replaces an edited agent; a name it never
+    // shipped is the project's own and stays. A link there is a generated one, the profile's to keep.
+    // Without a base only --adopt, which takes every harness file again, can tell the two apart.
+    const shipped = base !== null ? upstream.at(base) : null;
+    const moved = atHead.list(CATALOG_AGENTS).filter(n => n.endsWith(".md"))
+        .map(n => `${AGENTS}/${n}`)
+        .filter(file => (shipped ? shipped.isFile(file) : options.adopt) && target.isFile(file) && !(target.lstat(file) || {}).link);
+    if (moved.length) {
+        add(entry.heading("agents moved to the catalog"));
+        for (const file of moved) add(entry.removed(file, entry.shown("merge", "100644", "removed", "removed")));
+    }
+
     add(entry.heading("skeletons a project starts with"));
     const hasIntent = target.exists(projectFacts.INTENT);
     // The receipt lists the skeletons its run knew, so one missing on an update is one the project
@@ -547,7 +564,7 @@ function apply(entries, edit, options, out = say) {
             // run's to choose -- the edit says only that the link is not there and why.
             if (result && !result.done) {
                 out(result.why);
-                if (result.kind === "link") actual = entry.turnedOut(e, "yours", "kept");
+                if (result.kind === "link" || result.kind === "remove") actual = entry.turnedOut(e, "yours", "kept");
             }
         }
         const line = entry.describe(actual);
@@ -664,6 +681,7 @@ function summarise({ entries, base, head, ref, target, check, hooks = true, opti
     list("written", notes.written);
     list("merged", notes.merged);
     list("created for the first time", notes.seeded);
+    list("removed, now in the catalog", notes.removed);
     list("left alone, yours", notes.kept.concat(notes.skipped));
     // Named rather than listed: the fixtures alone are sixty files, and the point is the rule, not
     // the inventory. Nothing a project runs reaches any of it.

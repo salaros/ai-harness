@@ -40,7 +40,7 @@ const repoView = require("./repo-view");
 // records what the invariants read and fails on a path missing here: see
 // theEditTriggerCoversEveryPathTheInvariantsRead in .agents/hooks/tests/tables/harness.js.
 const PATHS = [
-    ".agents/skills/", ".claude/skills", ".claude/skills/", ".agents/agents/", ".agents/routing.md", ".githooks/",
+    ".agents/skills/", ".claude/skills", ".claude/skills/", ".agents/agents/", ".agents/catalog/", ".agents/routing.md", ".githooks/",
     "skills-lock.json", "scripts/", "THIRD-PARTY-NOTICES.md", "AGENTS.md",
     ".claude/settings.json", "tools/docs-site/", ".agents/hooks/", "CLAUDE.md",
     ".agents/README.md", "CODING_STANDARDS.md", "docs/README.md", "docs/agents/", ".github/workflows/",
@@ -306,7 +306,7 @@ function vendoredSkillsAreAttributed(t, repo, roster = rosterOf(repo)) {
 // harness reads everything in there as an agent definition.
 function agentRoutingSectionsAgreeOnTheirAudience(t, repo, roster = rosterOf(repo)) {
     const shared = "routing.md";
-    if (!repo.isFile(`.agents/${shared}`) || !repo.exists(".agents/agents")) {
+    if (!repo.isFile(`.agents/${shared}`) || !skills.agentFiles(repo).length) {
         t.skip("routing section check: no routing.md"); return;
     }
     const { sections, agents } = roster().routing;
@@ -449,7 +449,7 @@ function noSteeringFileNamesTheContextAlone(t, repo, roster = rosterOf(repo)) {
     const markdown = dir => repo.exists(dir) ? repo.list(dir).filter(n => n.endsWith(".md")).map(n => `${dir}/${n}`) : [];
     const files = [
         ...STEERING,
-        ...markdown(".agents/agents"),
+        ...skills.agentFiles(repo),
         ...markdown("docs/agents"),
         ...roster().skills.filter(s => !s.vendored).map(s => `.agents/skills/${s.name}/SKILL.md`),
     ];

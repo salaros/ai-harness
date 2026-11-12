@@ -204,6 +204,89 @@ exports.profileApplyMcp = function profileApplyMcp(t) {
         "a table with an error changes nothing", JSON.stringify(r));
 };
 
+// SPEC-0004/D-6 for agents (ADR-0009/D-2, D-3): an active catalog agent gets a generated link in
+// .agents/agents, listed in the clone's exclude block; an inactive one loses it; the project's own
+// file of the same name wins; and a clone that refuses the link gets a copy that later runs keep.
+exports.profileApplyAgents = function profileApplyAgents(t) {
+    const profiles = module_();
+    if (!profiles || !profiles.applyTo || !profiles.EXCLUDE) { t.skip("profile apply for agents: no agent adapter here"); return; }
+    const repoEdit = require(path.join(lib.checkout, "scripts", "repo-edit.js"));
+    const table = tsv([["engineer", "agent", "Roles = engineer"], ["devops", "agent", "Roles = devops"], ["marketing", "agent", "Roles = marketing"]]);
+    const memory = roles => `# Memory\n\n- **Roles:** ${roles}\n`;
+    const agent = name => `---\nname: ${name}\n---\n`;
+    const exclude = "# the clone's own\n*.log\n";
+    const files = roles => ({
+        "scripts/profiles.tsv": table, "MEMORY.md": memory(roles), ".git/info/exclude": exclude,
+        ".agents/catalog/agents/engineer.md": agent("engineer"), ".agents/catalog/agents/devops.md": agent("devops"),
+        ".agents/catalog/agents/marketing.md": agent("marketing"),
+    });
+    const edit = repoEdit.mapEdit(files("engineer, devops"));
+    const view = () => edit.view();
+
+    const dry = profiles.applyTo(view(), edit, { dryRun: true });
+    t.ok(dry.entries.length === 3 && !view().lstat(".agents/agents/engineer.md"),
+        "a dry run returns two links and the exclude block, and writes nothing", JSON.stringify(dry.entries.map(e => e.file)));
+
+    const first = profiles.applyTo(view(), edit);
+    t.ok(view().lstat(".agents/agents/engineer.md").link === "../catalog/agents/engineer.md"
+        && view().lstat(".agents/agents/devops.md").link === "../catalog/agents/devops.md"
+        && !view().lstat(".agents/agents/marketing.md"),
+        "each active agent is linked into the catalog, and an inactive one is not", JSON.stringify(first));
+    const block = view().read(".git/info/exclude");
+    t.ok(block.startsWith(exclude) && block.includes("\n/.agents/agents/devops.md\n/.agents/agents/engineer.md\n# end ai-harness profiles\n"),
+        "the exclude block lists the links after the clone's own lines", block);
+    t.ok(first.lines.some(l => l.includes("linked devops, engineer")), "apply names what it linked", JSON.stringify(first.lines));
+
+    const again = profiles.applyTo(view(), edit);
+    t.ok(!again.entries.length && !again.lines.length, "a second run changes nothing", JSON.stringify(again));
+
+    edit.apply([{ file: "MEMORY.md", write: memory("engineer") }]);
+    const narrowed = profiles.applyTo(view(), edit);
+    t.ok(!view().lstat(".agents/agents/devops.md") && view().lstat(".agents/agents/engineer.md")
+        && !view().read(".git/info/exclude").includes("devops"),
+        "dropping a role removes its link and its line in the block", JSON.stringify(narrowed));
+
+    edit.apply([{ file: "MEMORY.md", write: memory("") }]);
+    profiles.applyTo(view(), edit);
+    t.ok(["engineer", "devops", "marketing"].every(n => view().lstat(`.agents/agents/${n}.md`)),
+        "with Roles unanswered every agent is linked, failing open");
+
+    const own = repoEdit.mapEdit({ ...files("engineer"), ".agents/agents/engineer.md": "# the project's engineer\n" });
+    const shadowed = profiles.applyTo(own.view(), own);
+    t.ok(own.view().read(".agents/agents/engineer.md") === "# the project's engineer\n"
+        && !shadowed.entries.some(e => e.file === ".agents/agents/engineer.md"),
+        "the project's own agent of a catalog name is left alone", JSON.stringify(shadowed.entries));
+    const p = profiles.plan(own.view());
+    t.ok(p.shadowed.includes("agent engineer"), "plan reports the shadow", JSON.stringify(p.shadowed));
+
+    // A clone that refuses links: the link entry fails, and the copy stands in for it.
+    const refusing = repoEdit.mapEdit(files("engineer"));
+    const refuse = { view: () => refusing.view(), apply: entries => entries.map(e => e.link !== undefined
+        ? { file: e.file, kind: "link", done: false, why: "symlinks refused" } : refusing.apply([e])[0]) };
+    const copied = profiles.applyTo(refusing.view(), refuse);
+    t.ok(refusing.view().read(".agents/agents/engineer.md") === agent("engineer") && !copied.problems.length
+        && copied.lines.some(l => l.includes("copied from the catalog")),
+        "where the link is refused, the agent is copied and the run says so", JSON.stringify(copied));
+    t.ok(!profiles.applyTo(refusing.view(), refuse).entries.length, "a copy that matches the catalog is current");
+    refusing.apply([{ file: ".agents/catalog/agents/engineer.md", write: agent("engineer") + "changed\n" }]);
+    profiles.applyTo(refusing.view(), refuse);
+    t.ok(refusing.view().read(".agents/agents/engineer.md").includes("changed"), "a copy that drifted from the catalog is rewritten");
+
+    // An agent the catalog dropped loses its generated entry.
+    const dropped = repoEdit.mapEdit(files("engineer"));
+    profiles.applyTo(dropped.view(), dropped);
+    dropped.apply([{ file: ".agents/catalog/agents/engineer.md", remove: true }]);
+    const gone = profiles.applyTo(dropped.view(), dropped);
+    t.ok(!dropped.view().lstat(".agents/agents/engineer.md") && dropped.view().read(".git/info/exclude") === exclude,
+        "a generated entry whose catalog agent is gone is removed, and so is the block it was in", JSON.stringify(gone));
+
+    const { ".git/info/exclude": _, ...outside } = files("engineer");
+    const nogit = repoEdit.mapEdit(outside);
+    profiles.applyTo(nogit.view(), nogit, { exclude: null });
+    t.ok(nogit.view().lstat(".agents/agents/engineer.md") && nogit.view().read(".git/info/exclude") === null,
+        "outside a Git checkout the links are made and no exclude file is written");
+};
+
 // The upstream's own table: every skill, agent and server this checkout ships is classified, every
 // row names one of them, and the RFC's reference profile stays under its cap (RFC-0001/C-1).
 exports.profileTableCoversThisCheckout = function profileTableCoversThisCheckout(t) {

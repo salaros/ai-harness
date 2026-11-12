@@ -1,6 +1,6 @@
 ---
 name: project-init
-description: Turn a repo cloned from this template into a named project. Asks the developer, through the harness's own question tool, for the project name and purpose, the language its prose is written in, where the requirements live, the unit type, the stack, the issue tracker if there is one, and whether agents may merge the pull requests they sweep, and records the answers in MEMORY.md, README.md and docs/agents/issue-tracker.md, plus a CONTEXT-MAP.md for a microservices repo and a `gh pr merge` permission rule for each harness it wires, and once the stack is scaffolded points its Gherkin runner at the feature files written from docs/bdd/. Reads an existing INTENT.md for the name and purpose, and offers to write one when absent. Use when a project starts, when MEMORY.md is missing, or when the stack or issue tracker changes.
+description: Turn a repo cloned from this template into a named project. Asks the developer, through the harness's own question tool, for the project name and purpose, the language its prose is written in, where the requirements live, the unit type, the stack, the issue tracker if there is one, the agents it runs, and whether agents may merge the pull requests they sweep, and records the answers in MEMORY.md, README.md and docs/agents/issue-tracker.md, plus a CONTEXT-MAP.md for a microservices repo and a `gh pr merge` permission rule for each harness it wires, and once the stack is scaffolded points its Gherkin runner at the feature files written from docs/bdd/. Reads an existing INTENT.md for the name and purpose, and offers to write one when absent. Use when a project starts, when MEMORY.md is missing, or when the stack or issue tracker changes.
 disable-model-invocation: true
 ---
 
@@ -22,12 +22,13 @@ The template knows nothing about the project it hosts. This skill asks the devel
    | Which stories must the MVP deliver, and when is each done? | MVP stories | Only after `yes`. At least one story, each a title, a priority (`must`, `should`, `could`) and one or more *Done when* criteria, each a single verifiable statement. Ask for personas and the user journey as optional follow-ups |
    | Which language is this project's prose written in? | Prose language | A language name (`English`, `Russian`, `Ukrainian`). It governs everything the project authors -- the `docs/` chain, `CONTEXT.md`, `GLOSSARY.md`, `TODO.md`, this file's own values and the README Project section -- and the language you answer the developer in. The harness stays English whatever the answer: `AGENTS.md`, `docs/agents/` and every `SKILL.md` are merged from upstream, so a translation is overwritten or collides |
    | Where do the requirements live? | Requirements | One or more sources, comma-separated: a repo-relative path that exists, a URL, or `jira:KEY-123`; `none yet` is allowed and means the `pdd` skill runs next for an idea still in question, or `brd` for a settled need |
-   | What kind of unit is it? | Unit type | Options: `library`, `cli`, `service`, `microservices`, `monolith`, `frontend`. `service` is one deployable service; `microservices` is several services in this one repo, orchestrated together (Aspire for .NET), each with its own domain context |
+   | What kind of unit is it? | Unit type | Free text, offering `service`, `library (npm)`, `library (NuGet)`, `library (Composer)`, `console`, `desktop`, `daemon`, `microservices` and `none`. `service` is one deployable service; `microservices` is several services in this one repo, orchestrated together (Aspire for .NET), each with its own domain context; `none` is a project with no code to build, only requirements. `scripts/profiles.tsv` reads the first word, so keep it first and add detail after it |
    | Which language? | Language | One language (`C#`, `TypeScript`, `Python`) |
    | Which runtime and package manager? | Runtime / package manager | Version included (`.NET 9 / NuGet`, `Node 22 / pnpm`, `Python 3.13 / uv`) |
    | Which frontend framework? | Frontend | Only when the project has browser code: `React`, `Vue`, `Blazor`, or `none`. The `engineer` agent routes its framework skills on this, so a guess here sends it to the wrong ones |
    | Which issue tracker? | Issue tracker | `Jira`, `Linear`, `Asana`, `GitHub Issues`, or `none`. A project can plan entirely in `docs/`, and many do before a tracker exists; take `none` at face value and skip the next question. Jira is what the template ships configured for, so any other answer means step 5 rewrites `docs/agents/issue-tracker.md` for that tracker |
    | Where does it live, and under which key? | Issue tracker | Only when a tracker was named: its URL, and the key or project identifier as that tracker shows it (`https://<org>.atlassian.net` and `AB` for Jira). With the Atlassian MCP authorised, offer the keys `listJiraProjects` returns as options |
+   | Which agents will the project run? | Roles | A multi-select of the file names in `.agents/catalog/agents/` without `.md` (`engineer`, `devops`, `product-manager`, `business-analyst`, `marketing`, `assistant`), written comma-separated. Each role switches on its agent and the skills only that agent routes; one left out stays in the catalog, unseen. Skipping the question keeps every agent |
 
    Done when every fact is a specific string that passes its "accept only" column.
 
@@ -82,9 +83,10 @@ The template knows nothing about the project it hosts. This skill asks the devel
    - **Runtime / package manager:** <runtime>
    - **Frontend:** <framework>
    - **Issue tracker:** <tracker> at <url>, project `<KEY>` (conventions in `docs/agents/issue-tracker.md`)
+   - **Roles:** <roles>
    ```
 
-   Done when the file holds exactly these nine facts, or the seven besides Name and Purpose when `INTENT.md` exists. A project with no browser code records `- **Frontend:** none`, and one with no tracker `- **Issue tracker:** none`, its work items living in `docs/` instead. The initialisation gate (`scripts/check-initialised.js`) requires the other six, reading Name and Purpose from `INTENT.md`'s `## Product` when that file exists: a tracker is a choice rather than a property of the project, a service or a library has no UI to have a framework for, and a missing `Prose language` already means English, so it is never the unanswered question the gate exists to catch.
+   Done when the file holds exactly these ten facts, or the eight besides Name and Purpose when `INTENT.md` exists. A project with no browser code records `- **Frontend:** none`, and one with no tracker `- **Issue tracker:** none`, its work items living in `docs/` instead. The initialisation gate (`scripts/check-initialised.js`) requires the other six, reading Name and Purpose from `INTENT.md`'s `## Product` when that file exists: a tracker is a choice rather than a property of the project, a service or a library has no UI to have a framework for, and a missing `Prose language` already means English, so it is never the unanswered question the gate exists to catch.
 
 4. **Write the `Project` section of `README.md`.** Insert it before the first `## ` heading, between the two marker comments below; on an update, replace everything between the markers. Leave the rest of the README alone.
 
@@ -102,6 +104,7 @@ The template knows nothing about the project it hosts. This skill asks the devel
    | Stack | <language>, <runtime> |
    | Frontend | <framework>, or `none` |
    | Issue tracker | <tracker> project `<KEY>` at <url> (conventions in `docs/agents/issue-tracker.md`); with no tracker, `none: work items live in docs/` |
+   | Roles | <roles>, or `all` when the question was skipped |
 
    The same facts are in `MEMORY.md`, which agents read first. Re-run the `project-init` skill to change them.
    <!-- project-init:end -->
@@ -117,7 +120,7 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
 7. **Remember, in your harness too.** If your harness keeps persistent memory (Claude Code auto-memory), save one `project` memory saying that the project facts live in `MEMORY.md` at the repo root and repeating the name, stack and, if there is one, the Jira key, so they are in context before the repo is read. Skip this in a harness without memory. Done when the memory exists or the harness has none.
 
-8. **Hand over the scaffold.** Run `node scripts/stacks.js scaffold <stack> --name=<Name> --template=<template>` for the row of the stack (for `microservices` on .NET, `dotnet-aspire` instead of `dotnet`), with `<Name>` the PascalCase project name and `<template>` the unit type's template (`classlib`, `console`, `webapi` or `blazor` for .NET by library, cli, service or monolith and frontend; `--lib` for a Python library, `--app --package` otherwise). It prints the row's scaffold with `{Name}`, `{name}` and `{template}` filled in. Give the developer the commands as a code block, one per line. Do not run them: scaffolding is the developer's call and a separate step. For a stack with no row, add one to `scripts/stacks.tsv` (triggers, needs, restore, scaffold, formats, format, runner) so the post-merge hook restores it and the pre-commit and pre-push hooks format-check it too, and point at `src/README.md` and `tests/README.md`. Done when the developer has the commands and the table has a row for the stack.
+8. **Hand over the scaffold.** Run `node scripts/stacks.js scaffold <stack> --name=<Name> --template=<template>` for the row of the stack (for `microservices` on .NET, `dotnet-aspire` instead of `dotnet`), with `<Name>` the PascalCase project name and `<template>` the unit type's template (`classlib`, `console`, `worker` or `webapi` for .NET by library, console, daemon or service, and `blazor` for a service whose Frontend is Blazor; ask which UI template a desktop unit takes, such as `wpf` or `maui`; `--lib` for a Python library, `--app --package` otherwise). It prints the row's scaffold with `{Name}`, `{name}` and `{template}` filled in. Give the developer the commands as a code block, one per line. Do not run them: scaffolding is the developer's call and a separate step. For a stack with no row, add one to `scripts/stacks.tsv` (triggers, needs, restore, scaffold, formats, format, runner) so the post-merge hook restores it and the pre-commit and pre-push hooks format-check it too, and point at `src/README.md` and `tests/README.md`. Done when the developer has the commands and the table has a row for the stack. Skip this step and steps 9 and 10 for the unit type `none`: there is nothing to build.
 
    For `microservices` on a stack with no scaffold for it, hand over the stack's own row and say that the services are laid out by hand as `docs/agents/domain.md` ("Microservices") describes. With .NET, the `dotnet-aspire` row creates the AppHost, ServiceDefaults and an Aspire test project but no service: give the developer the "Adding a service" steps from `docs/agents/domain.md` for the first one.
 
@@ -165,11 +168,11 @@ The template knows nothing about the project it hosts. This skill asks the devel
 
 ## Report
 
-The facts recorded, whether `INTENT.md` was read, written or declined, whether the Git hooks were installed, where the merge permission was written or that it was declined, which files changed, the scaffold commands handed over, whether `wire-acceptance.js --prove` passed, whether `CONTEXT-MAP.md` was written, what `profiles.js apply` switched off, and the next skill to run.
+The facts recorded, whether `INTENT.md` was read, written or declined, whether the Git hooks were installed, where the merge permission was written or that it was declined, which files changed, the scaffold commands handed over, whether `wire-acceptance.js --prove` passed, whether `CONTEXT-MAP.md` was written, what `profiles.js apply` linked and switched off, and the next skill to run.
 
 ## Gotchas
 
-- Ask one question per turn: a single message with nine questions gets nine half-answers.
+- Ask one question per turn: a single message with ten questions gets ten half-answers.
 - `Language` is the programming language and `Prose language` the one people read; a project can be `C#` and `Russian` at once. Writing the prose answer into `Language` sends every stack-gated skill after a language no compiler knows.
 - `Requirements` is checked by `node scripts/docs-check.js`, so a Confluence page goes in as its URL and an epic as `jira:AB-42`, not as prose. List several by separating them with commas. Once a BRD exists the line names the BRD instead, and the `brd` skill makes that swap.
 - A tracker is optional. `none` is a complete answer, and a project that plans in `docs/` needs nothing else; do not talk anyone into a tracker they do not have. The template ships that file configured for Jira; for Linear, Asana or GitHub Issues, rewrite it for that tracker's own tools and set `Key format:` so the `commit-msg` hook warns about the right shape. Figma is the same: the `figma` skills matter only once designs exist.

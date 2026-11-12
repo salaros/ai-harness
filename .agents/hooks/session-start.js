@@ -29,6 +29,20 @@ say(fs.existsSync("MEMORY.md") ? "project: facts in MEMORY.md"
     : noProject ? "project: none to configure (.skip-project-init), so there is no MEMORY.md to read"
     : "project: not initialised (no MEMORY.md). Run the project-init skill first");
 if (fs.existsSync("INTENT.md")) say("intent: product and MVP stories in INTENT.md");
+// The generated links are the clone's (ADR-0009/D-2): a fresh clone has none, and a pull that adds
+// an agent or changes a fact leaves one missing or stale. apply changes nothing when nothing is out
+// of date, so it runs every session and speaks only when it did something. The facts nobody answered
+// are named once a project has a MEMORY.md, since each one keeps everything its rows would narrow.
+try {
+    const profiles = require("../../scripts/profiles");
+    if (fs.existsSync(profiles.FILE)) {
+        const root = process.cwd();
+        const r = profiles.applyTo(require("../../scripts/repo-view").worktree(root), require("../../scripts/repo-edit").worktreeEdit(root),
+            { exclude: profiles.excludeFile(root) });
+        if (r.lines.length || r.problems.length) say(`profile: ${[...r.lines, ...r.problems].join("; ")}`);
+        if (fs.existsSync("MEMORY.md") && r.open.length) say(`profile: no answer in MEMORY.md for ${r.open.join(", ")}, so everything those facts select stays on`);
+    }
+} catch { /* the brief never fails a session */ }
 if (fs.existsSync("CONTEXT-MAP.md")) say("domain: multi-context, start at CONTEXT-MAP.md");
 // Where the terms are: GLOSSARY.md, and CONTEXT.md's "## Language" in a repo that has not moved them
 // out yet. A glossary nobody can read is left for the edit hook and the commit to report.

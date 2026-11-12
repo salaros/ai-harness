@@ -22,7 +22,7 @@ const lib = require("./lib");
 const repoView = require("./repo-view");
 const repoEdit = require("./repo-edit");
 
-const SKILLS = ".agents/skills", AGENTS = ".agents/agents", LOCK = "skills-lock.json";
+const SKILLS = ".agents/skills", AGENTS = ".agents/agents", CATALOG_AGENTS = ".agents/catalog/agents", LOCK = "skills-lock.json";
 const SHARED = ".agents/routing.md", SHARED_REF = "routing.md";
 const LICENCES = "scripts/skill-licences.tsv", NOTICES = "THIRD-PARTY-NOTICES.md";
 
@@ -75,6 +75,17 @@ function readEntries(view) {
     });
 }
 
+// Every agent definition a repo has, one path per name: the one in .agents/agents when there is
+// one, since that is what a harness reads there (a generated link, or the project's own shadowing
+// the catalog), and the catalog's otherwise -- an inactive agent, or a view of the index, which holds
+// no generated link (ADR-0009). Sorted by name.
+function agentFiles(view) {
+    const md = dir => view.list(dir).filter(n => n.endsWith(".md"));
+    const byName = new Map(md(CATALOG_AGENTS).map(n => [n, `${CATALOG_AGENTS}/${n}`]));
+    for (const n of md(AGENTS)) if (view.isFile(`${AGENTS}/${n}`)) byName.set(n, `${AGENTS}/${n}`);
+    return [...byName.keys()].sort().map(n => byName.get(n));
+}
+
 // .agents/routing.md holds the rows more than one agent routes through, in a section per audience.
 // It sits outside AGENTS because .claude/agents is a symlink to that folder and a harness reads every
 // file in there as an agent. Each section says which agents read it on a "Read by" line; an agent
@@ -93,18 +104,16 @@ function readRouting(view) {
         })
         : [];
     const agents = {};
-    if (view.exists(AGENTS)) {
-        for (const f of view.list(AGENTS).filter(n => n.endsWith(".md"))) {
-            const text = view.read(`${AGENTS}/${f}`);
-            const name = (frontmatter(text) || {}).name;
-            if (!name) continue;
-            const own = body(text);
-            const readsShared = own.includes(SHARED_REF);
-            const reads = readsShared ? sections.filter(s => own.includes(s.title)).map(s => s.title) : [];
-            const skills = named(own);
-            for (const s of sections) if (reads.includes(s.title)) for (const n of s.skills) skills.add(n);
-            agents[name] = { skills, readsShared, sections: reads };
-        }
+    for (const file of agentFiles(view)) {
+        const text = view.read(file);
+        const name = (frontmatter(text) || {}).name;
+        if (!name) continue;
+        const own = body(text);
+        const readsShared = own.includes(SHARED_REF);
+        const reads = readsShared ? sections.filter(s => own.includes(s.title)).map(s => s.title) : [];
+        const skills = named(own);
+        for (const s of sections) if (reads.includes(s.title)) for (const n of s.skills) skills.add(n);
+        agents[name] = { skills, readsShared, sections: reads };
     }
     return { sections, agents };
 }
@@ -368,7 +377,7 @@ const orphanMessage = orphans => `${NOTICES} cannot account for:\n  ${orphans.jo
     `A skill the lock records needs a row in ${LICENCES}: source, SPDX id, copyright line, licence URL, and any restriction.\n` +
     `A skill carrying a licence with no ${LOCK} entry was copied in by hand: vendor it with npx skills, or remove the licence if it really is this repository's own. The lock is the only record of where a skill came from (ADR-0006).`;
 
-module.exports = { readRoster, relinkPlan, relink, writeNotices, frontmatter, orphanMessage, LOCK, NOTICES, LICENCES };
+module.exports = { readRoster, relinkPlan, relink, writeNotices, frontmatter, orphanMessage, agentFiles, LOCK, NOTICES, LICENCES };
 
 // ---------------------------------------------------------------- the command line
 

@@ -44,6 +44,7 @@ exports.everyKindIsTheOneTheEditReads = function everyKindIsTheOneTheEditReads(t
         ["link", p.linked(".claude/skills", "../.agents/skills", as)],
         ["mkdir", p.folder(".claude/skills", p.quiet())],
         ["mark", p.marked(".githooks/pre-commit", p.quiet())],
+        ...(p.removed ? [["remove", p.removed(".agents/agents/engineer.md", as)]] : []),
         [null, p.noted("b.txt", p.shown("merge", "100644", "unchanged"))],
     ];
     for (const [kind, entry] of cases) {
