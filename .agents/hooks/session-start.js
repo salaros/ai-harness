@@ -86,6 +86,15 @@ if (!process.env.HOOK_TEST && /github\.com[:/]/.test(git(["remote", "get-url", "
         { timeout: 5000, env: { ...process.env, GH_NO_UPDATE_NOTIFIER: "1", GH_PROMPT_DISABLED: "1" } });
     const alerts = a.status === 0 ? a.output.trim() : "";
     if (alerts) say(`dependabot alerts open: ${alerts}. Tell the user, and list them with gh api repos/{owner}/{repo}/dependabot/alerts before changing dependencies.`);
+    // Each workflow whose latest finished run on the default branch failed. A push says nothing
+    // about CI, so work, and once a release tag, went onto a red branch unnoticed.
+    const head = git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]).replace(/^origin\//, "");
+    const c = head && lib.run("gh", ["run", "list", "--branch", head, "--event", "push", "--limit", "30", "--json", "workflowName,status,conclusion,headSha"],
+        { timeout: 5000, env: { ...process.env, GH_NO_UPDATE_NOTIFIER: "1", GH_PROMPT_DISABLED: "1" } });
+    const latest = new Map();
+    try { if (c && c.status === 0) for (const run of JSON.parse(c.output)) if (run.status === "completed" && !latest.has(run.workflowName)) latest.set(run.workflowName, run); } catch { /* nothing to say */ }
+    const red = [...latest.values()].filter(run => run.conclusion === "failure").map(run => `${run.workflowName} (${run.headSha.slice(0, 7)})`);
+    if (red.length) say(`CI failing on ${head}: ${red.join(", ")}. Tell the user, and fix it before pushing more work or tagging a release.`);
 }
 // How a session ends, from the routing row of that name: the deferred-work ledger first, so the
 // retrospective opens on what was actually put off. retro and handoff only run when the user types
