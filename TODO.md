@@ -5,3 +5,8 @@
 - [ ] npx skills experimental_install fails to restore retro: its lock entry points at skills/in-progress/retro/SKILL.md, which mattpocock/skills seems to have moved #deferred (skills-lock.json)
 - [ ] Should C-4 say that a project's edits to vendored skills are overwritten by an update, since no option keeps them? #question (docs/rfc/0001-skills-follow-the-project-profile.md)
 - [ ] Should the skill-budget target count user-level plugins too, making C-8 a must? #question (docs/rfc/0001-skills-follow-the-project-profile.md)
+- [ ] The session brief says nothing when master's last CI run failed, so four commits and a 0.10.0 tag went onto a red master unnoticed; add one line from `gh run list --branch <default> --limit 1`, beside the open pull requests #deferred (.agents/hooks/session-start.js)
+- [ ] The local suite passes on state a fresh clone lacks: check-edit skips a path that does not exist, so its vendored-skill fixtures went green here and red in CI. Point the fixtures at the committed catalog path, or run them in a temporary clone #deferred (.agents/hooks/check-edit.js:78)
+- [ ] The real-install self-check installs HEAD but reads the installer and its tables from the working tree, so it fails on uncommitted installer changes; install from a `git stash create` commit, or skip with a reason #deferred (.agents/hooks/tests/self-checks.js:187)
+- [ ] A commit reused the previous commit's message once, when a script failed before rewriting the message file; check-commit-msg.js could refuse a subject identical to HEAD's #deferred (scripts/check-commit-msg.js)
+- [ ] `npx --yes skills remove --help` ran until stopped by hand; say in the skills doc to run the skills CLI with a timeout or in the background #deferred (docs/agents/skills.md)
