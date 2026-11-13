@@ -2,7 +2,7 @@
 
 Skills are committed in `.agents/catalog/skills/<name>/SKILL.md`, recorded in `skills-lock.json`, and `node scripts/profiles.js apply` links the ones `scripts/profiles.tsv` selects for this project into `.agents/skills/`. Codex, Cursor, Copilot and OpenCode all read `.agents/skills/` natively, which is why this clone wires up no folder of their own: only Claude Code reads somewhere else, so only `.claude/skills` is linked. A skills folder anywhere else is read by nothing, and a skill left only in the catalog is switched off.
 
-Add or update a skill with `npx skills` rather than editing it in place, and remove one with `npx skills remove <name>`. A skill of the project's own goes in `.agents/skills/` as a tracked folder; `.claude/skills` is one link to `.agents/skills`, so it is visible the moment it is saved, and one with a catalog skill's name takes that skill's place.
+Add or update a skill with `npx skills` rather than editing it in place, and remove one with `npx skills remove <name>`. The CLI can run until stopped by hand, even `npx --yes skills remove --help`: run it with a timeout, or in the background. A skill of the project's own goes in `.agents/skills/` as a tracked folder; `.claude/skills` is one link to `.agents/skills`, so it is visible the moment it is saved, and one with a catalog skill's name takes that skill's place.
 
 After vendoring:
 
