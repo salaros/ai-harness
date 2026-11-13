@@ -1,7 +1,7 @@
 # script and args	fixture	expected exit	setup	expected output	note
 .agents/hooks/check-edit.js	claude-vendored-relative.json	2	-	vendored skill	vendored skill edited via a repo-relative path is refused
 .agents/hooks/check-edit.js	claude-vendored-absolute.json	2	-	vendored skill	vendored skill edited via an absolute path is refused
-.agents/hooks/check-edit.js	claude-vendored-via-link.json	2	-	vendored skill	vendored skill edited through the .claude/skills link is refused
+.agents/hooks/check-edit.js	claude-vendored-via-link.json	2	-	vendored skill	vendored skill edited through the .claude/skills link is refused (the one case that needs the links profiles.js apply makes)
 .agents/hooks/check-edit.js	claude-local-skill.json	0	-	-	a local skill may be edited
 .agents/hooks/check-edit.js	cursor-vendored.json	2	-	vendored skill	Cursor afterFileEdit puts file_path at the top level
 .agents/hooks/check-edit.js	copilot-vendored.json	2	-	vendored skill	Copilot sends toolArgs as a JSON string with a path key
