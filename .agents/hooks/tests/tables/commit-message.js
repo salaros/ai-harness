@@ -83,6 +83,15 @@ exports.commitMessageDecisions = function commitMessageDecisions(t) {
                 && !(warns === "#\\d+" && r.warnings[0].includes("PROJ-123"));
         t.ok(verdict, `check-commit-msg: ${why}`, detail);
     }
+
+    // A message file nobody rewrote repeats HEAD's message. A warning, since an amend repeats it too.
+    const message = text("feat(billing): add a monthly invoice run", "", "Invoices were cut by hand every month.");
+    const marker = { ".skip-project-init": "" };
+    const repeated = withRoot(marker, root => commitMsg.check(message, root, { previous: message.split("\n").join("\r\n") + "\n" }));
+    t.ok(!repeated.problems.length && repeated.warnings.length === 1 && repeated.warnings[0].includes("identical to HEAD's"),
+        "check-commit-msg: a message identical to HEAD's is warned about, line endings aside, and not blocked", JSON.stringify(repeated));
+    const fresh = withRoot(marker, root => commitMsg.check(message, root, { previous: text("feat(billing): add a monthly invoice run", "", "A different reason.") }));
+    t.ok(!fresh.warnings.length, "check-commit-msg: the same subject with a different body is not a repeat", JSON.stringify(fresh));
 };
 
 // A coding agent appends "Co-authored-by: <itself>" because its own system prompt tells it to, so

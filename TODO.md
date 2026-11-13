@@ -7,5 +7,4 @@
 - [ ] Should the skill-budget target count user-level plugins too, making C-8 a must? #question (docs/rfc/0001-skills-follow-the-project-profile.md)
 - [ ] The local suite passes on state a fresh clone lacks: check-edit skips a path that does not exist, so its vendored-skill fixtures went green here and red in CI. Point the fixtures at the committed catalog path, or run them in a temporary clone #deferred (.agents/hooks/check-edit.js:78)
 - [ ] The real-install self-check installs HEAD but reads the installer and its tables from the working tree, so it fails on uncommitted installer changes; install from a `git stash create` commit, or skip with a reason #deferred (.agents/hooks/tests/self-checks.js:187)
-- [ ] A commit reused the previous commit's message once, when a script failed before rewriting the message file; check-commit-msg.js could refuse a subject identical to HEAD's #deferred (scripts/check-commit-msg.js)
 - [ ] `npx --yes skills remove --help` ran until stopped by hand; say in the skills doc to run the skills CLI with a timeout or in the background #deferred (docs/agents/skills.md)

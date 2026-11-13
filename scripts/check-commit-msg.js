@@ -105,9 +105,10 @@ function reference(root) {
 }
 
 // The whole decision: `raw` is the message as Git wrote it, `root` the repo it is being committed
-// to. Returns the rules it broke, the warnings that never block, and the line to print when it
-// passed; an accepted message with nothing to say has an empty summary.
-function check(raw, root) {
+// to, and `previous` the message of the commit HEAD names, when there is one. Returns the rules it
+// broke, the warnings that never block, and the line to print when it passed; an accepted message
+// with nothing to say has an empty summary.
+function check(raw, root, { previous = null } = {}) {
     const warnings = [];
 
     // The editor's template: comments, and anything past the scissors line, are not the message.
@@ -155,6 +156,15 @@ function check(raw, root) {
             (prose.length ? ` (found ${prose.length})` : ""));
     }
 
+    // A message identical to HEAD's is most often a message file nobody rewrote: a script that
+    // writes it failed, and the commit went ahead with the last one. A warning, not a rule, because
+    // `git commit --amend --no-edit` repeats it on purpose and a hook cannot tell the two apart.
+    const norm = text => text.split(/\r?\n/).filter(l => !l.startsWith("#")).join("\n").trim();
+    if (previous !== null && norm(previous) && norm(previous) === body.join("\n").trim()) {
+        warnings.push(`commit message: identical to HEAD's, "${header}". Unless this is an amend, the message file was not ` +
+            `rewritten: amend this commit with the message it was meant to have.`);
+    }
+
     // A warning, not a rule: it never reaches the exit code.
     // The key counts only where it means "this commit is that work": the subject, or a trailer. A key
     // named in passing in the body is prose about a ticket, not a reference to one, and a message that
@@ -196,7 +206,9 @@ if (require.main === module) {
     const raw = file ? fs.readFileSync(file, "utf8") : lib.stdin();
     const root = lib.chdirRoot();
 
-    const { problems, warnings, summary } = check(raw, root);
+    // HEAD's message, for the repeated-message warning; none before the first commit.
+    const last = lib.run("git", ["log", "-1", "--format=%B"]);
+    const { problems, warnings, summary } = check(raw, root, { previous: last.status === 0 ? last.output : null });
     for (const w of warnings) console.error(w);
     if (!problems.length) { if (summary) console.log(summary); process.exit(0); }
     console.error("\ncommit message rejected:\n");
