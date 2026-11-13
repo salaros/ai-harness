@@ -35,6 +35,12 @@ jobs:
         with:
           node-version: "22"
 
+      # A checkout holds the skill catalog but none of the links a harness reads it through, and
+      # the suite edits skills through them, as an agent does. Every clone makes them on its first
+      # session or githooks-init; this runner gets neither.
+      - name: Link the active skills and agents
+        run: node scripts/profiles.js apply
+
       - name: Hook suite (harness fixtures + skills on disk)
         run: node .agents/hooks/test.js
 

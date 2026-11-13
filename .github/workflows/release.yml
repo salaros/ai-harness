@@ -70,6 +70,12 @@ jobs:
       - name: npm new enough to publish by OIDC
         run: npm install -g npm@^11.5.1
 
+      # A checkout holds the skill catalog but none of the links a harness reads it through, and
+      # the suite edits skills through them, as an agent does. Every clone makes them on its first
+      # session or githooks-init; this runner gets neither.
+      - name: Link the active skills and agents
+        run: node scripts/profiles.js apply
+
       # A tag push runs no other workflow, so the suite runs here. A release nobody proved is worse
       # than a release nobody cut, and the version is on npm for good either way.
       - name: Hook suite

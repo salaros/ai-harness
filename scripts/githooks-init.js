@@ -32,3 +32,11 @@ for (const file of wrong) {
 
 console.log(`Git hooks: core.hooksPath = .githooks (${hooks.join(" ")})`);
 if (wrong.length) console.log(`marked executable in the index, stage the change: ${wrong.join(" ")}`);
+
+// A clone checks out the skill and agent catalogs but none of the links a harness reads them
+// through, and a harness started without a session hook would see none of them (SPEC-0004/R-2).
+// A failed apply is reported and the hooks stay installed.
+if (fs.existsSync("scripts/profiles.js")) {
+    const a = spawnSync(process.execPath, ["scripts/profiles.js", "apply"], { stdio: "inherit" });
+    if (a.status !== 0) console.log("profiles: apply failed; run node scripts/profiles.js apply to see why");
+}
