@@ -417,3 +417,26 @@ exports.profileTableCoversThisCheckout = function profileTableCoversThisCheckout
     t.ok(coding.every(n => reference.kinds.skill.active.includes(n)), "the reference profile keeps the coding skills",
         coding.filter(n => !reference.kinds.skill.active.includes(n)).join(", "));
 };
+
+// Git checks .claude/skills out before apply makes .agents/skills, and Windows then records a file
+// link, which opens as nothing once the folder exists. apply remakes it as a folder link with the
+// same target. Only Windows records the kind, so elsewhere there is nothing to repair.
+exports.folderLinkMadeBeforeItsFolderIsRepaired = function folderLinkMadeBeforeItsFolderIsRepaired(t) {
+    const profiles = module_();
+    if (!profiles || !profiles.repairFolderLinks) { t.skip("folder link repair: no scripts/profiles.js here"); return; }
+    if (process.platform !== "win32") { t.skip("folder link repair: only Windows records a symlink's kind"); return; }
+    const root = fs.mkdtempSync(path.join(require("os").tmpdir(), "folder-link-"));
+    try {
+        fs.mkdirSync(path.join(root, ".claude"));
+        try { fs.symlinkSync(path.join("..", ".agents", "skills"), path.join(root, ".claude", "skills"), "file"); }
+        catch { t.skip("folder link repair: this machine refuses symlinks"); return; }
+        fs.mkdirSync(path.join(root, ".agents", "skills", "tdd"), { recursive: true });
+        fs.writeFileSync(path.join(root, ".agents", "skills", "tdd", "SKILL.md"), "x\n");
+        const lines = profiles.repairFolderLinks(root);
+        t.ok(lines.length === 1 && fs.existsSync(path.join(root, ".claude", "skills", "tdd", "SKILL.md")),
+            "a file link to the skills folder is remade as a folder link", lines.join("\n"));
+        t.ok(fs.readlinkSync(path.join(root, ".claude", "skills")).split(path.sep).join("/") === "../.agents/skills",
+            "the remade link keeps its relative target, so Git sees no change", fs.readlinkSync(path.join(root, ".claude", "skills")));
+        t.ok(!profiles.repairFolderLinks(root).length, "a folder link that opens is left alone", "");
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+};

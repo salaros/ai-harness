@@ -10,6 +10,7 @@
 // The selector fails open: a test over a fact the project has not answered is true, and the fact
 // is reported as open. A profile narrows what a project has; a missing fact never hides anything,
 // so the upstream, which has no MEMORY.md, keeps everything.
+const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 const lib = require("./lib");
@@ -439,6 +440,31 @@ function applyTo(view, edit, { dryRun = false, exclude = EXCLUDE, root = null } 
     return out;
 }
 
+// The two committed folder links, .claude/skills and .claude/agents, point at folders apply makes,
+// and Windows records which kind a symlink is when it is made. Git checks them out before apply
+// runs, so it sees their targets missing and makes file links, which open as nothing even once the
+// folders are there. Each is remade as a folder link, with the same relative target so Git sees no
+// change, or as a junction where the clone refuses symlinks. Returns a line per repair.
+const FOLDER_LINKS = [".claude/skills", ".claude/agents"];
+function repairFolderLinks(root) {
+    const lines = [];
+    for (const rel of FOLDER_LINKS) {
+        const file = path.join(root, rel);
+        let target;
+        try { if (!fs.lstatSync(file).isSymbolicLink()) continue; target = fs.readlinkSync(file); } catch { continue; }
+        const resolved = path.resolve(path.dirname(file), target);
+        try { if (!fs.statSync(resolved).isDirectory()) continue; } catch { continue; }
+        try { if (fs.statSync(file).isDirectory()) continue; } catch { /* a file link to a folder: repair it */ }
+        try {
+            fs.unlinkSync(file);
+            try { fs.symlinkSync(target, file, "dir"); }
+            catch { fs.symlinkSync(resolved, file, "junction"); }
+            lines.push(`${rel}: remade as a folder link, since Git made it before its folder existed`);
+        } catch (err) { lines.push(`${rel}: could not remake it as a folder link: ${err.code || err.message}`); }
+    }
+    return lines;
+}
+
 // Where Git keeps this clone's exclude file, or null outside a checkout.
 function excludeFile(root) {
     const r = spawnSync("git", ["rev-parse", "--git-path", "info/exclude"], { cwd: root, encoding: "utf8" });
@@ -472,8 +498,9 @@ const commands = {
         const r = applyTo(repoView.worktree(root), repoEdit.worktreeEdit(root), { dryRun, exclude: excludeFile(root), root });
         const verb = e => e.remove ? "remove" : e.move !== undefined ? `move ${e.move} to` : e.link !== undefined ? "link" : "write";
         if (dryRun) for (const e of r.entries) console.log(`would ${verb(e)} ${e.file}`);
+        if (!dryRun) r.lines.push(...repairFolderLinks(root));
         for (const line of r.lines) console.log(line);
-        if (!r.entries.length && !r.problems.length) console.log("profiles: nothing to change");
+        if (!r.entries.length && !r.lines.length && !r.problems.length) console.log("profiles: nothing to change");
         for (const p of r.problems) console.error(`profiles: ${p}`);
         return r.problems.length ? 1 : 0;
     },
@@ -485,4 +512,4 @@ if (require.main === module) {
     process.exit(commands[cmd](lib.root(), ...args));
 }
 
-module.exports = { FILE, KINDS, REFERENCE, BUDGET, EXCLUDE, parse, select, plan, applyTo, excludeFile };
+module.exports = { FILE, KINDS, REFERENCE, BUDGET, EXCLUDE, parse, select, plan, applyTo, excludeFile, repairFolderLinks };
