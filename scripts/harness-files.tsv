@@ -50,7 +50,7 @@ scripts/harness-files.tsv	template	This table. Read from the upstream checkout d
 .agents/hooks/test.js	template	The harness suite: fixtures that prove the harness scripts. check-edit.js skips it where it is absent; a target runs scripts/check-harness.js instead.
 .agents/hooks/tests/	template	Its fixtures.
 .github/	template	CI that runs the suite, which does not travel either. A project brings its own.
-scripts/skill-licences.tsv	union	One licence row per skill source. A skill the upstream drops stays here, so its row has to stay with it or the notices cannot be written.
+scripts/skill-licences.tsv	union	One licence row per skill source. A skill the upstream drops stays where the project edited it, so its row has to stay with it or the notices cannot be written.
 skills-lock.json	skills	Merged as a union, so a skill the project vendored itself survives.
 .agents/skills/	template	Links scripts/profiles.js writes from the catalog, untracked, plus whatever the project vendored itself. The upstream ships nothing here, and an install never touches the project's own.
 .agents/agents/	template	Links scripts/profiles.js writes from .agents/catalog/agents, untracked. The upstream ships nothing here.
