@@ -10,15 +10,15 @@ aspnet-minimal-api-openapi	skill	Language = C#
 bdd-scenarios	skill	always
 brd	skill	always
 ci-cd-best-practices	skill	Roles = devops
-clean-architecture	skill	always
-code-review	skill	always
-code-review-and-quality	skill	always
-code-simplification	skill	always
-codebase-design	skill	always
+clean-architecture	skill	Language != none
+code-review	skill	Language != none
+code-review-and-quality	skill	Language != none
+code-simplification	skill	Language != none
+codebase-design	skill	Language != none
 competitor-profiling	skill	Roles = marketing
 content-strategy	skill	Roles = marketing
 copywriting	skill	Roles = marketing
-create-implementation-plan	skill	always
+create-implementation-plan	skill	Language != none
 devops-engineer	skill	Roles = devops
 devops-rollout-plan	skill	Roles = devops
 docs-check	skill	always
@@ -38,8 +38,8 @@ git-commit	skill	always
 grill-with-docs	skill	always
 grilling	skill	always
 handoff	skill	always
-implement	skill	always
-improve-codebase-architecture	skill	always
+implement	skill	Language != none
+improve-codebase-architecture	skill	Language != none
 interview-notes	skill	always
 interview-synthesis	skill	always
 launch	skill	Roles = marketing or Roles = product-manager
@@ -51,17 +51,17 @@ north-star-metric	skill	Roles = product-manager
 opportunity-solution-tree	skill	Roles = product-manager
 outcome-roadmap	skill	Roles = product-manager
 pdd	skill	always
-ponytail	skill	always
-ponytail-audit	skill	always
-ponytail-debt	skill	always
-pr-sweep	skill	always
+ponytail	skill	Language != none
+ponytail-audit	skill	Language != none
+ponytail-debt	skill	Language != none
+pr-sweep	skill	Language != none
 prd	skill	always
 pre-mortem	skill	Roles = marketing or Roles = product-manager
 product-marketing	skill	Roles = marketing or Roles = product-manager
 product-strategy	skill	Roles = product-manager
 product-vision	skill	Roles = product-manager
 project-init	skill	always
-prototype	skill	always
+prototype	skill	Language != none
 release-notes	skill	Roles = marketing or Roles = product-manager
 resolving-merge-conflicts	skill	always
 retro	skill	always
@@ -73,7 +73,7 @@ setup-matt-pocock-skills	skill	always
 social	skill	Roles = marketing
 spec	skill	always
 tailwind-design-system	skill	Frontend != none
-tdd	skill	always
+tdd	skill	Language != none
 teach	skill	always
 to-questionnaire	skill	always
 to-tickets	skill	always

@@ -403,4 +403,17 @@ exports.profileTableCoversThisCheckout = function profileTableCoversThisCheckout
         `the reference profile loads at most ${profiles.BUDGET} description characters`,
         `${reference.chars.active} of ${reference.chars.total}`);
     t.ok(!reference.open.length, "the reference profile answers every fact a row asks", reference.open.join(", "));
+    // A project that only gathers requirements (SPEC-0004/D-11): no language, so the coding skills
+    // and the engineering agents go off, and the chain up to SPEC stays on.
+    const requirements = profiles.plan(view, { facts: { ...profiles.REFERENCE, Language: "none", Roles: "product-manager, business-analyst" } });
+    const coding = ["tdd", "implement", "codebase-design", "code-review", "pr-sweep", "create-implementation-plan"];
+    const chain = ["pdd", "brd", "prd", "trd", "feature-forge", "bdd-scenarios", "rfc", "grill-with-docs", "spec", "git-commit", "loose-ends"];
+    t.ok(coding.every(n => requirements.kinds.skill.inactive.includes(n)),
+        "a requirements-only profile switches the coding skills off", coding.filter(n => !requirements.kinds.skill.inactive.includes(n)).join(", "));
+    t.ok(chain.every(n => requirements.kinds.skill.active.includes(n)),
+        "a requirements-only profile keeps the chain up to SPEC", chain.filter(n => !requirements.kinds.skill.active.includes(n)).join(", "));
+    t.ok(["engineer", "devops"].every(n => requirements.kinds.agent.inactive.includes(n)) && requirements.kinds.agent.active.includes("business-analyst"),
+        "a requirements-only profile keeps the requirements agents and drops the engineering ones", requirements.kinds.agent.active.join(", "));
+    t.ok(coding.every(n => reference.kinds.skill.active.includes(n)), "the reference profile keeps the coding skills",
+        coding.filter(n => !reference.kinds.skill.active.includes(n)).join(", "));
 };

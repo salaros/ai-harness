@@ -76,7 +76,7 @@ if (!process.env.HOOK_TEST && /github\.com[:/]/.test(git(["remote", "get-url", "
         { timeout: 5000, env: { ...process.env, GH_NO_UPDATE_NOTIFIER: "1", GH_PROMPT_DISABLED: "1" } });
     let open = [];
     try { if (r.status === 0) open = JSON.parse(r.output).filter(p => !p.isDraft).map(p => `#${p.number}`); } catch { /* nothing to say */ }
-    if (open.length) say(`pull requests open: ${open.join(", ")}. Offer a pr-sweep of them, as the skill says.`);
+    if (open.length && fs.existsSync(".agents/skills/pr-sweep/SKILL.md")) say(`pull requests open: ${open.join(", ")}. Offer a pr-sweep of them, as the skill says.`);
     // The open Dependabot alerts, counted by severity, because otherwise they surface only in the
     // remote's banner after a push, when the work is already out. A token without access to them
     // (403), or a repository with them turned off, says nothing.
