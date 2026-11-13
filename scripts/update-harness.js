@@ -515,6 +515,31 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
         add(entry.heading("skills moved to the catalog"));
         for (const dir of movedSkills) add(entry.removed(dir, entry.shown("skills", "040000", "removed", "removed")));
     }
+    // A skill the base shipped and the upstream has since dropped goes as well, with its lock entry,
+    // since nothing else ever removes one (the skills policy only adds and updates). One the project
+    // edited is the project's now and stays, named in a notice. Without a base nothing tells the two
+    // apart, so nothing goes.
+    const tree = (view, dir) => view.list(dir).flatMap(n => view.isFile(`${dir}/${n}`) ? [n] : tree(view, `${dir}/${n}`).map(f => `${n}/${f}`));
+    const homes = [CATALOG_SKILLS, SKILLS];
+    const skillAt = (view, name) => homes.map(h => `${h}/${name}`).find(d => view.isFile(`${d}/SKILL.md`));
+    const stillShipped = new Set(homes.flatMap(h => atHead.list(h)));
+    const droppedSkills = [], droppedNames = new Set();
+    for (const name of shipped ? [...new Set(homes.flatMap(h => shipped.list(h)))].sort() : []) {
+        const was = skillAt(shipped, name);
+        if (!was || stillShipped.has(name)) continue;
+        for (const dir of homes.map(h => `${h}/${name}`)) {
+            if ((target.lstat(dir) || {}).link || !target.isFile(`${dir}/SKILL.md`)) continue;
+            const files = tree(target, dir);
+            const same = files.join("\n") === tree(shipped, was).join("\n")
+                && files.every(f => lib.toLf(target.read(`${dir}/${f}`) || "") === lib.toLf(shipped.read(`${was}/${f}`) || ""));
+            if (same) { droppedSkills.push(dir); droppedNames.add(name); }
+            else notices.push(`${dir}: the upstream dropped this skill, but it was edited here, so it stays and is the project's now`);
+        }
+    }
+    if (droppedSkills.length) {
+        add(entry.heading("skills the upstream dropped"));
+        for (const dir of droppedSkills) add(entry.removed(dir, entry.shown("skills", "040000", "removed", "removed")));
+    }
 
     add(entry.heading("skeletons a project starts with"));
     const hasIntent = target.exists(projectFacts.INTENT);
@@ -538,6 +563,7 @@ function plan({ upstream, target, rows, head, ref, previous, options, stamp = {}
         exists: file => target.exists(file),
         theirs: file => contentOf(atHead, file),
         held: file => (target.isFile(file) ? target.bytes(file) : null),
+        dropped: droppedNames,
     }));
 
     // A list of strings on one line, as Prettier writes it: a project formatting its JSON with it

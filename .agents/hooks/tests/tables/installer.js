@@ -306,6 +306,39 @@ exports.installPlanMovesSkillsToTheCatalog = function installPlanMovesSkillsToTh
         "skills to the catalog: applying the plan takes the folder away, writes the catalog and leaves the link");
 };
 
+// A skill the upstream drops (duck-debt, in 0.10.0): the skills policy only adds and updates, so the
+// run removes a dropped skill's untouched folder and its lock entry itself, and leaves an edited one.
+exports.installPlanRemovesDroppedSkills = function installPlanRemovesDroppedSkills(t) {
+    const harness = installer();
+    if (!harness) { t.skip("dropped skills: the installer is the upstream's own, not installed here"); return; }
+    const skill = name => `---\nname: ${name}\ndescription: ${name}\n---\n`;
+    const lock = names => JSON.stringify({ version: 1, skills: Object.fromEntries(names.map(n => [n, { source: "x/y" }])) }, null, 2) + "\n";
+    const up = memoryUpstream([
+        ["c1", { "skills-lock.json": lock(["tdd", "gone", "touched"]), ".agents/skills/tdd/SKILL.md": skill("tdd"),
+            ".agents/skills/gone/SKILL.md": skill("gone"), ".agents/skills/gone/refs/a.md": "a\n", ".agents/skills/touched/SKILL.md": skill("touched") }],
+        ["c2", { "skills-lock.json": lock(["tdd"]), ".agents/catalog/skills/tdd/SKILL.md": skill("tdd") }],
+    ]);
+    const rows = [{ path: "skills-lock.json", policy: "skills" }, { path: ".agents/skills/", policy: "template" }, { path: ".agents/catalog/skills/", policy: "skills" }];
+    const target = {
+        "skills-lock.json": lock(["tdd", "gone", "touched", "ours"]), ".agents/skills/tdd/SKILL.md": skill("tdd"),
+        ".agents/skills/gone/SKILL.md": skill("gone").replace(/\n/g, "\r\n"), ".agents/skills/gone/refs/a.md": "a\n",
+        ".agents/skills/touched/SKILL.md": skill("touched") + "ours\n", ".agents/skills/ours/SKILL.md": skill("ours"),
+    };
+    const run = previous => harness.plan({
+        upstream: up, target: repoView.fromMap(target), rows, head: "c2", ref: "master", previous,
+        options: { dryRun: false, adopt: false, quiet: true, check: true, wants: () => false },
+    });
+    const update = run({ commit: "c1", ref: "master" });
+    const removed = update.entries.filter(e => e.remove).map(e => e.file).sort().join(", ");
+    t.ok(removed === ".agents/skills/gone, .agents/skills/tdd",
+        "dropped skills: an untouched dropped skill goes, CRLF or not, beside the one that moved; an edited one and the project's stay", removed);
+    t.ok(update.notices.some(n => n.startsWith(".agents/skills/touched:")), "dropped skills: the edited one is named in a notice", update.notices.join("\n"));
+    const written = update.entries.find(e => e.file === "skills-lock.json" && e.write !== undefined);
+    const names = written ? Object.keys(JSON.parse(written.write).skills).sort().join(", ") : "";
+    t.ok(names === "ours, tdd, touched", "dropped skills: the lock loses the removed skill's entry and keeps the rest", names);
+    t.ok(!run(null).entries.some(e => e.remove), "dropped skills: without a base nothing is removed");
+};
+
 // SPEC-0001, and the whole reason bytes() is a question of its own rather than a flag on read(). A
 // skill ships a logo, and until repo-view there was no way to put a file with a zero byte in it in
 // front of plan(): the stand-in this table used answered a bytes read by re-encoding its own string,

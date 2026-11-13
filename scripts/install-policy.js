@@ -394,6 +394,8 @@ function skills(roster, reads) {
     for (const [name, pinned] of Object.entries(theirLock.skills)) {
         if (!ourLock.skills[name]) ourLock.skills[name] = pinned;
     }
+    // A skill the upstream dropped and the run removed takes its entry with it (update-harness.js).
+    for (const name of reads.dropped || []) delete ourLock.skills[name];
     out.push(entry.written(SKILLS_LOCK, JSON.stringify(ourLock, null, 2) + "\n", entry.quiet()));
     return out;
 }
