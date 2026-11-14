@@ -98,7 +98,7 @@ dotnet add src/<Service> reference src/<Name>.ServiceDefaults
 dotnet add src/<Name>.AppHost reference src/<Service>
 dotnet new xunit -n <Service>.Tests -o tests/<Service>.Tests
 dotnet add tests/<Service>.Tests reference src/<Service>
-dotnet sln add src/<Service> tests/<Service>.Tests
+dotnet sln add --include-references false src/<Service> tests/<Service>.Tests
 ```
 
 Then call `builder.AddServiceDefaults()` in the service's `Program.cs` and `app.MapDefaultEndpoints()` after `builder.Build()`, and register it in the AppHost's entry file (`AppHost.cs`, or `Program.cs` from older templates) with `builder.AddProject<Projects.<Service>>("<service>")`. Add the service to `CONTEXT-MAP.md` when its first term is resolved, not before.
