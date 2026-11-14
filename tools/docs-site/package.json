@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@astrojs/starlight": "^0.42.5",
-    "astro": "^7.3.5"
+    "astro": "^7.4.12"
   },
   "overrides": {
     "http-cache-semantics": "^4.2.0"
