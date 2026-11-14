@@ -184,26 +184,56 @@ exports.claudeHooksRunInEveryShell = function claudeHooksRunInEveryShell(t, env)
     }
 };
 
+// The upstream an install reads, as the working tree stands. update-harness.js installs its --from
+// checkout's HEAD but reads the tables steering it from that checkout's files, so an uncommitted
+// change to either failed the check below on a mismatch no real install meets. A tree with changes
+// is committed through a scratch index, untracked files included and HEAD untouched, and cloned into
+// a temporary directory at that commit; a clean tree is installed from where it is.
+function workingTreeUpstream(checkout) {
+    const git = (args, extra) => lib.run("git", ["-C", checkout, ...args], { env: { ...process.env, ...extra } });
+    const tmp = fs.mkdtempSync(path.join(require("os").tmpdir(), "harness-upstream-"));
+    const done = () => fs.rmSync(tmp, { recursive: true, force: true });
+    const scratch = { GIT_INDEX_FILE: path.join(tmp, "index") };
+    const index = path.resolve(checkout, git(["rev-parse", "--git-path", "index"]).output.trim());
+    if (fs.existsSync(index)) fs.copyFileSync(index, scratch.GIT_INDEX_FILE);
+    const added = git(["add", "-A"], scratch);
+    const tree = git(["write-tree"], scratch);
+    const head = git(["rev-parse", "HEAD"]).output.trim();
+    if (added.status !== 0 || tree.status !== 0) { done(); return { error: `${added.output}\n${tree.output}` }; }
+    if (tree.output.trim() === git(["rev-parse", "HEAD^{tree}"]).output.trim()) { done(); return { dir: checkout, head, done: () => {} }; }
+    const who = { GIT_AUTHOR_NAME: "harness tests", GIT_AUTHOR_EMAIL: "tests@example.invalid", GIT_COMMITTER_NAME: "harness tests", GIT_COMMITTER_EMAIL: "tests@example.invalid" };
+    const commit = git(["commit-tree", tree.output.trim(), "-p", head, "-m", "the working tree"], who);
+    const dir = path.join(tmp, "upstream");
+    const clone = commit.status === 0 ? lib.run("git", ["-c", "core.longpaths=true", "clone", "--quiet", "--no-checkout", checkout, dir]) : commit;
+    const checked = clone.status === 0 ? lib.run("git", ["-C", dir, "-c", "core.longpaths=true", "checkout", "--quiet", "--detach", commit.output.trim()]) : clone;
+    if (checked.status !== 0) { done(); return { error: checked.output }; }
+    return { dir, head: commit.output.trim(), done };
+}
+
 // One real install, end to end, from this checkout into an empty repository: the plan and the table
 // above can agree with each other and still disagree with the disk. A dry run first, which must
 // leave the repository as it found it, then the install, then a second run with nothing to do.
 // Run the way a maintainer runs it from a Claude Code session open on this checkout: with
-// CLAUDE_PROJECT_DIR naming the upstream, which must not pull any step of the install away from the
+// CLAUDE_PROJECT_DIR naming this checkout, which must not pull any step of the install away from the
 // target. Without the variable set here the check passed from a shell and failed only from a hook.
 // The repository's one file is a package.json declaring ES modules, as a JavaScript project's often
 // does: the harness scripts are CommonJS, and the install runs them in the target before it is done.
 exports.installerInstallsIntoAnEmptyRepo = function installerInstallsIntoAnEmptyRepo(t, env) {
     if (!installer()) { t.skip("a real install: the installer is the upstream's own, not installed here"); return; }
+    const upstream = workingTreeUpstream(lib.checkout);
+    if (upstream.error) { t.ok(false, "a real install: the working tree can be committed and cloned to install from", upstream.error); return; }
+    try { installInto(upstream, t, env); } finally { upstream.done(); }
+};
+function installInto(upstream, t, env) {
     withRoot({ "package.json": JSON.stringify({ type: "module" }) }, dir => {
-        const node = args => require("child_process").spawnSync(process.execPath, [INSTALLER, "--from", lib.checkout, "--target", dir, "--quiet", ...args], { encoding: "utf8", env: { ...env, CLAUDE_PROJECT_DIR: lib.checkout } });
+        const node = args => require("child_process").spawnSync(process.execPath, [INSTALLER, "--from", upstream.dir, "--target", dir, "--quiet", ...args], { encoding: "utf8", env: { ...env, CLAUDE_PROJECT_DIR: lib.checkout } });
         lib.run("git", ["-C", dir, "init", "--quiet"]);
         const dry = node(["--dry-run"]);
         t.ok(dry.status === 0 && !fs.existsSync(path.join(dir, "harness-lock.json")) && !fs.existsSync(path.join(dir, "AGENTS.md")),
             "a real install: --dry-run exits 0 and writes nothing", `exit ${dry.status}\n${dry.stdout}${dry.stderr}`);
         const real = node([]);
-        const head = lib.run("git", ["-C", lib.checkout, "rev-parse", "HEAD"]).output.trim();
         const lock = fs.existsSync(path.join(dir, "harness-lock.json")) ? JSON.parse(fs.readFileSync(path.join(dir, "harness-lock.json"), "utf8")) : {};
-        t.ok(real.status === 0 && lock.commit === head, "a real install: exits 0 and records the upstream commit", `exit ${real.status}\n${real.stdout}${real.stderr}`);
+        t.ok(real.status === 0 && lock.commit === upstream.head, "a real install: exits 0 and records the upstream commit", `exit ${real.status}\n${real.stdout}${real.stderr}`);
         t.ok(fs.existsSync(path.join(dir, "MEMORY.md")) && fs.existsSync(path.join(dir, "AGENTS.md")), "a real install: the harness and its skeletons are on disk", dir);
         const staged = lib.run("git", ["-C", dir, "ls-files", "-s", "--", ".githooks/pre-commit"]).output;
         t.ok(staged.startsWith("100755"), "a real install: a hook is staged executable", staged || "(not staged)");
@@ -214,7 +244,7 @@ exports.installerInstallsIntoAnEmptyRepo = function installerInstallsIntoAnEmpty
         const second = node([]);
         t.ok(second.status === 0 && second.stdout.includes("nothing to update"), "a real install: a second run has nothing to do", `exit ${second.status}\n${second.stdout}${second.stderr}`);
     });
-};
+}
 
 // npx runs the installer from the published package, which holds only what package.json's `files`
 // lists. A script the installer requires and the list leaves out works from a checkout and breaks

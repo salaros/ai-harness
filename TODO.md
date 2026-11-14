@@ -5,4 +5,3 @@
 - [ ] npx skills experimental_install fails to restore retro: its lock entry points at skills/in-progress/retro/SKILL.md, which mattpocock/skills seems to have moved #deferred (skills-lock.json)
 - [ ] Should C-4 say that a project's edits to vendored skills are overwritten by an update, since no option keeps them? #question (docs/rfc/0001-skills-follow-the-project-profile.md)
 - [ ] Should the skill-budget target count user-level plugins too, making C-8 a must? #question (docs/rfc/0001-skills-follow-the-project-profile.md)
-- [ ] The real-install self-check installs HEAD but reads the installer and its tables from the working tree, so it fails on uncommitted installer changes; install from a `git stash create` commit, or skip with a reason #deferred (.agents/hooks/tests/self-checks.js:187)
